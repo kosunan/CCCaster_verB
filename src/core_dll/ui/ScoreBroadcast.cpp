@@ -6,6 +6,7 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include <regex>
 
 namespace cccaster::domain::ui::score_broadcast {
 namespace {
@@ -21,6 +22,29 @@ struct Worker {
 };
 // プロセス終了のDllMainでjoin/destructしない。明示unloadはShutdownが回収する。
 Worker *worker = nullptr;
+
+// 強制終了時も次回起動で回収する。PIDを確認できない場合は保全する。
+void PruneStoppedOutputs(const std::filesystem::path &directory) {
+    const std::wregex pattern(L"^cccaster-score-([0-9]{1,10})\\.(json|txt)(\\.tmp)?$");
+    std::error_code error;
+    std::filesystem::directory_iterator it(directory, error), end;
+    while (!error && it != end) {
+        const auto entry = *it;
+        it.increment(error);
+        std::error_code statusError;
+        if (!entry.is_regular_file(statusError) || entry.is_symlink(statusError)) continue;
+        std::wsmatch match;
+        const auto name = entry.path().filename().wstring();
+        if (!std::regex_match(name, match, pattern)) continue;
+        const auto value = std::stoull(match[1].str());
+        if (!value || value > MAXDWORD || value == GetCurrentProcessId()) continue;
+        HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(value));
+        const bool stopped = process ? WaitForSingleObject(process, 0) == WAIT_OBJECT_0
+                                     : GetLastError() == ERROR_INVALID_PARAMETER;
+        if (process) CloseHandle(process);
+        if (stopped) std::filesystem::remove(entry.path(), statusError);
+    }
+}
 
 bool ReplaceFile(const std::filesystem::path &path, const std::string &contents) {
     auto temporary = path;
@@ -54,6 +78,7 @@ void Write(Worker &w, const session::SessionScoreSnapshot &s) {
 }
 
 void Run(Worker *w) {
+    PruneStoppedOutputs(w->base.parent_path());
     for (;;) {
         if (WaitForSingleObject(w->event, INFINITE) != WAIT_OBJECT_0) break;
         session::SessionScoreSnapshot copy;

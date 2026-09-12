@@ -6,6 +6,7 @@
 #include "core_dll/ui/ScoreBroadcast.hpp"
 #include "core_dll/timing/SpinProbe.hpp"
 #include "core_dll/timing/WasapiClock.hpp"
+#include "core_dll/timing/OfflinePacing.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include "core_dll/sync/SettingsCommands.hpp"
 // 通常フレームは確定入力または上限内の予測を適用し、訂正時は保存状態から再計算する。
@@ -60,6 +61,7 @@ struct SceneRuntime {
     bool spectatorHasPending = false;
     SessionScore score;
     FrameAdvantageTracker advantage;
+    FrameBarHistory frameBar;
     TrainingState trainingState;
     MatchContext *context = nullptr;
     scene::LocalInputGate localInputGate, secondInputGate;
@@ -317,6 +319,7 @@ void SceneRunner::Init(MatchContext &ctx) {
     runtime.ready.store(false);
     runtime.score.Reset(ctx.appMode == 0);
     runtime.advantage.Reset();
+    runtime.frameBar.Reset();
     runtime.trainingState.Reset();
     cccaster::domain::ui::score_broadcast::Publish(runtime.score.Snapshot());
     cccaster::core::sync::SettingsCommands::Reset(ctx.delay, ctx.maxRollback);
@@ -404,12 +407,15 @@ void SceneRunner::FlushCadence() {
 }
 
 void SceneRunner::Step() {
+    using OfflinePacing = cccaster::core::timer::OfflinePacing;
+    OfflinePacing::Flush();
     // harnessも同じ入口を通る。前更新の数値を次の締切準備前に回収する。
     cccaster::diagnostics::DeferredNumericLog::Flush();
     cccaster::core::timer::FrameTiming::presentDueTicks = 0;
     if (!runtime.ready.load(std::memory_order_acquire) || !runtime.running || !runtime.context)
         return;
-    if (runtime.context->appMode == 0) {
+    if (runtime.context->appMode == 0 ||
+        (runtime.context->appMode != 2 && OfflinePacing::Mode() == OfflinePacing::Variant::Normal)) {
         thread_local cccaster::platform::TimingThread priority("game");
         priority.MaintainAffinity();
     }
@@ -434,8 +440,11 @@ void SceneRunner::Step() {
             scene::SceneFastBoot::ProcessFrame(true);
             if (!scene::SceneFastBoot::IsComplete()) return;
         }
-        if (earlyPhase == GamePhase::InGame) runtime.advantage.Update(2, mem.ReadTrainingFrame());
-        else runtime.advantage.Reset();
+        if (earlyPhase == GamePhase::InGame) {
+            const auto sample = mem.ReadTrainingFrame();
+            runtime.advantage.Update(2, sample);
+            runtime.frameBar.Update(2, sample);
+        } else { runtime.advantage.Reset(); runtime.frameBar.Reset(); }
         const auto before = runtime.spectator.Last();
         if (!runtime.spectator.Step(earlyPhase)) {
             const bool closed = cccaster::spectator::Transport::Get().State() == cccaster::spectator::Status::Disconnected;
@@ -602,6 +611,7 @@ reconcileBoundary:
         if (phase == GamePhase::InGame) {
             const auto sample = mem.ReadTrainingFrame();
             runtime.advantage.Update(ctx.appMode, sample);
+            runtime.frameBar.Update(ctx.appMode, sample);
             static const bool traceTraining = std::getenv("CCCASTER_TRAINING_TRACE") != nullptr;
             if (traceTraining) {
                 const auto result = runtime.advantage.Result();
@@ -610,7 +620,7 @@ reconcileBoundary:
                     sample.activeCharacter[0], sample.activeCharacter[1], sample.inactionable[0],
                     sample.inactionable[1], unsigned(sample.stopped), unsigned(result.state), result.p1Frames);
             }
-        } else runtime.advantage.Reset();
+        } else { runtime.advantage.Reset(); runtime.frameBar.Reset(); }
     }
     // 入力drainと訂正再計算を通過した結果だけ集計する。通常のラウンド勝利では増やさない。
     if (ctx.appMode == 0) {
@@ -668,11 +678,15 @@ reconcileBoundary:
     }
     FrameControl::SetModeNormalSpeed();
     auto &metronome = Session::GetInstance().GetMetronome();
+    int64_t offlineDue = 0;
     if (ctx.appMode != 0) {
         // オフラインではNetplaySession::Startを通らないため、初回通常更新で始動。
         // 起動中の高速化を終えた後、処理込みの絶対締切で60Hzを刻む。
         if (!metronome.IsRunning()) metronome.Start();
-        metronome.WaitForNextTick(false);
+        const bool finalGate = OfflinePacing::Mode() != OfflinePacing::Variant::Legacy;
+        offlineDue = metronome.WaitForNextTick(false, finalGate ?
+            60 * cccaster::core::timer::FrameTiming::ReleasePreparationUs : 0);
+        OfflinePacing::Waited(mem.WorldTimer(), offlineDue);
     }
     if (ctx.appMode != 0) {
         const bool configuring = cccaster::domain::ui::StateUiLogic::IsMappingWindowOpen();
@@ -682,7 +696,10 @@ reconcileBoundary:
             const auto event = runtime.trainingState.Step(ctx.appMode, phase == GamePhase::InGame,
                 configuring, cccaster::game_interface::DirectInputHook::GetTrainingControls(), sample,
                 mem, cccaster::platform::RealMonotonicUs());
-            if (event == TrainingStateEvent::Loaded) runtime.advantage.Reset();
+            if (event == TrainingStateEvent::Loaded) {
+                runtime.advantage.Reset();
+                runtime.frameBar.Reset();
+            }
             if (event != TrainingStateEvent::None)
                 DebugLog("[TrainingState] event=%d saved=%d beforeWT=%u afterWT=%u", int(event),
                     int(runtime.trainingState.HasState()), beforeWorld, mem.WorldTimer());
@@ -696,6 +713,16 @@ reconcileBoundary:
         if (phase == GamePhase::CharaSelect) cccaster::diagnostics::startup::InputReady();
         runtime.previous = phase;
         runtime.previousIntro = intro;
+        OfflinePacing::Prepared();
+        if (OfflinePacing::Mode() != OfflinePacing::Variant::Legacy) {
+            // 入力準備・Present復帰・ゲームのCS解放後に同じ絶対締切で解放する。
+            // 準備にかかった時間を1フレームの周期へ追加しない。
+            cccaster::core::timer::FrameTiming::releaseDueTicks = offlineDue;
+            cccaster::core::timer::FrameTiming::releaseFrame = mem.WorldTimer();
+            if (cccaster::diagnostics::UpdateCadence::Enabled())
+                cccaster::diagnostics::UpdateCadence::Get().Arm(mem.WorldTimer(),
+                    phase == GamePhase::InGame && intro == 0);
+        }
         return;
     }
     auto &state = Session::GetMutableState();
@@ -1344,6 +1371,10 @@ SceneRunner::PlayerNamesSnapshot SceneRunner::PlayerNames() {
 }
 FrameAdvantageResult SceneRunner::FrameAdvantage() {
     return IsReady() ? runtime.advantage.Result() : FrameAdvantageResult{};
+}
+
+const FrameBarHistory &SceneRunner::FrameBar() {
+    return runtime.frameBar;
 }
 TrainingStateEvent SceneRunner::TrainingStateNotice() {
     return IsReady() && AppMode() == 1 ? runtime.trainingState.Notice(cccaster::platform::RealMonotonicUs())

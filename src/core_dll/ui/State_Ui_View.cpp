@@ -261,13 +261,23 @@ void DrawHud(bool selection) {
     const auto appMode = cccaster::domain::session::SceneRunner::AppMode();
     if (appMode == 2) {
         const auto s = cccaster::domain::session::SceneRunner::SpectatorStatus();
-        if (!selection) DrawBattleIdentity();
+        // 最上端のADVと名前/勝数を重ねない。学習HUD表示中は観戦帯へまとめる。
+        const bool learningHud = !selection && (FrameBarDisplay::Visible() || mode != HudDisplayMode::Hidden);
+        if (!selection && !learningHud) DrawBattleIdentity();
         char line[192];
         const bool measured = s.frame && s.latest / 65536 == s.frame / 65536 && s.latest >= s.frame;
         if (measured) std::snprintf(line, sizeof(line), "SPECTATOR  |  %s  |  BUFFER %u F%s",
             s.catching ? "CATCHING UP" : "PLAYING", s.latest >= s.frame ? s.latest - s.frame : 0, fallback ? "  |  QPC FALLBACK" : "");
         else std::snprintf(line, sizeof(line), "SPECTATOR  |  %s%s",
             s.state <= 1 ? "CONNECTING" : "WAITING FOR MATCH", fallback ? "  |  QPC FALLBACK" : "");
+        if (learningHud) {
+            const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
+            const auto score = cccaster::domain::session::SceneRunner::Score();
+            char status[192];
+            std::snprintf(status, sizeof(status), "%s", line);
+            std::snprintf(line, sizeof(line), "%s  |  %.31s %u - %u %.31s", status,
+                names.p1.data(), std::min(score.p1Wins, 999u), std::min(score.p2Wins, 999u), names.p2.data());
+        }
         Panel panel(selection, 1); panel.Row(line, s.catching ? warning : accent);
         return;
     }

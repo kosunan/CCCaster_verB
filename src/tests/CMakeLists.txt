@@ -2,6 +2,15 @@
 # 単体テスト
 # ==========================================
 if(WIN32)
+    add_executable(relay_negotiation_probe relay_negotiation_probe.cpp
+        ../cli_launcher/network_wrapper/SessionNegotiator.cpp
+        ../cli_launcher/network_wrapper/ConnectionHash.cpp
+        ../cli_launcher/ui/ConsoleRenderer.cpp ../cli_launcher/ConfigManager.cpp)
+    target_include_directories(relay_negotiation_probe PRIVATE ${CMAKE_SOURCE_DIR}/src ${asio_SOURCE_DIR}/asio/include)
+    target_link_libraries(relay_negotiation_probe PRIVATE cccaster_transport ws2_32 wsock32 wininet winmm)
+    target_link_options(relay_negotiation_probe PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+if(WIN32)
     add_executable(test_window_drag test_window_drag.cpp ${CMAKE_SOURCE_DIR}/src/core_dll/hook/WndProcHook.cpp)
     target_include_directories(test_window_drag PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_options(test_window_drag PRIVATE -static -static-libgcc -static-libstdc++)
@@ -208,6 +217,14 @@ if(WIN32)
 endif()
 add_test(NAME frame_timing COMMAND test_frame_timing)
 
+add_executable(test_metronome test_metronome.cpp ../core_dll/timing/Metronome.cpp)
+target_include_directories(test_metronome PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(WIN32)
+ target_link_options(test_metronome PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+add_test(NAME metronome COMMAND test_metronome)
+set_tests_properties(metronome PROPERTIES TIMEOUT 10)
+
 add_executable(test_thread_signal test_thread_signal.cpp)
 target_include_directories(test_thread_signal PRIVATE ${CMAKE_SOURCE_DIR}/src)
 if(WIN32)
@@ -244,6 +261,22 @@ if(WIN32)
     target_link_options(test_sound_prewarm PRIVATE -static -static-libgcc -static-libstdc++)
     add_test(NAME sound_prewarm COMMAND test_sound_prewarm)
 endif()
+
+add_executable(test_frame_bar test_frame_bar.cpp)
+target_include_directories(test_frame_bar PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(WIN32)
+    target_link_options(test_frame_bar PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+add_test(NAME frame_bar COMMAND test_frame_bar)
+
+add_executable(test_punch_diagnostic test_punch_diagnostic.cpp)
+target_include_directories(test_punch_diagnostic PRIVATE ${CMAKE_SOURCE_DIR}/src ${asio_SOURCE_DIR}/asio/include)
+if(WIN32)
+    target_link_libraries(test_punch_diagnostic PRIVATE ws2_32 wsock32)
+    target_link_options(test_punch_diagnostic PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+add_test(NAME punch_diagnostic COMMAND test_punch_diagnostic)
+set_tests_properties(punch_diagnostic PROPERTIES TIMEOUT 12)
 
 add_executable(test_startup_negotiation test_startup_negotiation.cpp)
 target_include_directories(test_startup_negotiation PRIVATE ${CMAKE_SOURCE_DIR}/src)

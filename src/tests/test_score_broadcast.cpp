@@ -25,8 +25,27 @@ int main() {
     const auto prefix = directory / (L"cccaster-score-" + std::to_wstring(GetCurrentProcessId()));
     auto json = prefix; json += L".json";
     auto text = prefix; text += L".txt";
+    std::filesystem::create_directories(directory);
+    STARTUPINFOW startup{}; startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    wchar_t command[] = L"cmd.exe /c exit 0";
+    CHECK(CreateProcessW(nullptr, command, nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                         nullptr, nullptr, &startup, &process));
+    CHECK(WaitForSingleObject(process.hProcess, 5000) == WAIT_OBJECT_0);
+    const auto stale = directory / (L"cccaster-score-" + std::to_wstring(process.dwProcessId));
+    for (const auto *suffix : {L".json", L".txt", L".json.tmp", L".txt.tmp"}) {
+        auto path = stale; path += suffix; std::ofstream(path) << "stale";
+    }
+    const auto unrelated = directory / L"notes.txt";
+    std::ofstream(unrelated) << "keep";
     CHECK(ui::score_broadcast::Initialize(directory));
     CHECK(WaitText(json, "\"active\": false"));
+    for (const auto *suffix : {L".json", L".txt", L".json.tmp", L".txt.tmp"}) {
+        auto path = stale; path += suffix; CHECK(!std::filesystem::exists(path));
+    }
+    CHECK(Read(unrelated) == "keep");
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
     session::SessionScoreSnapshot snapshot;
     snapshot.active = true;
     snapshot.p1Wins = 3;
@@ -53,6 +72,7 @@ int main() {
     CHECK(Read(json) != previousSession); // 再初期化でsession_idを刷新
     std::filesystem::remove(json);
     std::filesystem::remove(text);
+    std::filesystem::remove(unrelated);
     std::filesystem::remove(directory);
     std::cout << "配信出力: 更新・重複抑止・終了クリア・再初期化合格\n";
 }

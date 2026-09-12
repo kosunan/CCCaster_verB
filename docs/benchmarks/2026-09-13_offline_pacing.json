@@ -1,0 +1,207 @@
+{
+  "date": "2026-09-13",
+  "trials": [
+    {
+      "kind": "before",
+      "trial": 1,
+      "folder": "build_logs/offline_pacing_20260913/quiet_before_1",
+      "foreground_samples": 125,
+      "fixed_battle": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 1265,
+        "last_ordinal": 2765,
+        "first_tick": 2149233745697,
+        "last_tick": 2149483757782,
+        "interval_us": {
+          "count": 1500,
+          "min": 16138.1,
+          "median": 16667.4,
+          "mean": 16667.472333333335,
+          "p95": 16674.3,
+          "p99": 16926.736,
+          "max": 17194.7
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 2.4666666666671517,
+          "mean": 13.451799999999682,
+          "p95": 18.74333333333342,
+          "p99": 387.54533333333285,
+          "max": 528.5666666666675
+        },
+        "phase_end_us": 1208.5,
+        "phase_min_us": 0.0,
+        "phase_max_us": 1520.6333333328366,
+        "over_3us": 647,
+        "over_100us": 48,
+        "over_1ms": 0
+      },
+      "files": {
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "d57e83476a5b4080f3d20ea2bc68b90fbb10728d16e353b215566b4a6a2e82fc"
+      }
+    },
+    {
+      "kind": "before",
+      "trial": 3,
+      "folder": "build_logs/offline_pacing_20260913/quiet_before_3",
+      "foreground_samples": 125,
+      "fixed_battle": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 2070,
+        "last_ordinal": 3570,
+        "first_tick": 2151463040407,
+        "last_tick": 2151713052426,
+        "interval_us": {
+          "count": 1500,
+          "min": 16220.8,
+          "median": 16667.5,
+          "mean": 16667.467933333333,
+          "p95": 16673.4,
+          "p99": 16856.992,
+          "max": 17124.2
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 1.2333333333335759,
+          "mean": 10.392644444443908,
+          "p95": 15.084999999999626,
+          "p99": 333.49733333333376,
+          "max": 457.53333333333285
+        },
+        "phase_end_us": 1201.8999999985099,
+        "phase_min_us": 0.0,
+        "phase_max_us": 1406.6333333328366,
+        "over_3us": 359,
+        "over_100us": 48,
+        "over_1ms": 0
+      },
+      "files": {
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "d57e83476a5b4080f3d20ea2bc68b90fbb10728d16e353b215566b4a6a2e82fc"
+      }
+    },
+    {
+      "kind": "after",
+      "trial": 1,
+      "folder": "build_logs/offline_pacing_20260913/quiet_after_1",
+      "foreground_samples": 125,
+      "fixed_battle": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 1265,
+        "last_ordinal": 2765,
+        "first_tick": 2149759442962,
+        "last_tick": 2150009455037,
+        "interval_us": {
+          "count": 1500,
+          "min": 16218.1,
+          "median": 16667.5,
+          "mean": 16667.471666666668,
+          "p95": 16668.4,
+          "p99": 16668.6,
+          "max": 17117.1
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 0.8333333333321207,
+          "mean": 1.4433111111100843,
+          "p95": 1.7333333333335759,
+          "p99": 2.133333333331393,
+          "max": 450.43333333333067
+        },
+        "phase_end_us": 1207.5,
+        "phase_min_us": 0.0,
+        "phase_max_us": 1207.5,
+        "over_3us": 8,
+        "over_100us": 2,
+        "over_1ms": 0
+      },
+      "files": {
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "d57e83476a5b4080f3d20ea2bc68b90fbb10728d16e353b215566b4a6a2e82fc"
+      }
+    },
+    {
+      "kind": "after",
+      "trial": 2,
+      "folder": "build_logs/offline_pacing_20260913/quiet_after_2",
+      "foreground_samples": 125,
+      "fixed_battle": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 1265,
+        "last_ordinal": 2765,
+        "first_tick": 2150803333260,
+        "last_tick": 2151053345326,
+        "interval_us": {
+          "count": 1500,
+          "min": 16665.0,
+          "median": 16667.5,
+          "mean": 16667.471066666665,
+          "p95": 16668.3,
+          "p99": 16668.6,
+          "max": 16671.6
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 0.8333333333321207,
+          "mean": 0.8295111111100826,
+          "p95": 1.633333333331393,
+          "p99": 1.9333333333306655,
+          "max": 4.9333333333306655
+        },
+        "phase_end_us": 1206.6000000014901,
+        "phase_min_us": 0.0,
+        "phase_max_us": 1206.6000000014901,
+        "over_3us": 1,
+        "over_100us": 0,
+        "over_1ms": 0
+      },
+      "files": {
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+        "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "d57e83476a5b4080f3d20ea2bc68b90fbb10728d16e353b215566b4a6a2e82fc"
+      }
+    }
+  ],
+  "aggregate": {
+    "before": {
+      "abs_error_us": {
+        "count": 3000,
+        "min": 0.03333333333284827,
+        "median": 1.633333333331393,
+        "mean": 11.922222222221794,
+        "p95": 16.83333333333212,
+        "p99": 353.54766666666586,
+        "max": 528.5666666666675
+      },
+      "over_3us": 1006,
+      "over_100us": 96,
+      "over_1ms": 0
+    },
+    "after": {
+      "abs_error_us": {
+        "count": 3000,
+        "min": 0.03333333333284827,
+        "median": 0.8333333333321207,
+        "mean": 1.1364111111100834,
+        "p95": 1.633333333331393,
+        "p99": 1.9333333333306655,
+        "max": 450.43333333333067
+      },
+      "over_3us": 9,
+      "over_100us": 2,
+      "over_1ms": 0
+    }
+  }
+}

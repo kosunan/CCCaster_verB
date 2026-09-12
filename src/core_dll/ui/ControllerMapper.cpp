@@ -22,6 +22,7 @@
 #include "core_dll/ui/ControllerMapper.hpp"
 #include "core_dll/ui/OverlayRenderer.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
+#include "core_dll/common/DataPaths.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include <imgui.h>
 #include <string>
@@ -106,7 +107,7 @@ void ControllerMapper::SaveDeviceAllocations() {
     };
     saveAssignedDev(g_p1JoyId, "P1");
     saveAssignedDev(g_p2JoyId, "P2");
-    cccaster::main_app::ConfigManager::Save("cccaster\\cccaster_v10.ini");
+    cccaster::main_app::ConfigManager::Save(cccaster::core::paths::Resolve("cccaster_v10.ini"));
     cccaster::game_interface::DirectInputHook::ReloadConfigs();
 }
 
@@ -120,7 +121,7 @@ void ControllerMapper::SaveBinds(int joyId, const std::string &prefix, std::stri
         deviceName = "UnknownDevice_" + std::to_string(joyId);
 
     std::string sanitizedName = SanitizeDeviceName(deviceName);
-    std::string filename = "cccaster\\" + sanitizedName + ".ini";
+    std::string filename = cccaster::core::paths::Resolve(sanitizedName + ".ini");
     cccaster::main_app::Config deviceConfig;
     deviceConfig.Load(filename);
 
@@ -211,7 +212,8 @@ void ControllerMapper::ProcessBindingInput(int joyId, int playerIndex, int &pos,
                 if (ImGui::IsKeyPressed((ImGuiKey)key)) {
                     if (pos == maxPos && (key == ImGuiKey_Enter || key == ImGuiKey_Space)) {
                         SaveBinds(joyId, playerIndex == 0 ? "P1" : "P2", binds);
-                        cccaster::main_app::ConfigManager::Save("cccaster\\cccaster_v10.ini");
+                        cccaster::main_app::ConfigManager::Save(
+                            cccaster::core::paths::Resolve("cccaster_v10.ini"));
                         pos = 0;
                         return;
                     }
@@ -232,7 +234,8 @@ void ControllerMapper::ProcessBindingInput(int joyId, int playerIndex, int &pos,
         if (!edge.empty()) {
             if (pos == maxPos && edge.find("H") == std::string::npos && edge.find("A") == std::string::npos) {
                 SaveBinds(joyId, playerIndex == 0 ? "P1" : "P2", binds);
-                cccaster::main_app::ConfigManager::Save("cccaster\\cccaster_v10.ini");
+                cccaster::main_app::ConfigManager::Save(
+                    cccaster::core::paths::Resolve("cccaster_v10.ini"));
                 pos = 0;
                 return;
             }

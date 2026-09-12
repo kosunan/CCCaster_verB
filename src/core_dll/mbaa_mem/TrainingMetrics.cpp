@@ -75,8 +75,9 @@ TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {
     sample.simulationFrame = Read<uint32_t>(0x55D1CC); // adFrameCount（CC_WORLD_TIMERと別）
     sample.round = Read<uint32_t>(0x5550E0);           // CC_ROUND_COUNT
     // FrameBarのGlobalFreezeはchar読取。共通pauseはuint8_t、training pauseはuint32_t。
-    sample.stopped = Read<uint8_t>(0x562A48) != 0 ||
-        Read<uint8_t>(0x55D203) != 0 || Read<uint32_t>(0x562A64) != 0;
+    sample.globalFreeze = Read<uint8_t>(0x562A48) != 0;
+    sample.paused = Read<uint8_t>(0x55D203) != 0 || Read<uint32_t>(0x562A64) != 0;
+    sample.stopped = sample.globalFreeze || sample.paused;
     for (unsigned side = 0; side < 2; ++side) {
         const uintptr_t aux = kAux + side * kAuxStride;
         const int active = Read<int32_t>(aux);
@@ -87,9 +88,15 @@ TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {
         const uintptr_t player = kPlayer + static_cast<unsigned>(active) * kPlayerStride;
         if (Read<uint32_t>(player) == 0) return {};
         const uintptr_t actor = player + kActorOffset;
-        sample.stopped = sample.stopped || Read<int32_t>(kFreeze + side * kFreezeStride) != 0 ||
+        // kosunan attack_status=0x555454、ETM ActorData::attackDataPtr=+0x320。
+        // ポインタの有無だけを読み、動的データは参照しない。
+        sample.attacking[side] = Read<uint32_t>(actor + 0x320) != 0;
+        sample.pattern[side] = Read<uint32_t>(actor + 0xC);
+        sample.blockstun[side] = Read<uint8_t>(actor + 0x177) != 0;
+        sample.playerStopped[side] = Read<int32_t>(kFreeze + side * kFreezeStride) != 0 ||
             Read<uint8_t>(actor + kActorHitstopOffset) != 0 ||
             Read<uint8_t>(actor + kActorReceivedHitstopOffset) != 0;
+        sample.stopped = sample.stopped || sample.playerStopped[side];
     }
     sample.valid = true;
     return sample;

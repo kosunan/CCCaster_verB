@@ -1,5 +1,10 @@
 ﻿#include "cli_launcher/network_wrapper/SessionNegotiator.hpp"
 #include "cli_launcher/network_wrapper/ConnectionHash.hpp"
+#include "cli_launcher/network_wrapper/LegacyRelay.hpp"
+#include "cli_launcher/ConfigManager.hpp"
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 #include "cli_launcher/GuiSession.hpp"
 #include "cli_launcher/ui/ConsoleRenderer.hpp"
 #include "core_dll/network/UdpSocket.hpp"
@@ -25,6 +30,29 @@
 #include <conio.h>
 
 namespace cccaster::main_app::network_wrapper {
+
+static std::vector<LegacyRelay::Server> RelayServers() {
+    if (!ConfigManager::GetInt("Netplay", "RelayEnabled", 1)) return {};
+    std::string text;
+    if (const char* overrideList = std::getenv("CCCASTER_RELAY_SERVERS")) text = overrideList;
+    else {
+        wchar_t path[32768]{}; GetModuleFileNameW(nullptr,path,32768);
+        std::ifstream file(std::filesystem::path(path).parent_path()/"relay_list.txt");
+        if (file) text.assign(std::istreambuf_iterator<char>(file),{});
+        else text="melty.argoneus.com:3939\nmelty-backup.argoneus.com:3939\n104.238.130.23:3939";
+    }
+    std::replace(text.begin(),text.end(),';','\n');
+    std::istringstream lines(text); std::string line;
+    std::vector<LegacyRelay::Server> servers;
+    while(std::getline(lines,line) && servers.size()<8) {
+        auto start=line.find_first_not_of(" \t\r");
+        if(start==std::string::npos || line[start]=='#') continue;
+        line=line.substr(start,line.find_last_not_of(" \t\r")-start+1);
+        LegacyRelay::Server parsed;
+        if(LegacyRelay::ParseServer(line,parsed)) servers.push_back(parsed);
+    }
+    return servers;
+}
 
 std::string SessionNegotiator::GetGlobalIp(bool isIpv6) {
     ui::ConsoleRenderer::ClearScreen();
@@ -125,7 +153,8 @@ bool SessionNegotiator::ParseAddressAndPort(const std::string &inputStr, bool is
 }
 
 NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, const std::string &targetIp,
-                                                    uint16_t port, bool isHeadless, bool skipHostDisplay) {
+                                                    uint16_t port, bool isHeadless, bool skipHostDisplay,
+                                                    bool allowRelay, int connectTimeoutMs) {
     if (gui::Cancelled()) return {};
     namespace startup = cccaster::public_api::startup;
     SetEnvironmentVariableA(startup::LocalNonceEnv, nullptr);
@@ -180,6 +209,10 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
     std::mutex clientMutex;
     std::string activeClientIp = targetIp;
     uint16_t activeClientPort = port;
+    struct Candidate { std::string ip; uint16_t port; std::chrono::steady_clock::time_point expires; };
+    std::vector<Candidate> candidates; // clientMutexで受信スレッドと共有する。
+    bool punchedConnection = false;
+    const bool forceRelay = std::getenv("CCCASTER_TEST_FORCE_RELAY") != nullptr;
 
     std::atomic<uint32_t> packetsReceived(0);
     uint32_t packetsSent = 0;
@@ -210,11 +243,17 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
         if (!startup::Decode(data, probe)) return;
         {
             std::lock_guard<std::mutex> lock(clientMutex);
-            if ((connected || !isHost) && (ip != activeClientIp || recvPort != activeClientPort)) return;
+            const bool direct = ip == activeClientIp && recvPort == activeClientPort;
+            const bool candidate = std::any_of(candidates.begin(),candidates.end(),[&](const Candidate& c) {
+                return c.ip==ip && c.port==recvPort && std::chrono::steady_clock::now()<c.expires;
+            });
+            if (connected && !direct) return;
+            if (!connected && ((!isHost && !direct && !candidate) || (forceRelay && !candidate))) return;
             if (!agreement.Receive(probe)) return;
-            if (!connected && isHost) {
+            if (!connected) {
                 activeClientIp = ip;
                 activeClientPort = recvPort;
+                punchedConnection = candidate;
             }
             connected = true;
         }
@@ -274,6 +313,10 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
     bool wasConnected = false;
     bool lockedIn = false;
     auto connectedTime = std::chrono::steady_clock::time_point::min();
+    const auto relayServers = !isIpv6 && allowRelay ? RelayServers() : std::vector<LegacyRelay::Server>{};
+    std::unique_ptr<LegacyRelay> relay;
+    bool relayStarted=false;
+    std::cout << "[CONNECT_STAGE] " << (isHost?"waiting":"direct") << '\n' << std::flush;
 
     while (true) {
         if (gui::Cancelled()) {
@@ -282,9 +325,41 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
         }
         auto now = std::chrono::steady_clock::now();
 
+        if(!connected && !relayStarted && !relayServers.empty() &&
+           (isHost || forceRelay || now-startTime>=std::chrono::seconds(1))) {
+            relayStarted=true;
+            if(!isHost) std::cout << "[CONNECT_STAGE] relay\n" << std::flush;
+            relay.reset(new LegacyRelay(isHost,socket.GetPort(),targetIp+":"+std::to_string(port),relayServers,
+                [&](const std::string& ip,uint16_t p,const std::vector<uint8_t>& bytes){socket.Send(ip,p,bytes);},
+                [&](const std::string& ip,uint16_t p){
+                    std::lock_guard<std::mutex> lock(clientMutex);
+                    auto expires=std::chrono::steady_clock::now()+std::chrono::seconds(8);
+                    auto found=std::find_if(candidates.begin(),candidates.end(),[&](const Candidate& c){return c.ip==ip&&c.port==p;});
+                    if(found==candidates.end() && candidates.size()<16) candidates.push_back({ip,p,expires});
+                },
+                [&](const char* stage){
+                    if(connected) return;
+                    if(std::string(stage)=="relay_ready") {
+                        if(isHost) std::cout << "[CONNECT_STAGE] relay_waiting\n" << std::flush;
+                    } else if(std::string(stage)=="attempt_expired") {
+                        if(isHost) std::cout << "[CONNECT_STAGE] attempt_expired\n" << std::flush;
+                    } else std::cout << "[CONNECT_STAGE] " << stage << '\n' << std::flush;
+                }));
+        }
+        if(relay && !connected) relay->Tick();
+        {
+            std::lock_guard<std::mutex> lock(clientMutex);
+            candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[&](const Candidate& c){return now>=c.expires;}),candidates.end());
+        }
+        if(!isHost && !connected && now-startTime>=std::chrono::milliseconds(connectTimeoutMs)) {
+            std::cout << "[CONNECT_STAGE] timeout\n[TIMEOUT] No peer response. Check the host code, hosting status and network.\n" << std::flush;
+            timeEndPeriod(1); return {};
+        }
+
         if (connected && !wasConnected) {
             wasConnected = true;
             trace("negotiation_connected");
+            std::cout << "[CONNECT_ROUTE] " << (punchedConnection?"hole_punch":"direct") << '\n' << std::flush;
             std::string printIp;
             uint16_t printPort;
             {
@@ -313,13 +388,23 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
                 break;
             }
             if (connectedSeconds >= 30) {
-                std::cerr << "Startup negotiation timeout after 30 seconds.\n";
+                std::cout << "[CONNECT_STAGE] handshake_timeout\n" << std::flush;
+                if(isHost) {
+                    std::lock_guard<std::mutex> lock(clientMutex);
+                    connected=false; wasConnected=false; candidates.clear();
+                    agreement.peerNonce=0; agreement.echoed=false; agreement.replySent=false;
+                    activeClientIp.clear(); activeClientPort=port;
+                    lastReceiveLocalTime=0; lastReceivedRemoteTime=0;
+                    connectedTime=std::chrono::steady_clock::time_point::min();
+                    continue;
+                }
+                std::cout << "[TIMEOUT] Startup negotiation did not complete.\n" << std::flush;
                 timeEndPeriod(1);
                 return {};
             }
         }
 
-        if (connected || !isHost) {
+        if (connected || !isHost || !candidates.empty()) {
             uint64_t timestampNow = std::chrono::duration_cast<std::chrono::microseconds>(
                                         std::chrono::system_clock::now().time_since_epoch())
                                         .count();
@@ -336,12 +421,13 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             outgoing.processingDelay = localProcessingDelay;
             outgoing.extended = !baseline;
 
-            std::string sendIp;
-            uint16_t sendPort;
+            std::vector<std::pair<std::string,uint16_t>> destinations;
             {
                 std::lock_guard<std::mutex> lock(clientMutex);
-                sendIp = activeClientIp;
-                sendPort = activeClientPort;
+                if(connected || (!isHost && !forceRelay)) destinations.emplace_back(activeClientIp,activeClientPort);
+                if(!connected) for(const auto& candidate:candidates)
+                    if(std::find(destinations.begin(),destinations.end(),std::make_pair(candidate.ip,candidate.port))==destinations.end())
+                        destinations.emplace_back(candidate.ip,candidate.port);
                 outgoing.nonce = agreement.localNonce;
                 outgoing.echoNonce = agreement.peerNonce;
             }
@@ -357,7 +443,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
                 droppedFinal = true;
                 std::cerr << "[TestStartup] dropped final probe\n" << std::flush;
             } else {
-                socket.Send(sendIp, sendPort, startup::Encode(outgoing));
+                for(const auto& dest:destinations) socket.Send(dest.first,dest.second,startup::Encode(outgoing));
             }
             {
                 std::lock_guard<std::mutex> lock(clientMutex);
@@ -545,7 +631,7 @@ NegotiationResult SessionNegotiator::RunNegotiationFromHash(const std::string &h
     // ① ローカルIPv4（同一LAN内 → 低レイテンシ）
     if (!addr.localIpv4.empty()) {
         std::cout << "  Trying Local IPv4 (" << addr.localIpv4 << ":" << addr.port << ")...\n";
-        auto result = RunNegotiation(false, false, addr.localIpv4, addr.port);
+        auto result = RunNegotiation(false, false, addr.localIpv4, addr.port, false, false, false, 1000);
         if (result.success) {
             return result;
         }
@@ -565,7 +651,7 @@ NegotiationResult SessionNegotiator::RunNegotiationFromHash(const std::string &h
     // ③ IPv6フォールバック
     if (!addr.ipv6.empty()) {
         std::cout << "  Trying IPv6 ([" << addr.ipv6 << "]:" << addr.port << ")...\n";
-        auto result = RunNegotiation(true, false, addr.ipv6, addr.port);
+        auto result = RunNegotiation(true, false, addr.ipv6, addr.port, false, false, false, 3000);
         if (result.success) {
             return result;
         }

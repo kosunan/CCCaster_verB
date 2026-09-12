@@ -10,6 +10,8 @@
 #include "core_dll/timing/WasapiClock.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/Platform.hpp"
+#include <algorithm>
+#include "core_dll/timing/OfflinePacing.hpp"
 
 namespace cccaster {
 namespace core {
@@ -52,14 +54,21 @@ void Metronome::Stop() {
 // ============================================================================
 // SleepUntil — 精密スリープ（Sleep + スピンウェイトのハイブリッド）
 // ============================================================================
-void Metronome::SleepUntil(int64_t targetUs) {
+void Metronome::SleepUntil(int64_t targetTicks, bool preciseSleep) {
+    timer::OfflinePacing::sleepBegin = timer::OfflinePacing::sleepEnd = 0;
+    timer::OfflinePacing::sleepRemaining = 0;
     while (true) {
-        int64_t remain = targetUs - timer::WasapiClock::GetTimeTicks();
+        int64_t remain = targetTicks - timer::WasapiClock::GetTimeTicks();
         if (remain <= 0)
             break;
         if (remain > 2000 * 60) {
             // ゲーム用フックを通さず実時間で待機する。
-            cccaster::platform::RealSleepMs(1);
+            timer::OfflinePacing::BeforeSleep(remain);
+            // Sleep(1)の復帰遅延を締切直前へ持ち込まない。既存の高分解能
+            // waitable timerで短く待ち、毎回WASAPIの絶対締切を再確認する。
+            if (preciseSleep) cccaster::platform::PreciseWaitUs(1000);
+            else cccaster::platform::RealSleepMs(1);
+            timer::OfflinePacing::AfterSleep();
         } else {
             cccaster::platform::CpuRelax();
         }
@@ -73,7 +82,7 @@ void Metronome::SleepUntil(int64_t targetUs) {
 // 次ティック時刻を α補正付きで計算し、その時刻まで Sleep+CPUスピン で待機する。
 // skipWait=true の場合は待機せず、次ティック時刻のみ進める（キャッチアップ用）。
 //
-void Metronome::WaitForNextTick(bool skipWait) {
+int64_t Metronome::WaitForNextTick(bool skipWait, int64_t preparationTicks) {
     int64_t intervalUs = GetCurrentIntervalUs();
     const int64_t now = timer::WasapiClock::GetTimeTicks();
     if (cadence_.NextTicks() < now - intervalUs * 180)
@@ -81,8 +90,10 @@ void Metronome::WaitForNextTick(bool skipWait) {
     cadence_.AdvanceCorrected(GetPeriodCorrectionParts(), cccaster::testing::TimeScale());
 
     if (!skipWait) {
-        SleepUntil(cadence_.NextTicks());
+        SleepUntil(cadence_.NextTicks() - std::max<int64_t>(0, preparationTicks),
+            preparationTicks > 0 && timer::OfflinePacing::Mode() == timer::OfflinePacing::Variant::Normal);
     }
+    return cadence_.NextTicks();
 }
 
 } // namespace netplay

@@ -349,8 +349,10 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
 
         try {
             cccaster::domain::ui::UIManager::Render(uiPhase);
-            if (uiPhase == cccaster::domain::ui::UiPhase::InGame)
+            if (uiPhase == cccaster::domain::ui::UiPhase::InGame) {
                 cccaster::domain::ui::LearningOverlay::Draw(SceneRunner::AppMode(), SceneRunner::FrameAdvantage());
+                cccaster::domain::ui::LearningOverlay::DrawFrameBar(SceneRunner::AppMode(), SceneRunner::FrameBar());
+            }
         } catch (...) {
             // UI描画中のクラッシュを吸収（フレームを壊さない）
         }

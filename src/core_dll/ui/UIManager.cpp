@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "core_dll/ui/UIManager.hpp"
+#include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include "core_dll/ui/State_Ui_View.hpp"
 #include "core_dll/ui/CharaSelect_Ui_View.hpp"
@@ -84,6 +85,21 @@ bool UIManager::IsMappingWindowOpen() {
 // ============================================================================
 
 int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    // F1は表示だけを切替。長押しと解放をゲームへ通さない。
+    static bool frameBarF1Held = false;
+    if (uMsg == WM_KILLFOCUS) frameBarF1Held = false;
+    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F1 && frameBarF1Held) {
+        frameBarF1Held = false;
+        return 1;
+    }
+    if (uMsg == WM_KEYDOWN && wParam == VK_F1 &&
+        FrameBarDisplay::Available(cccaster::domain::session::SceneRunner::AppMode())) {
+        frameBarF1Held = true;
+        if (!(lParam & (1u << 30)) && !IsMappingWindowOpen() &&
+            !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000))
+            FrameBarDisplay::Toggle();
+        return 1;
+    }
     static bool hudF3Held = false;
     if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F3 && hudF3Held) {
         hudF3Held = false;

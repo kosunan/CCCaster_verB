@@ -22,7 +22,7 @@ try {
     $taskPairArgs=@('-NoProfile','-File',(Join-Path $PSScriptRoot 'run_bounded_real_pair.ps1'),'-Seconds',$Seconds,'-Port',$Port,'-TestRoot',$taskTest,'-OutputDirectory',(Join-Path $taskOut 'pair'))
     if($Network){$taskPairArgs+=@('-Network',$Network)}
     $taskPair=Start-Process (Get-Process -Id $PID).Path -WindowStyle Hidden -PassThru -ArgumentList $taskPairArgs -RedirectStandardOutput (Join-Path $taskOut 'pair_stdout.log') -RedirectStandardError (Join-Path $taskOut 'pair_stderr.log')
-    $taskHostLog=Join-Path $taskTest 'MBAACC_1/cccaster/cccaster_hook_log.txt'
+    $taskHostLog=Join-Path $taskTest 'MBAACC_1/cccaster_B/cccaster_hook_log.txt'
     $taskReady=[DateTime]::UtcNow.AddSeconds(25)
     do {
         Start-Sleep -Milliseconds 200
@@ -57,7 +57,7 @@ try {
         Get-CimInstance Win32_Process -Filter "Name='MBAA.exe'" | Where-Object {$_.ParentProcessId -eq $taskViewer.Id} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force}
         if(!$taskViewer.WaitForExit(4000)){Stop-Process -Id $taskViewer.Id -Force}
     }
-    $taskLog=Join-Path $taskTest 'MBAACC_3/cccaster/cccaster_hook_log.txt'
+    $taskLog=Join-Path $taskTest 'MBAACC_3/cccaster_B/cccaster_hook_log.txt'
     if(Test-Path -LiteralPath $taskLog){Copy-Item -LiteralPath $taskLog -Destination (Join-Path $taskOut 'viewer.log')}
     $taskChanged=@()
     foreach($taskFile in $taskBefore.Keys){if((Get-FileHash -LiteralPath $taskFile).Hash -ne $taskBefore[$taskFile]){$taskChanged+=$taskFile}}

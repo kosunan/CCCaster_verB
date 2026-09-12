@@ -2,6 +2,7 @@
 
 namespace cccaster {
 struct FrameAdvantageResult;
+class FrameBarHistory;
 }
 
 namespace cccaster::domain::ui {
@@ -11,8 +12,8 @@ namespace cccaster::domain::ui {
 class LearningOverlay {
   public:
     // 戦闘画面の通常描画から呼ぶ。1=トレーニング、2=観戦用モード。
-    // mode=2 の表示対応は観戦通信の実装を意味しない。
     static void Draw(int appMode, const cccaster::FrameAdvantageResult &result);
+    static void DrawFrameBar(int appMode, const cccaster::FrameBarHistory &history);
 };
 
 } // namespace cccaster::domain::ui

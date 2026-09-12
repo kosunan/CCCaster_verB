@@ -40,7 +40,7 @@ def main():
     env.update(CCCASTER_DEVICE_TRACE='1', CCCASTER_FRAME_TIMING_TRACE='1')
     pads, process = [None, None], None
     result = {'passed': False, 'steps': [], 'input_source': 'ViGEm DS4 -> DirectInput -> InputTimeline'}
-    logs = [test_root/f'MBAACC_{s}/cccaster/cccaster_hook_log.txt' for s in (1, 2)]
+    logs = [test_root/f'MBAACC_{s}/cccaster_B/cccaster_hook_log.txt' for s in (1, 2)]
 
     def samples(side):
         text = logs[side].read_text(encoding='utf-8', errors='replace') if logs[side].exists() else ''

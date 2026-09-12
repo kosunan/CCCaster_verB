@@ -9,6 +9,15 @@
 namespace cccaster::domain::ui {
 enum class HudDisplayMode { Compact, Detailed, Hidden };
 
+class FrameBarDisplay {
+  public:
+    static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2; }
+    static bool Visible() { return visible_.load(std::memory_order_relaxed); }
+    static void Toggle() { visible_.store(!Visible(), std::memory_order_relaxed); }
+  private:
+    inline static std::atomic<bool> visible_{true};
+};
+
 // キーを離す順番に依存せず、HUD操作で使ったキーだけ解放まで抑止する。
 struct HudShortcutLatch {
     bool control = false, f3 = false;

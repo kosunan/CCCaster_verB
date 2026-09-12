@@ -17,12 +17,12 @@ if %ERRORLEVEL% NEQ 0 (
 echo [BUILD OK] Deploying to test environment...
 
 :: ── Deploy to both test instances ──
-if exist "_TEST_MBAACC\MBAACC_1\cccaster\" (
-    copy /Y "build\bin\CCCaster_v10.exe"      "_TEST_MBAACC\MBAACC_1\cccaster\"
-    copy /Y "build\bin\libcccaster_hook.dll"   "_TEST_MBAACC\MBAACC_1\cccaster\"
+if exist "_TEST_MBAACC\MBAACC_1\cccaster_B\" (
+    copy /Y "build\bin\CCCaster_v10.exe"      "_TEST_MBAACC\MBAACC_1\cccaster_B\"
+    copy /Y "build\bin\libcccaster_hook.dll"   "_TEST_MBAACC\MBAACC_1\cccaster_B\"
 )
-if exist "_TEST_MBAACC\MBAACC_2\cccaster\" (
-    copy /Y "build\bin\CCCaster_v10.exe"      "_TEST_MBAACC\MBAACC_2\cccaster\"
-    copy /Y "build\bin\libcccaster_hook.dll"   "_TEST_MBAACC\MBAACC_2\cccaster\"
+if exist "_TEST_MBAACC\MBAACC_2\cccaster_B\" (
+    copy /Y "build\bin\CCCaster_v10.exe"      "_TEST_MBAACC\MBAACC_2\cccaster_B\"
+    copy /Y "build\bin\libcccaster_hook.dll"   "_TEST_MBAACC\MBAACC_2\cccaster_B\"
 )
 echo [DEPLOY OK] _TEST_MBAACC\MBAACC_1 + MBAACC_2

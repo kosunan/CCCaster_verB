@@ -19,6 +19,12 @@ struct TrainingFrameSample {
     int activeCharacter[2] = {0, 1};
     int inactionable[2] = {};
     bool stopped = false;
+    bool paused = false;
+    bool globalFreeze = false;
+    bool playerStopped[2] = {};
+    bool attacking[2] = {};
+    bool blockstun[2] = {};
+    uint32_t pattern[2] = {};
 };
 
 // ゲーム更新後の連続サンプル専用。描画回数・予定周期からF数を推定しない。

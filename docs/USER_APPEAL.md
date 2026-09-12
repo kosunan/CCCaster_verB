@@ -1,52 +1,82 @@
-# 旧CCCasterとv10の違い・ユーザー向け紹介案
+# CCCaster v10 — Faster startup. More consistent frame pacing.
 
-作成: 2026-09-11。対象: MBAACC Ver.1.07 Rev.1.4.0（32bit）。
+For MBAACC Ver.1.07 Rev.1.4.0 (32-bit). Updated September 13, 2026.
 
-比較元はローカルの `I:/work_space/CCCaster/OLD` にある旧CCCasterソース。特定の公開配布版との完全な差分を保証するものではない。新側は現在のv10作業ツリー。旧版と現行版の同条件性能比較は未実施。
+**Get into training faster, keep both players on shared netplay settings, and recover efficiently when inputs need correcting.**
 
-## 一番伝えたいこと
+## Highlights
 
-**入力の取り方と対戦の進行を見直し、操作の安定性と対戦前後の使いやすさを磨いた新ネットコード。**
+- **About 76% faster training startup:** approximately **8.71 seconds → 2.07 seconds** in our same-PC comparison with the legacy build.
+- **More consistent offline frame pacing:** after the latest update, **99.7% of measured frame intervals were within 3µs of 1/60 second**. The 99th-percentile absolute error fell from approximately **354µs to 1.93µs** compared with the previous v10 pacing path.
+- **Shared delay and rollback settings:** both players use the agreed settings, with coordinated match starts and ongoing clock adjustment to reduce differences in progression.
+- **A dedicated GUI:** host, join, spectate, or enter training through English and Japanese menus. Configure controllers in-game with F4.
+- **Simpler connection sharing:** one connection code carries address and port information, including IPv4 and IPv6 candidates.
+- **Efficient rollback recovery:** skip intermediate presentation and game waits while recalculating, then return to normal rendering when caught up.
+- **Independent input capture:** collect and exchange frame-numbered inputs through a central buffer while the game handles prediction and correction.
 
-旧版にもロールバック、入力遅延・ロールバック設定、F4のコントローラ設定がある。「ロールバック新搭載」「D/R調整に初対応」は新規性の説明に使わない。
+Performance figures are from our Ryzen 7 5800X3D test PC. Startup uses three runs per version; the latest pacing comparison uses two completed training runs per configuration, with 1,500 intervals per run. These are measured results, not a guarantee for every PC or frame. [Startup comparison](benchmarks/2026-09-13_legacy_comparison.md) · [Latest pacing results](benchmarks/2026-09-13_offline_pacing.md)
 
-## 旧版との主な違い
+## Start playing sooner
 
-| 項目 | 旧CCCasterで確認できる仕組み | 現行v10の変更 | ユーザーへの伝え方 |
-|---|---|---|---|
-| 入力採取 | ゲームのフレーム処理でコントローラ状態を更新 | 専用の入力時計で採取し、番号付きバッファへ蓄積。巻き戻し再計算中も採取を続ける | ゲーム処理の負荷に左右されにくい入力採取を目指して、入力の仕組みを刷新 |
-| 対戦の時間管理 | ゲームの進行に沿って入力・同期を処理 | 音声時計を基準とする60Hzの締切管理、相手との時計差補正、共通の戦闘開始時刻への合意 | 対戦中の進行タイミングをそろえる仕組みを強化 |
-| キャラセレ | フレーム入力から選択操作を再現。オンラインでは開始150F未満の決定入力を抑止する処理あり | 自分の選択はD0で独立操作し、確定したキャラ・ムーン・カラーとホストのステージを交換 | 相手の通信待ちに引っ張られにくいキャラセレ。自分のペースで選択できる |
-| ロールバック | 状態保存・復元・再計算に対応済み | 独立入力時計と中央バッファに接続し、実エンジンで再計算。途中画像の表示を省き、確定済み再計算の不要な保存を削減 | ロールバック処理の構造と負荷を見直した |
-| D/R設定 | Ctrl＋数字で遅延、Alt＋数字でロールバックを変更 | 要求順・再送・確認を管理し、合意した値を次戦から適用。D＋R≦8、既定D2/R4 | 回線に合わせた調整を引き継ぎ、両者の設定をそろえる手順を明確化 |
+Training startup took a median of **8.713 seconds with the legacy build and 2.069 seconds with v10**, saving approximately **6.64 seconds**. All three measured v10 launches finished in under 2.08 seconds.
 
-旧版の根拠: `OLD/README.md`、`OLD/targets/DllMain.cpp`のフレームごとの`updateControls`、`OLD/targets/DllNetplayManager.cpp`の`getCharaSelectInput`、`OLD/targets/DllRollbackManager.cpp`。
+Startup work has been reduced across graphics initialization, loading transitions, texture preparation, and controller discovery. The launcher transfers 296 DDS textures in their existing compressed format and prepares assets alongside controller enumeration.
 
-新側の入口: [InputTimeline.cpp](../src/core_dll/sync/InputTimeline.cpp)、[SceneRunner.cpp](../src/core_dll/engine/SceneRunner.cpp)、[NetplaySession.cpp](../src/core_dll/sync/NetplaySession.cpp)、[現行仕様](CURRENT_STATE.md)。
+The measurement runs from the launcher request to frame progression on the character-select screen. [Conditions and all startup runs](benchmarks/2026-09-13_legacy_comparison.md)
 
-## v10開発中に追加・改善したアピールポイント
+## More consistent frame pacing
 
-以下はv10内での改善も含む。旧CCCaster固有の不具合だったと読み替えない。
+One frame at 60Hz lasts **16,666.666…µs**. v10 schedules normal updates against absolute deadlines, including processing, drawing, and waiting within the frame budget.
 
-1. **高遅延時の余分な停止を減らす通信処理。** 最新入力と古い未消費入力を分けて送信し、予測上限に達した後は最古の必要入力が届けば再開する。[実装・確認条件](design/2026-09-11_high_latency_common_fix.md)
-2. **ランダムステージも両者で同じ場所へ。** ホストで一度抽選した実ステージ番号を共有し、端末ごとの別抽選による不一致を修正した。[修正記録](design/2026-09-11_random_stage_sync.md)
-3. **対戦を始めるまでの待ち時間を短縮。** 素材変換キャッシュ等を追加。同一PC・キャッシュ作成後・各3回の中央値で、対戦両側の起動が5.390秒から4.347秒へ短縮した。これはキャッシュ導入前のv10との比較。[測定記録](design/2026-09-11_startup_assets.md)
-4. **再戦と終了の扱いを整備。** 双方がONCEを選ぶと再戦し、片側がキャラセレを選べばそちらを優先。長い未選択待機後の再戦を確認し、ゲーム終了時は相手へ通知する。[再戦](design/2026-09-11_rematch_idle.md)・[終了通知](design/2026-09-11_session_close.md)
-5. **日本語・英語GUIを追加。** 募集・コード参加・トレーニングの操作画面を実装。GUI経由の一連の実対戦は未確認なので、現時点では「追加・確認中」と案内する。[GUI](design/2026-09-11_gui_launcher.md)
+The latest update improves the offline training path: high-resolution waiting replaces coarse sleep calls, and input preparation finishes before the final release deadline. The game then waits at the final release point before continuing.
 
-## そのまま使える紹介文
+| Absolute frame-interval error | Previous v10 pacing | Updated v10 pacing |
+|---|---:|---:|
+| Median | 1.63µs | **0.83µs** |
+| 95th percentile | 16.83µs | **1.63µs** |
+| 99th percentile | 353.55µs | **1.93µs** |
+| Intervals within 3µs | 66.5% | **99.7%** |
 
-> CCCaster v10は、入力採取と対戦の時間管理を刷新しました。巻き戻し処理中も独立して入力を採り続け、両者の進行タイミングをそろえます。キャラクター選択は相手のフレーム入力を待たずに操作でき、高遅延時の余分な待機を減らす通信処理も実装。起動の短縮や再戦・終了処理の改善も進めています。
+These figures cover **3,000 intervals per configuration**, measured at the same point in the game with a shared external QPC observer. Rare outliers remain: the updated runs had a maximum absolute error of approximately 450µs. [Full results and methodology](benchmarks/2026-09-13_offline_pacing.md)
+
+The clock remains based on a continuously fed WASAPI audio stream, with QPC interpolation for short waits. Fractional timing is retained internally rather than repeatedly rounding each frame to a whole microsecond.
+
+## Keep both players on shared settings
+
+v10 applies **agreed input delay and rollback limits to both players**. The default is **D2/R4**, with D ≥ 0, R ≥ 0, and D + R ≤ 8.
+
+It also coordinates a future match-start time and adjusts for estimated clock differences during play. Together, shared settings and timing coordination reduce factors that can make one player run further ahead and require more prediction.
+
+A previous 120-second v10 test recorded the estimated clock phase difference converging from **533.48µs to 8.55µs**, with matching confirmed inputs and checked game state across **5,737 frames**. [Clock synchronization measurements](design/2026-09-12_clock_follow.md)
+
+## Recover efficiently from corrected inputs
+
+When a received input differs from the prediction used for that frame, v10 restores the relevant state and recalculates using the buffered input history.
+
+During recalculation, API hooks suppress intermediate presentation, HUD rendering, and game waits. Normal rendering resumes after recovery. Redundant drawing work and unnecessary saving of already-confirmed frames have also been reduced.
+
+Existing v10 measurements include **1,063 internal replay updates in approximately 0.348 seconds** during spectator catch-up, and a separate snapshot optimization that reduced median rollback recalculation time, including restoration, from **874.5µs to 758.15µs**. These are separate workloads, not an old-versus-new FPS benchmark. [Spectator catch-up](design/2026-09-12_spectator_stream.md) · [Snapshot optimization](design/2026-09-11_confirmed_replay_snapshots.md)
+
+## Capture inputs independently
+
+An independent input clock captures controller states, tags them with frame numbers and generations, and stores them in a central buffer. Capture and transmission can continue while the game recalculates earlier frames.
+
+Received inputs are matched to the corresponding frames. Acknowledgments and retransmission handle missing or reordered packets. Game-state writes, saves, and restores remain on the game thread.
+
+## A clearer way to connect and play
+
+The GUI brings hosting, joining, spectating, training, connection progress, and cancellation into one interface, with English and Japanese support.
+
+Share a connection code instead of separately typing multiple addresses and ports. Connection codes can carry IPv4, IPv6, and local address candidates. Spectators join using an S-code.
+
+Press **F4** to review or change controller mappings. The setup screen checks duplicate assignments and missing required inputs, supports cancellation and defaults, and provides training-only state save/load assignments.
+
+## Short announcement
+
+> **CCCaster v10: faster startup, more consistent frame pacing, and streamlined netplay.**
 >
-> 現在は開発・検証中です。同一PCの2窓による遅延・損失付き試験で戦闘状態の一致を確認しています。別PC・実回線での長時間対戦と、最新版の手操作による総合確認は今後の検証対象です。
-
-## 実績の示し方と現時点の制限
-
-- 高遅延試験は同一PC2窓・自動入力・45秒・D2/R4・片道60〜96ms・損失5%。比較対象の1918確定フレームで差分・欠落・失敗0。22 CTest成功は既存の検証記録であり、この文書作成時の再試験ではない。
-- この結果から「実回線で安定」「どんな回線でも快適」「旧版より遅延が少ない」とは断定しない。入力遅延全体や旧版との体感差の直接比較は未実施。
-- 60Hzは目標周期。瞬間的な遅れは残り、「全フレーム一定」「ラグ・カクつきゼロ」は未達。
-- ランク／カジュアルは試作段階で、現在は対戦検索不可。利用可能な新機能として告知しない。
-- 両者とも対応する現行版が必要。通信版10・拡張2で旧DLLとの混在不可。Steam版は別プロジェクトで、クロスプレイ対象外。
-- ネット対戦のリプレイ保存は無効。旧版にある観戦等も、同等機能がそろったと案内する前に個別確認が必要。
-
-未確認事項の更新元は[OPEN_ISSUES.md](OPEN_ISSUES.md)。
+> Start training in about **2.1 seconds**, down from **8.7 seconds** in our legacy-build comparison. The latest offline timing update kept **99.7% of measured frame intervals within 3µs of 1/60 second** on our test PC.
+>
+> Shared delay and rollback settings, coordinated clocks, independent input capture, and efficient rollback recovery support netplay. An English/Japanese GUI and shareable connection codes bring hosting, joining, spectating, and training together.
+>
+> Results reflect the documented test conditions; performance varies by system. See the linked benchmarks for details.

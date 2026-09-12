@@ -65,7 +65,7 @@ void MainController::ShowGameNotFoundError() {
     ui::ConsoleRenderer::ClearScreen();
     ui::ConsoleRenderer::PrintHeader();
     std::cout << "\n  \x1b[31m[ ERROR ]\x1b[0m \"MBAA.exe\" not found.\n\n"
-              << "  Please ensure this tool is placed in the \"ccaster\" folder\n"
+              << "  Please ensure this tool is placed in the \"cccaster_B\" folder\n"
               << "  inside your MBAA game directory.\n\n"
               << "  (Press any key to return to Main Menu)\n";
     _getch();
@@ -80,7 +80,7 @@ void MainController::LaunchAndMonitorGame() {
     char myExePath[MAX_PATH];
     GetModuleFileNameA(NULL, myExePath, MAX_PATH);
     std::string exeDir(myExePath);
-    exeDir = exeDir.substr(0, exeDir.find_last_of("\\/")); // cccaster/
+    exeDir = exeDir.substr(0, exeDir.find_last_of("\\/")); // cccaster_B/
     const auto gameDirectory = std::filesystem::path(exeDir).parent_path();
 
     // ---- Write IPC Shared Memory for DLL ----
@@ -123,7 +123,7 @@ void MainController::LaunchAndMonitorGame() {
     }
 
     // EXE自身のディレクトリを基準にMBAA.exeのパスを解決（CWD非依存）
-    std::string absPathStr = exeDir + "\\..\\MBAA.exe";    // cccaster/../MBAA.exe
+    std::string absPathStr = exeDir + "\\..\\MBAA.exe";    // cccaster_B/../MBAA.exe
 
     // 正規化（..を解決）
     char absPath[MAX_PATH];
