@@ -20,14 +20,14 @@ Results vary by PC and connection. The 3µs figure describes frame pacing, not c
 
 ## How to play
 
-Put the v10 files in the `cccaster_B` folder next to `MBAA.exe`, then open **CCCaster_v10_GUI.exe**.
+Put the included files in the `cccaster_B` folder next to `MBAA.exe`, then open **CCCaster_v10_GUI.exe**.
 
 1. **VERSUS:** host a match and share the code, or paste your opponent's code.
 2. **TRAINING:** select **START TRAINING**.
 3. **SPECTATE:** paste the host's `S-` spectator code.
 4. Press **F4** before choosing a character to check your controls.
 
-Both players need a matching v10 build. For a rematch, both players choose **ONCE**. If either player chooses character select, both return there.
+Both players need the same release build. For a rematch, both players choose **ONCE**. If either player chooses character select, both return there.
 
 ## Current limits
 
