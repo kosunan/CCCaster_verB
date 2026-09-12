@@ -1,4 +1,4 @@
-# CCCaster verB beta_1.1
+# CCCaster verB beta_1.1　Please forgive the inclusion of many strange, AI-generated documents in the following files.
 
 **A faster, easier CCCaster for MBAACC.**
 
