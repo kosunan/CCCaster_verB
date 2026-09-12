@@ -41,3 +41,7 @@
 報告者のPC、別PC／別回線、全キャラ、物理コントローラー操作と実画面目視は今回未確認。描画・入力APIへの到達を、物理表示や手操作の確認とは扱わない。[実装・差分監査・根拠ログ](../design/2026-09-13_community_exe.md)。
 
 [リリースページ](https://github.com/kosunan/CCCaster_verB/releases/tag/beta_1.1)
+
+## 公開後のCI確認
+
+Linux CIのPython解析テスト2件が、既存の `bench_legacy_real.py` を読み込む際に `ctypes.WinDLL` を呼び出して失敗する。今回の製品変更前から3関連ファイルは同一で、Windows用の収集処理を解析だけのテストから分離する修正が残る。GitHub上のビルドとC++テストは成功。配布用Windowsの37 CTest・実ゲーム疎通は確認済み。 [CIログ](https://github.com/kosunan/CCCaster_verB/actions/runs/34717719169/job/103617838747)。公開後の記録追記であり、タグ `beta_1.1` と配布バイナリ・ソースZIPは `947c111` のまま維持する。

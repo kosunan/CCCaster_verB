@@ -1,6 +1,6 @@
 # 現行仕様・確認状況
 
-配布版は `beta_1.1`。検証済みのCLI／GUI／DLLと同じコミットのソースを、既存の公開リポジトリ `kosunan/CCCaster_verB` へまとめる。[リリースノートと更新方法](releases/beta_1.1.md)。
+`beta_1.1` を `kosunan/CCCaster_verB` へプレリリース公開済み。実装修正・リリースタグは `947c111`。検証済みの配布ZIP・同一コミットのソースZIP・SHA256一覧の3点を公開URLから再取得し、全ハッシュ一致を確認した。根拠: `build_logs/release_beta_1.1/public_verification.json`。[リリースノートと更新方法](releases/beta_1.1.md)。GitHubのビルド／C++テストは成功したが、既存のLinux向けPython解析テスト2件のimportエラーは残る。
 
 指定されたコミュニティ版MBAA.exe（SHA-256 `6d1415...310a`）を対応版へ追加し、起動高速化を再有効化した。CLI／GUI共通で起動ごとにEXE全体のSHA-256を照合・表示し、不一致はゲーム生成前に拒否する。DLL側も.textと追加.new00を照合。従来の検証用EXEも対応を維持する。指定EXEの差分命令と主要14フック箇所を確認し、32bitビルド・37 CTest・633検査・7種類の起動前拒否が成功した。[実装と差分確認](design/2026-09-13_community_exe.md)。
 

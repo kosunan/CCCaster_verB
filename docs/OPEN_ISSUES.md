@@ -1,5 +1,7 @@
 # 未解決事項
 
+Linux CIのPython解析テスト2件が、既存の `bench_legacy_real.py` を読み込む際に `ctypes.WinDLL` を呼び出して失敗する。今回の製品変更前から3関連ファイルは同一で、Windows用の収集処理を解析だけのテストから分離する修正が残る。GitHub上のビルドとC++テストは成功。配布用Windowsの37 CTest・実ゲーム疎通は確認済み。 [CIログ](https://github.com/kosunan/CCCaster_verB/actions/runs/34717719169/job/103617838747)。読取保存: `build_logs/release_beta_1.1/ci_job.log`。
+
 トレーニング起動拒否：報告と同じSHA-256 `6d1415...310a` のコミュニティEXEを対応版へ追加し、高速起動と起動時の全体SHA-256照合を実装。指定EXEの独立コピーでTrainingと新同士1,295F／新旧混在1,234Fの同期一致を確認した。報告者のPC、別PC／別回線、全キャラ、物理コントローラーと実画面目視は今回未確認。EXEの文字描画差分2命令の完全な意味と改変元は未特定。[対応と検証範囲](design/2026-09-13_community_exe.md)、[調査経緯](issues/BUG_REPORT_TRAINING_LAUNCH.md)。
 
 接続コード短縮：新しいランチャーは旧Base32と新Base62を読めるが、古いランチャーは新形式を読めない。新コードで参加する側は更新が必要。MBAACC_2のGUIも通常名 `CCCaster_v10_GUI.exe` を更新版へ差し替え済み。新形式による別PC・別回線の接続とGUI経由の総合操作は今回未確認。同一PC2窓のCLIでは短縮コードからの40秒実対戦で1,324確定F一致。[根拠](design/2026-09-13_compact_connection_codes.md)。
