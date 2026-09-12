@@ -18,6 +18,62 @@
 
 namespace cccaster::main_app::network_wrapper {
 
+namespace {
+constexpr char BASE62_CHARS[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+}
+
+std::string ConnectionHash::Base62Encode(const std::vector<uint8_t>& data) {
+    // 先頭の0バイトも保持する、上限37バイトの基数変換。
+    const size_t zeros = std::find_if(data.begin(), data.end(), [](uint8_t b) { return b != 0; }) - data.begin();
+    std::vector<uint8_t> digits;
+    for (size_t i = zeros; i < data.size(); ++i) {
+        unsigned carry = data[i];
+        for (auto& digit : digits) {
+            carry += static_cast<unsigned>(digit) * 256;
+            digit = carry % 62; carry /= 62;
+        }
+        while (carry) { digits.push_back(carry % 62); carry /= 62; }
+    }
+    std::string result(zeros, '0');
+    for (auto it = digits.rbegin(); it != digits.rend(); ++it) result += BASE62_CHARS[*it];
+    return result;
+}
+
+bool ConnectionHash::Base62Decode(const std::string& text, std::vector<uint8_t>& data) {
+    data.clear();
+    if (text.empty() || text.size() > 50) return false;
+    const size_t zeros = text.find_first_not_of('0') == std::string::npos ? text.size() : text.find_first_not_of('0');
+    std::vector<uint8_t> bytes;
+    for (size_t i = zeros; i < text.size(); ++i) {
+        const char c = text[i];
+        unsigned carry;
+        if (c >= '0' && c <= '9') carry = c - '0';
+        else if (c >= 'A' && c <= 'Z') carry = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'z') carry = c - 'a' + 36;
+        else return false;
+        for (auto& byte : bytes) {
+            carry += static_cast<unsigned>(byte) * 62;
+            byte = carry & 255; carry >>= 8;
+        }
+        while (carry) { bytes.push_back(carry & 255); carry >>= 8; }
+        if (zeros + bytes.size() > 37) return false;
+    }
+    if (zeros + bytes.size() > 37) return false;
+    data.assign(zeros, 0);
+    data.insert(data.end(), bytes.rbegin(), bytes.rend());
+    return Base62Encode(data) == text;
+}
+
+uint16_t ConnectionHash::Checksum(const std::vector<uint8_t>& data) {
+    uint16_t crc = 0xffff; // CRC-16/CCITT-FALSE、誤入力検出用
+    for (uint8_t byte : data) {
+        crc ^= static_cast<uint16_t>(byte) << 8;
+        for (int i = 0; i < 8; ++i)
+            crc = static_cast<uint16_t>((crc << 1) ^ ((crc & 0x8000) ? 0x1021 : 0));
+    }
+    return crc;
+}
+
 // ============================================================
 // Base32 (RFC 4648) エンコード/デコード （パディングなし）
 // ============================================================
@@ -322,6 +378,9 @@ bool ConnectionHash::ParsePlainPayload(const std::vector<uint8_t> &payload, Deco
     if (offset >= payload.size())
         return false;
     uint8_t flags = payload[offset++];
+    if (!flags || (flags & ~0x07)) return false;
+    const size_t expected = 11 + ((flags & 1) ? 4 : 0) + ((flags & 2) ? 16 : 0) + ((flags & 4) ? 4 : 0);
+    if (payload.size() != expected) return false;
 
     // IPv4
     if (flags & 0x01) {
@@ -369,7 +428,7 @@ bool ConnectionHash::ParsePlainPayload(const std::vector<uint8_t> &payload, Deco
     // ローカルIPv4 (4 bytes) — flags bit2 [オプション、後方互換]
     if (flags & 0x04) {
         if (offset + 4 > payload.size())
-            return out.port > 0; // 旧ハッシュの場合はここで終了可能
+            return false;
         uint32_t localVal = static_cast<uint32_t>(payload[offset + 0]) |
                             (static_cast<uint32_t>(payload[offset + 1]) << 8) |
                             (static_cast<uint32_t>(payload[offset + 2]) << 16) |
@@ -382,7 +441,7 @@ bool ConnectionHash::ParsePlainPayload(const std::vector<uint8_t> &payload, Deco
 }
 
 // ============================================================
-// Encode: IPv4 + IPv6 + Port → "[公開鍵]-[Base32(暗号化ペイロード)]"
+// Encode: 接続情報 → 1 + Base62（既存XORペイロード + CRC16）
 // ============================================================
 
 std::string ConnectionHash::Encode(const std::string &ipv4, const std::string &ipv6, uint16_t port,
@@ -398,43 +457,64 @@ std::string ConnectionHash::Encode(const std::string &ipv4, const std::string &i
     auto keyStream = GenerateKeyStream(windowIndex, payload.size());
     XorCipher(payload, keyStream);
 
-    // Base32エンコード + 公開鍵プレフィックス
-    std::string encoded = Base32Encode(payload);
-    std::string pubKey = GeneratePublicKey();
-
-    return pubKey + encoded;
+    const auto crc = Checksum(payload);
+    payload.push_back(static_cast<uint8_t>(crc >> 8));
+    payload.push_back(static_cast<uint8_t>(crc));
+    // 1は旧Base32の先頭に現れない。記号を使わずダブルクリック全選択を維持。
+    return "1" + Base62Encode(payload);
 }
 
 // ============================================================
-// Decode: "[公開鍵]-[Base32]" → 復号 → IPv4, IPv6, Port, Token
+// Decode: 新Base62 / 旧Base32 → 復号 → IPv4, IPv6, Port, Token
 // ============================================================
 
 bool ConnectionHash::Decode(const std::string &hash, DecodedAddress &out) {
-    // 大文字正規化
-    std::string normalized = hash;
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::toupper);
+    return DecodeAt(hash, out, GetUtcTimestamp());
+}
 
-    // 公開鍵は固定4文字 + 残りがペイロード（ハイフンなし、ダブルクリック全選択対応）
-    constexpr size_t PUBLIC_KEY_LENGTH = 4;
-    if (normalized.length() <= PUBLIC_KEY_LENGTH) {
-        return false;
+bool ConnectionHash::DecodeAt(const std::string& hash, DecodedAddress& out, uint64_t now) {
+    out = {};
+    if (hash.empty() || hash.size() > 128) return false;
+    std::vector<uint8_t> encrypted;
+    std::string publicKey;
+    if (hash.front() == '1') {
+        if (!Base62Decode(hash.substr(1), encrypted) || encrypted.size() < 17) return false;
+        const size_t n = encrypted.size();
+        const uint16_t stored = (static_cast<uint16_t>(encrypted[n - 2]) << 8) | encrypted[n - 1];
+        encrypted.resize(n - 2);
+        if (Checksum(encrypted) != stored) return false;
+    } else {
+        // 大文字正規化
+        std::string normalized = hash;
+        for (char& c : normalized) {
+            if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
+            if (!((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7') || c == '-')) return false;
+        }
+
+        // 公開鍵は固定4文字 + 残りがペイロード（ハイフンなし、ダブルクリック全選択対応）
+        constexpr size_t PUBLIC_KEY_LENGTH = 4;
+        if (normalized.length() <= PUBLIC_KEY_LENGTH) {
+            return false;
+        }
+
+        publicKey = normalized.substr(0, PUBLIC_KEY_LENGTH);
+        if (publicKey.find('-') != std::string::npos) return false;
+        std::string payloadStr = normalized.substr(PUBLIC_KEY_LENGTH);
+        if (payloadStr.empty())
+            return false;
+
+        // Base32デコード
+        encrypted = Base32Decode(payloadStr);
+        if (encrypted.empty())
+            return false;
+
     }
-
-    out.publicKey = normalized.substr(0, PUBLIC_KEY_LENGTH);
-    std::string payloadStr = normalized.substr(PUBLIC_KEY_LENGTH);
-    if (payloadStr.empty())
-        return false;
-
-    // Base32デコード
-    std::vector<uint8_t> encrypted = Base32Decode(payloadStr);
-    if (encrypted.empty())
-        return false;
-
-    uint64_t now = GetUtcTimestamp();
     uint64_t currentWindow = now / TIME_WINDOW_SECONDS;
+    bool expired = false;
 
     // 現在のタイムウィンドウで試行、失敗したら前のウィンドウでもリトライ（境界対策）
     for (int attempt = 0; attempt <= 1; ++attempt) {
+        if (currentWindow < static_cast<uint64_t>(attempt)) break;
         uint64_t windowIndex = currentWindow - static_cast<uint64_t>(attempt);
 
         std::vector<uint8_t> payload = encrypted; // コピーして復号
@@ -443,7 +523,7 @@ bool ConnectionHash::Decode(const std::string &hash, DecodedAddress &out) {
 
         uint64_t timestamp = 0;
         DecodedAddress candidate;
-        candidate.publicKey = out.publicKey;
+        candidate.publicKey = publicKey;
 
         if (ParsePlainPayload(payload, candidate, timestamp)) {
             // 有効期限チェック: 生成時刻から6時間以内か
@@ -452,15 +532,14 @@ bool ConnectionHash::Decode(const std::string &hash, DecodedAddress &out) {
                 out = candidate;
                 out.isExpired = false;
                 return true;
-            } else if (attempt == 0) {
-                // 現在ウィンドウで復号成功だが期限切れ → 期限切れとして返す
-                out = candidate;
-                out.isExpired = true;
-                return false;
+            } else {
+                // 境界直後も前の時間窓を最後まで試す。
+                expired = true;
             }
         }
     }
 
+    out.isExpired = expired;
     return false;
 }
 

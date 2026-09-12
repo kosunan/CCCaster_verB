@@ -6,9 +6,9 @@
 
 namespace cccaster::main_app::network_wrapper {
 
-/// IPv4+IPv6アドレスとポートをBase32ハッシュ文字列にエンコード/デコードするユーティリティ
-/// ハッシュフォーマット: [公開鍵4文字]-[Base32(暗号化ペイロード)]
-/// セキュリティ: 6時間タイムウィンドウ鍵によるXOR暗号化 + ワンタイムセッショントークン + 有効期限検証
+/// 接続情報を短い英数字コードへ変換。新規発行は1 + Base62、旧Base32も読取可能。
+/// Base62は大小文字を区別。既存XOR難読化と6時間期限を維持し、CRC16で誤入力を検出する。
+/// CRCと時刻由来XORは認証・機密保護を提供するものではない。
 class ConnectionHash {
   public:
     /// デコード結果を格納する構造体
@@ -17,7 +17,7 @@ class ConnectionHash {
         std::string ipv6;          ///< IPv6アドレス文字列（空なら未含有）
         std::string localIpv4;     ///< ローカルIPv4アドレス文字列（空なら未含有）[NEW]
         uint16_t port = 0;         ///< ポート番号
-        std::string publicKey;     ///< 公開鍵プレフィックス（4文字）
+        std::string publicKey;     ///< 旧形式のPC識別子（4文字）。新形式では空
         uint32_t sessionToken = 0; ///< ワンタイムセッショントークン
         bool isExpired = false;    ///< 有効期限切れフラグ
     };
@@ -35,13 +35,18 @@ class ConnectionHash {
     /// ハッシュ文字列からアドレス情報をデコード（復号・期限検証付き）
     static bool Decode(const std::string &hash, DecodedAddress &out);
 
-    /// 公開鍵（マシン固有識別子）を生成
+    /// 旧形式の表示用PC識別子を生成（暗号学的な公開鍵ではない）
     static std::string GeneratePublicKey();
 
     /// ローカルIPv4アドレスを取得（最初の非ループバック/非APIPA IPv4）
     static std::string GetLocalIpv4();
 
   private:
+    friend struct ConnectionHashTestAccess;
+    static std::string Base62Encode(const std::vector<uint8_t>& data);
+    static bool Base62Decode(const std::string& text, std::vector<uint8_t>& data);
+    static uint16_t Checksum(const std::vector<uint8_t>& data);
+    static bool DecodeAt(const std::string& hash, DecodedAddress& out, uint64_t now);
     // Base32 (RFC 4648) エンコード/デコード（パディングなし）
     static std::string Base32Encode(const std::vector<uint8_t> &data);
     static std::vector<uint8_t> Base32Decode(const std::string &encoded);

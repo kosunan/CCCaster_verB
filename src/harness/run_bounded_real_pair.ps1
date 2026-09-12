@@ -1,4 +1,4 @@
-﻿param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='')
+﻿param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode)
 $taskDebugStarted=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -52,6 +52,21 @@ try {
         $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
         if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){'05C4054C'}else{'09CC054C'}}
         $taskArgs=if($taskSide -eq 1){"--headless --host --port $Port"}else{"--headless --ip 127.0.0.1 --port $Port"}
+        if($UseConnectionCode -and $taskSide -eq 2) {
+            $taskCode=''
+            $taskCodeDeadline=[DateTime]::UtcNow.AddSeconds(30)
+            while([DateTime]::UtcNow -lt $taskCodeDeadline) {
+                $taskHostOutput=Get-Content -LiteralPath (Join-Path $taskOut 'launcher_1.log') -Raw -ErrorAction SilentlyContinue
+                $taskCodeMatch=[regex]::Match([string]$taskHostOutput,'\[HEADLESS HOST\] Hash: ([A-Za-z0-9]+)')
+                if($taskCodeMatch.Success){$taskCode=$taskCodeMatch.Groups[1].Value;break}
+                if($taskLaunchers[0].HasExited){throw 'コード発行前に募集側が終了した'}
+                Start-Sleep -Milliseconds 100
+            }
+            if(!$taskCode){throw '接続コードが30秒以内に発行されなかった'}
+            $taskArgs="--headless --hash $taskCode"
+            "JoinByCode length=$($taskCode.Length) compact=$($taskCode.StartsWith('1'))" |
+                Set-Content -LiteralPath (Join-Path $taskOut 'connection_code.txt')
+        }
         if($DebugSpikes){$taskArgs+=' --debug-spikes'}
         if($env:CCCASTER_TEST_BASELINE_HOST_SCENE_PAIRS) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_SCENE_MERGE='1'}else{Remove-Item Env:CCCASTER_DISABLE_SCENE_MERGE -ErrorAction SilentlyContinue}

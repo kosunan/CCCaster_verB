@@ -37,3 +37,7 @@ Both players need a matching v10 build. For a rematch, both players choose **ONC
 - Online replay-file saving is currently disabled.
 
 For more detail, read [What's new in v10](docs/USER_APPEAL.md). Developers can start with the [current status](docs/CURRENT_STATE.md), [known issues](docs/OPEN_ISSUES.md), and [development guide](docs/DEVELOPMENT.md).
+
+## Shorter connection codes
+
+New connection codes use a Base62 format containing only letters and numbers. Copy them without changing letter case. An IPv4 code with a local IPv4 address is up to 30 characters instead of 35; a code that also contains IPv6 is up to 51 characters instead of 60. Codes expire after six hours. The new launcher still reads older codes, but joining with a new code requires the updated launcher. See the [format and validation details](docs/design/2026-09-13_compact_connection_codes.md).

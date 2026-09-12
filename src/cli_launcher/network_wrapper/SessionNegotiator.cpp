@@ -616,7 +616,7 @@ NegotiationResult SessionNegotiator::RunNegotiationFromHash(const std::string &h
     }
 
     std::cout << "\n  \x1b[1;36m[ HASH DECODED ]\x1b[0m\n";
-    std::cout << "  Public Key:     " << addr.publicKey << "\n";
+    if (!addr.publicKey.empty()) std::cout << "  Legacy ID:      " << addr.publicKey << "\n";
     std::cout << "  Session Token:  " << std::hex << std::uppercase << addr.sessionToken << std::dec << "\n";
     if (!addr.ipv4.empty())
         std::cout << "  Global IPv4:  " << addr.ipv4 << "\n";
