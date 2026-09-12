@@ -4,6 +4,8 @@
 
 CCCaster v10 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
+![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
+
 ## What changed?
 
 - **Faster startup:** training started in about **2.1 seconds**, compared with **8.7 seconds** in our old-version test.
