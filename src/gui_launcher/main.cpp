@@ -31,7 +31,8 @@ HeaderImage headerImage;
 const ImVec4 accent(0.79f, 0.66f, 1.0f, 1);
 const ImVec4 paper(0.96f, 0.94f, 1.0f, 1);
 const ImVec4 crimson(0.61f, 0.10f, 0.25f, 1);
-const ImVec4 muted(0.70f, 0.67f, 0.78f, 1);
+const ImVec4 muted(0.78f, 0.75f, 0.84f, 1);
+const ImVec4 warning(1.0f, 0.76f, 0.42f, 1);
 std::filesystem::path exePath;
 bool japanese = false;
 const char* Text(const char* english, const char* translated) {
@@ -45,10 +46,11 @@ struct Message {
 struct Session {
     HANDLE process = nullptr, cancel = nullptr;
     std::filesystem::path logPath;
-    std::string log, code;
+    std::string log, code, connectionStage;
     Message status = {"Ready when you are.", "開始できます。"};
     bool booting = false, cancelling = false, training = false, spectating = false;
     bool revealCloseLog = false;
+    bool failed = false;
     ~Session() {
         if (cancel) { SetEvent(cancel); CloseHandle(cancel); }
         if (process) CloseHandle(process); // 実行中のゲームは終了しない。
@@ -102,13 +104,26 @@ struct Session {
         booting = booting || log.find("Booting game") != std::string::npos;
         if (training && log.find("[ TRAINING READY ]") != std::string::npos)
             status = {"Training is running. Switch to the game window.", "トレーニングを起動しました。ゲーム画面に切り替えてください。"};
-        else if (training) status = {"Launching training...", "トレーニングを起動しています…"};
+        else if (training) status = {"Launching training...", "トレーニングを起動しています..."};
         else if (log.find("[ IN GAME ]") != std::string::npos) status = spectating
             ? Message{"Spectator connected. Playback status is shown in the game.", "観戦接続が成立しました。再生状態はゲーム画面に表示します。"}
             : Message{"Match in progress. Switch to the game window.", "対戦中です。ゲーム画面に切り替えてください。"};
-        else if (booting) status = {"Connected. Launching the game...", "接続が完了しました。ゲームを起動しています…"};
-        else if (!code.empty()) status = {"Waiting for an opponent...", "対戦相手を待っています…"};
-        if (cancelling && !booting) status = {"Cancelling connection...", "接続をキャンセルしています…"};
+        else if (booting) status = {"Connected. Launching the game...", "接続が完了しました。ゲームを起動しています..."};
+        else if (!code.empty()) status = {"Waiting for an opponent...", "対戦相手を待っています..."};
+        auto stageStart = log.rfind("[CONNECT_STAGE] ");
+        if (stageStart != std::string::npos) {
+            stageStart += std::strlen("[CONNECT_STAGE] ");
+            auto stageEnd = log.find('\n', stageStart);
+            if (stageEnd != std::string::npos) connectionStage = log.substr(stageStart, stageEnd-stageStart);
+        }
+        if (!booting && !cancelling) {
+            if (connectionStage == "relay_waiting") status = {"Relay service connected. Waiting for someone to join; no short waiting limit.", "接続支援サーバーへ接続しました。相手の参加を待っています。短い待機制限はありません。"};
+            else if (connectionStage == "relay") status = {"Trying automatic hole punching through the legacy relay service...", "旧版の接続支援サーバーを使って自動接続を試しています..."};
+            else if (connectionStage == "match" || connectionStage == "punch") status = {"Opponent found. Checking the direct UDP connection...", "参加者が見つかりました。双方のUDP接続を確認しています..."};
+            else if (connectionStage == "relay_unavailable") status = {"Relay service unavailable. Direct connection is still available; check the relay list or network.", "接続支援サーバーへ到達できません。直接接続は継続します。サーバー設定・回線を確認してください。"};
+            else if (connectionStage == "attempt_expired" || connectionStage == "handshake_timeout") status = {"That connection attempt did not complete. Hosting continues for the next opponent.", "その参加者との接続が成立しませんでした。次の参加者の募集を続けます。"};
+        }
+        if (cancelling && !booting) status = {"Cancelling connection...", "接続をキャンセルしています..."};
         if (ended) {
             DWORD result = 0;
             GetExitCodeProcess(process, &result);
@@ -116,16 +131,22 @@ struct Session {
             else if (ShowCloseStatus()) {}
             else if (result != 0 || log.find("ERROR") != std::string::npos ||
                      log.find("TIMEOUT") != std::string::npos || log.find("failed") != std::string::npos)
-                status = {"Connection or launch failed. Open Session log for details.", "接続または起動に失敗しました。詳細ログを確認してください。"};
+                { failed = true; status = {"Check the opponent's code and whether they are hosting. Automatic hole punching also failed or launch could not complete. Check the session log for launch errors.", "相手のコードと募集状態を確認してください。接続の自動試行または起動に失敗しました。起動エラーは詳細ログに表示します。"}; }
             else status = {"Session ended. Ready to start again.", "終了しました。もう一度開始できます。"};
+            if (!cancelling && (connectionStage == "timeout" || connectionStage == "handshake_timeout")) {
+                failed = true;
+                status = {"Connection attempt ended. Verify the host is still waiting, the code is current, and CCCaster is allowed through the firewall. Repeating unchanged conditions may not help.", "接続試行を終了しました。相手の募集状態・コードの期限・ファイアウォールの許可を確認してください。同じ条件の繰り返しで改善するとは限りません。"};
+            }
             CloseHandle(process); process = nullptr;
             CloseHandle(cancel); cancel = nullptr;
+            cancelling = false;
         }
         ShowCloseStatus();
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
     void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false) {
         if (Running()) return;
+        failed = true; // 準備段階の失敗もメイン画面で強調する。
         if (!offline && !cccaster::public_api::NetplaySettings::IsValid(
                 ConfigManager::GetInt("Netplay", "DefaultDelay", 2),
                 ConfigManager::GetInt("Netplay", "MaxRollback", 4))) {
@@ -135,7 +156,7 @@ struct Session {
         auto dir = exePath.parent_path();
         if (!std::filesystem::exists(dir / ".." / "MBAA.exe") ||
             !std::filesystem::exists(dir / "libcccaster_hook.dll")) {
-            status = {"Game files not found. Place this launcher and libcccaster_hook.dll in the game's cccaster folder.", "ゲームファイルが見つかりません。ゲーム内の cccaster フォルダーにランチャーと libcccaster_hook.dll を配置してください。"};
+            status = {"Game files not found. Place this launcher and libcccaster_hook.dll in the game's cccaster_B folder.", "ゲームファイルが見つかりません。ゲーム内の cccaster_B フォルダーにランチャーと libcccaster_hook.dll を配置してください。"};
             return;
         }
         auto eventName = L"Local\\CCCasterGuiCancel_" + std::to_wstring(GetCurrentProcessId());
@@ -162,11 +183,12 @@ struct Session {
             CloseHandle(cancel); cancel = nullptr; return;
         }
         CloseHandle(info.hThread); process = info.hProcess;
-        log.clear(); code.clear(); training = offline; spectating = watch; booting = offline || watch; cancelling = false;
+        failed = false;
+        log.clear(); code.clear(); connectionStage.clear(); training = offline; spectating = watch; booting = offline || watch; cancelling = false;
         peerNoticeSeen = localNoticeSeen = revealCloseLog = false;
-        status = offline ? Message{"Launching training...", "トレーニングを起動しています…"}
-                         : host ? Message{"Creating your connection code...", "接続コードを作成しています…"}
-                      : Message{"Connecting to your opponent...", "対戦相手に接続しています…"};
+        status = offline ? Message{"Launching training...", "トレーニングを起動しています..."}
+                         : host ? Message{"Creating your connection code...", "接続コードを作成しています..."}
+                      : Message{"Connecting to your opponent...", "対戦相手に接続しています..."};
     }
 };
 
@@ -206,9 +228,35 @@ bool PrimaryButton(const char* label) {
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.46f, .10f, .31f, 1));
     ImGui::PushStyleColor(ImGuiCol_Text, paper);
     ImGui::PushFont(headingFont);
-    const bool pressed = ImGui::Button(label, ImVec2(-1, 42));
+    const bool pressed = ImGui::Button(label, ImVec2(-1, 46));
     ImGui::PopFont(); ImGui::PopStyleColor(4);
     return pressed;
+}
+
+// 高さを文字の折返しから決め、長い失敗理由も切り落とさない。
+void Notice(const char* id, const char* title, const char* detail, ImVec4 color) {
+    const auto pos = ImGui::GetCursorScreenPos();
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float textWidth = std::max(1.f, width - 30);
+    ImGui::PushFont(headingFont);
+    const float titleHeight = ImGui::CalcTextSize(title, nullptr, false, textWidth).y;
+    ImGui::PopFont();
+    const float detailHeight = *detail ? ImGui::CalcTextSize(detail, nullptr, false, textWidth).y + 6 : 0;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 10));
+    ImGui::BeginChild(id, ImVec2(0, titleHeight + detailHeight + 22), true, ImGuiWindowFlags_NoScrollbar);
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::PushFont(headingFont); ImGui::TextWrapped("%s", title); ImGui::PopFont();
+    ImGui::PopStyleColor();
+    if (*detail) ImGui::TextWrapped("%s", detail);
+    ImGui::EndChild(); ImGui::PopStyleVar();
+    ImGui::GetWindowDrawList()->AddRectFilled(pos, ImVec2(pos.x + 3, pos.y + titleHeight + detailHeight + 22), ImGui::GetColorU32(color));
+}
+
+bool QuietDetails(const char* label) {
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(.09f,.06f,.13f,1));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(.18f,.12f,.24f,1));
+    const bool open = ImGui::CollapsingHeader(label);
+    ImGui::PopStyleColor(2); return open;
 }
 
 void Draw(Session& session) {
@@ -219,31 +267,28 @@ void Draw(Session& session) {
     ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(size);
     ImGui::Begin("Launcher", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     auto* backdrop = ImGui::GetWindowDrawList();
-    backdrop->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(size.x, 112),
+    backdrop->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(size.x, 88),
         IM_COL32(115,15,45,255), IM_COL32(62,14,47,255),
         IM_COL32(18,10,35,255), IM_COL32(49,15,62,255));
     if (headerImage.texture) {
-        backdrop->AddRectFilled(ImVec2(0, 0), ImVec2(size.x, 112), IM_COL32(0,0,0,255));
-        // 顔が112px内に収まる大きさへ縮小し、右端へ固定する。
+        backdrop->AddRectFilled(ImVec2(0, 0), ImVec2(size.x, 88), IM_COL32(0,0,0,255));
+        // ヘッダーを88pxへ圧縮し、右端の画像をクリップする。
         const float imageWidth = std::min(480.f, size.x * .42f);
         const float imageHeight = imageWidth * static_cast<float>(headerImage.height) / headerImage.width;
-        backdrop->PushClipRect(ImVec2(0, 0), ImVec2(size.x, 112), true);
+        backdrop->PushClipRect(ImVec2(0, 0), ImVec2(size.x, 88), true);
         backdrop->AddImage(reinterpret_cast<ImTextureID>(headerImage.texture),
             ImVec2(size.x - imageWidth, 0), ImVec2(size.x, imageHeight));
         backdrop->PopClipRect();
     }
-    backdrop->AddRectFilledMultiColor(ImVec2(0,112), ImVec2(size.x,118),
+    backdrop->AddRectFilledMultiColor(ImVec2(0,88), ImVec2(size.x,94),
         IM_COL32(204,38,81,255), IM_COL32(107,55,228,255),
         IM_COL32(107,55,228,255), IM_COL32(204,38,81,255));
     backdrop->AddText(logoFont, 48, ImVec2(29,17), IM_COL32(77,45,122,255), "CCCaster");
     backdrop->AddText(logoFont, 48, ImVec2(26,14), ImGui::GetColorU32(paper), "CCCaster");
-    backdrop->AddText(ImVec2(28,76), IM_COL32(224,209,243,255), "MELTY BLOOD Actress Again Current Code");
-    backdrop->AddText(headingFont, 26, ImVec2(size.x * .35f,22), ImGui::GetColorU32(paper), Text("SELECT YOUR MODE", "モードを選択"));
-    backdrop->AddText(ImVec2(size.x * .35f,67), IM_COL32(202,180,218,255), "V10  /  MBAACC Ver.1.07 Rev.1.4.0");
-    ImGui::SetCursorPos(ImVec2(16, 130));
+    backdrop->AddText(ImVec2(28,62), IM_COL32(224,209,243,255), "MELTY BLOOD Actress Again Current Code");
+    backdrop->AddText(ImVec2(size.x * .35f,28), IM_COL32(202,180,218,255), "V10  /  MBAACC Ver.1.07 Rev.1.4.0");
+    ImGui::SetCursorPos(ImVec2(16, 106));
     ImGui::BeginChild("navigation", ImVec2(202, -28), false);
-    ImGui::TextColored(muted, Text("CHOOSE YOUR NEXT MOVE", "次の一手を選ぼう"));
-    ImGui::Spacing();
     if (ModeButton("##play", "01", Text("VERSUS", "対戦"), Text("Host / Join with code", "募集・コードで参加"), page == 0, reveal[0])) page = 0;
     if (ModeButton("##spectate", "02", Text("SPECTATE", "観戦"), Text("Join with spectator code", "観戦コードで参加"), page == 3, reveal[1])) page = 3;
     if (ModeButton("##training", "03", Text("TRAINING", "トレーニング"), Text("Offline practice", "オフラインで練習"), page == 2, reveal[2])) page = 2;
@@ -253,10 +298,8 @@ void Draw(Session& session) {
     ImGui::TextColored(muted, Text("Display language", "表示言語"));
     ImGui::EndChild(); ImGui::SameLine();
     ImGui::BeginChild("content", ImVec2(0, -28), true);
-    ImGui::TextColored(accent, page == 3 ? Text("02 / SPECTATE", "02 / 観戦") : page == 2 ? Text("03 / TRAINING", "03 / トレーニング") : page == 1 ? Text("04 / HOW TO PLAY", "04 / 操作ガイド") : Text("01 / VERSUS", "01 / 対戦"));
-    ImGui::PushFont(titleFont);
-    ImGui::TextUnformatted(page == 3 ? Text("FRONT ROW SEAT.", "熱戦を最前列で。") : page == 2 ? Text("KEEP GETTING BETTER.", "その一手を磨こう。") : page == 0 ? Text("READY TO FIGHT?", "次の一戦へ。") : Text("LEARN THE CONTROLS.", "対戦の準備をしよう。"));
-    ImGui::PopFont();
+    Heading(page == 3 ? Text("SPECTATE", "観戦") : page == 2 ? Text("TRAINING", "トレーニング")
+        : page == 1 ? Text("HOW TO PLAY", "操作ガイド") : Text("PLAY ONLINE", "ネット対戦"));
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 4));
     if (page == 3) {
@@ -277,10 +320,10 @@ void Draw(Session& session) {
         ImGui::TextWrapped("%s", session.status.c_str());
         ImGui::Spacing();
         ImGui::TextWrapped(Text("Direct connection uses the host's TCP port. If the current match history is unavailable, wait for the next match. Up to 8 viewers.", "直接接続には募集側のTCPポートへの到達が必要です。現在の試合履歴が残っていない場合は次の試合を待ちます。最大8人。"));
-        if (ImGui::CollapsingHeader(Text("Session log###watchLog", "詳細ログ###watchLog"))) ImGui::TextUnformatted(session.log.c_str());
+        if (QuietDetails(Text("Session log###watchLog", "詳細ログ###watchLog"))) ImGui::TextUnformatted(session.log.c_str());
     } else if (page == 1) {
         Heading(Text("01   Set up your game folder", "01   ゲームフォルダーに配置"));
-        ImGui::TextWrapped(Text("Create a cccaster folder next to MBAA.exe. Place this launcher, libcccaster_hook.dll and cccaster_v10.ini inside it.", "MBAA.exe のあるフォルダー内に cccaster フォルダーを作り、このGUIと libcccaster_hook.dll、cccaster_v10.ini を配置します。"));
+        ImGui::TextWrapped(Text("Create a cccaster_B folder next to MBAA.exe. Place this launcher, libcccaster_hook.dll and cccaster_v10.ini inside it.", "MBAA.exe のあるフォルダー内に cccaster_B フォルダーを作り、このGUIと libcccaster_hook.dll、cccaster_v10.ini を配置します。"));
         ImGui::Spacing(); Heading(Text("02   Host or join a match", "02   募集する・参加する"));
         ImGui::TextWrapped(Text("Choose HOST A MATCH and share your code, or JOIN WITH CODE and paste the code from your opponent. The game launches once connected.", "募集する側は接続コードをコピーして相手に共有。参加する側はコードを貼り付けて接続します。接続成立後にゲームが起動します。"));
         ImGui::Spacing(); Heading(Text("03   Configure in the game", "03   ゲーム内で設定"));
@@ -302,49 +345,53 @@ void Draw(Session& session) {
         ImGui::Spacing();
         ImGui::TextWrapped(Text("Choose your characters in the game. Press F4 to configure your controller.", "ゲーム画面でキャラクターを選んでください。コントローラ設定は F4 で開けます。"));
         ImGui::TextWrapped(Text("Close the game to return and choose another mode.", "ゲームを終了すると、別のモードを開始できます。"));
-        if (ImGui::CollapsingHeader(Text("Session log###trainingLog", "詳細ログ###trainingLog"))) {
+        if (QuietDetails(Text("Session log###trainingLog", "詳細ログ###trainingLog"))) {
             ImGui::BeginChild("trainingLog", ImVec2(0, 150), true);
             ImGui::TextUnformatted(session.log.c_str()); ImGui::EndChild();
         }
     } else {
-        ImGui::BeginChild("status", ImVec2(0, 58), true);
-        ImGui::TextColored(accent, session.Running() ? Text("SESSION", "接続中") : Text("STANDBY", "待機中"));
-        ImGui::TextWrapped("%s", session.status.c_str());
-        ImGui::EndChild();
-        ImGui::Dummy(ImVec2(0, 2));
         ImGui::BeginDisabled(session.Running());
-        const float half = (ImGui::GetContentRegionAvail().x - 12) / 2;
-        if (ImGui::Selectable(Text("01  HOST A MATCH###host", "01  対戦を募集###host"), mode == 0, 0, ImVec2(half, 32))) mode = 0;
-        ImGui::SameLine();
-        if (ImGui::Selectable(Text("02  JOIN WITH CODE###join", "02  コードで参加###join"), mode == 1, 0, ImVec2(half, 32))) mode = 1;
-        ImGui::Spacing();
-        bool valid = true;
-        if (mode == 0) {
-            Heading(Text("Invite your opponent", "対戦相手を招待する"));
-            ImGui::TextColored(muted, Text("Start hosting to create a code you can share.", "募集を開始すると共有用のコードが表示されます。"));
-            ImGui::SetNextItemWidth(170); ImGui::InputInt(Text("Port###port", "ポート番号###port"), &port, 0);
-            valid = port > 0 && port <= 65535;
-            if (!valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1), Text("Enter a port between 1 and 65535.", "1〜65535 のポート番号を入力してください。"));
-        } else {
-            Heading(Text("Join your opponent", "招待された対戦に参加する"));
-            ImGui::TextColored(muted, Text("Paste the connection code shared by your opponent.", "相手から受け取った接続コードを貼り付けてください。"));
-            ImGui::SetNextItemWidth(-1);
-            ImGui::InputTextWithHint("##hash", Text("Connection code / Ctrl+V to paste", "接続コードを入力 / Ctrl+V で貼り付け"), hash, sizeof(hash));
-            network_wrapper::ConnectionHash::DecodedAddress address;
-            const bool asciiCode = std::all_of(hash, hash + std::strlen(hash), [](unsigned char c) {
-                return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                       (c >= '0' && c <= '9') || c == '-';
-            });
-            valid = asciiCode && network_wrapper::ConnectionHash::Decode(hash, address);
-            if (*hash && !valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1),
-                address.isExpired ? Text("This code has expired. Ask for a new one.", "期限切れです。新しいコードを受け取ってください。") : Text("Check the connection code and try again.", "接続コードを確認してください。"));
+        const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        ImGui::PushFont(headingFont);
+        for (int choice = 0; choice < 2; ++choice) {
+            if (choice) ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Button, mode == choice ? ImVec4(.34f,.18f,.47f,1) : ImVec4(.13f,.09f,.19f,1));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, mode == choice ? 2.f : 1.f);
+            ImGui::PushStyleColor(ImGuiCol_Border, mode == choice ? accent : ImVec4(.36f,.29f,.43f,1));
+            if (ImGui::Button(choice == 0 ? Text("HOST A MATCH###host", "対戦を募集###host") : Text("JOIN WITH CODE###join", "コードで参加###join"), ImVec2(half, 46))) mode = choice;
+            ImGui::PopStyleColor(2); ImGui::PopStyleVar();
         }
+        ImGui::PopFont();
         ImGui::Spacing();
-        ImGui::BeginDisabled(!valid);
-        if (PrimaryButton(mode == 0 ? Text("START HOSTING  >###start", "募集を開始する  >###start") : Text("JOIN MATCH  >###start", "対戦に参加する  >###start")))
-            session.Start(mode == 0, port, hash);
-        ImGui::EndDisabled(); ImGui::EndDisabled();
+        if (!session.Running()) {
+            bool valid = true;
+            if (mode == 0) {
+                ImGui::TextWrapped(Text("Create a code and share it with your opponent.", "募集を開始して、コードを相手に共有します。"));
+                ImGui::SetNextItemWidth(170); ImGui::InputInt(Text("Port###port", "ポート番号###port"), &port, 0);
+                valid = port > 0 && port <= 65535;
+                if (!valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1), Text("Enter a port between 1 and 65535.", "1〜65535 のポート番号を入力してください。"));
+            } else {
+                ImGui::TextWrapped(Text("Paste the code from your opponent, then join.", "相手のコードを貼り付けて、参加します。"));
+                ImGui::SetNextItemWidth(-1);
+                ImGui::InputTextWithHint("##hash", Text("Connection code / Ctrl+V to paste", "接続コードを入力 / Ctrl+V で貼り付け"), hash, sizeof(hash));
+                network_wrapper::ConnectionHash::DecodedAddress address;
+                const bool asciiCode = std::all_of(hash, hash + std::strlen(hash), [](unsigned char c) {
+                    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                           (c >= '0' && c <= '9') || c == '-';
+                });
+                valid = asciiCode && network_wrapper::ConnectionHash::Decode(hash, address);
+                if (*hash && !valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1),
+                    address.isExpired ? Text("This code has expired. Ask for a new one.", "期限切れです。新しいコードを受け取ってください。") : Text("Check the connection code and try again.", "接続コードを確認してください。"));
+            }
+            ImGui::Spacing();
+            ImGui::BeginDisabled(!valid);
+            if (PrimaryButton(mode == 0 ? Text("START HOSTING  >###start", "募集を開始する  >###start") : Text("JOIN MATCH  >###start", "対戦に参加する  >###start")))
+                { session.Start(mode == 0, port, hash); }
+            ImGui::EndDisabled();
+        }
+        ImGui::EndDisabled();
         if (!session.code.empty() && session.Running() && !session.booting) {
+            ImGui::TextWrapped(Text("Post this code on your bulletin board. It expires 6 hours after creation.", "募集掲示板へこのコードを貼ってください。有効期限は作成から6時間です。"));
             ImGui::Spacing(); ImGui::TextUnformatted(Text("Share this connection code with your opponent", "この接続コードを相手に共有してください"));
             ImGui::SetNextItemWidth(-130);
             ImGui::InputText("##share", session.code.data(), session.code.size()+1, ImGuiInputTextFlags_ReadOnly);
@@ -361,12 +408,29 @@ void Draw(Session& session) {
             if (ImGui::Button(Text("Cancel connection###cancel", "接続をキャンセル###cancel"))) { SetEvent(session.cancel); session.cancelling = true; }
             ImGui::EndDisabled();
         }
-        ImGui::Dummy(ImVec2(0, 4));
+        ImGui::Spacing();
+        const char* statusTitle = session.failed ? Text("Connection / launch failed", "接続・起動に失敗しました")
+            : session.cancelling && !session.booting ? Text("Cancelling...", "キャンセル中...")
+            : session.ShowCloseStatus() ? Text("Session ended", "セッション終了")
+            : session.Running() && session.booting ? Text("Connected / game running", "接続完了・ゲーム実行中")
+            : session.Running() && (session.connectionStage == "match" || session.connectionStage == "punch") ? Text("Connecting to your opponent", "参加者との接続を確認中")
+            : session.Running() && !session.code.empty() ? Text("Waiting for an opponent", "相手の参加を待っています")
+            : session.Running() ? Text("Preparing the connection...", "接続を準備しています...")
+            : Text("Ready to start", "開始できます");
+        const char* statusDetail = session.log.empty() && !session.Running() && !session.failed
+            ? (mode == 0 ? Text("Start hosting to create your invitation code.", "「募集を開始する」で招待コードを作成します。")
+                         : Text("Use your opponent's code to join their match.", "相手のコードで募集済みの対戦に参加します。"))
+            : session.status.c_str();
+        Notice("status", statusTitle, statusDetail, session.failed ? warning : accent);
+        ImGui::TextWrapped(Text("Direct connection first; automatic hole punching when needed.", "直接接続を優先し、必要なら自動でホールパンチングします。"));
+
+        ImGui::PushFont(headingFont);
+        ImGui::TextWrapped(Text("F4  |  Controller settings in game", "F4  |  ゲーム内でコントローラ設定"));
+        ImGui::PopFont();
         const int delay = ConfigManager::GetInt("Netplay", "DefaultDelay", 2);
         const int rollback = ConfigManager::GetInt("Netplay", "MaxRollback", 4);
         ImGui::TextColored(muted, Text("Input delay  %d F    /    Rollback limit  %d F", "入力遅延  %d F    /    ロールバック上限  %d F"), delay, rollback);
-        ImGui::TextColored(muted, Text("Press F4 in the game to configure your controller.", "コントローラ設定はゲーム内で F4"));
-        if (ImGui::CollapsingHeader(Text("Session log###details", "詳細ログ###details"))) {
+        if (QuietDetails(Text("Session log###details", "詳細ログ###details"))) {
             ImGui::BeginChild("log", ImVec2(0, 150), true);
             ImGui::TextUnformatted(session.log.c_str());
             if (session.revealCloseLog) { ImGui::SetScrollHereY(1.0f); session.revealCloseLog = false; }
@@ -447,7 +511,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         ImGui::DestroyContext(); headerImage.Release(); device->Release(); d3d->Release(); DestroyWindow(window); return 1;
     }
     const float scale = ImGui_ImplWin32_GetDpiScaleForHwnd(window);
-    io.Fonts->AddFontFromFileTTF(font.string().c_str(), 17 * scale, nullptr, io.Fonts->GetGlyphRangesJapanese());
+    io.Fonts->AddFontFromFileTTF(font.string().c_str(), 19 * scale, nullptr, io.Fonts->GetGlyphRangesJapanese());
     auto bold = std::filesystem::path(windowsDir) / "Fonts" / "meiryob.ttc";
     if (!std::filesystem::exists(bold)) bold = font;
     headingFont = io.Fonts->AddFontFromFileTTF(bold.string().c_str(), 23 * scale, nullptr, io.Fonts->GetGlyphRangesJapanese());

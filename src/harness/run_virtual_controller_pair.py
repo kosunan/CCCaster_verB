@@ -60,7 +60,7 @@ def main():
     result['binaries'] = {name: hashlib.sha256((ROOT / 'build/bin' / name).read_bytes()).hexdigest()
                           for name in ('CCCaster_v10.exe', 'libcccaster_hook.dll')}
     pads, process = [], None
-    files = [test_root / f'MBAACC_{s}/cccaster/cccaster_hook_log.txt' for s in (1, 2)]
+    files = [test_root / f'MBAACC_{s}/cccaster_B/cccaster_hook_log.txt' for s in (1, 2)]
     offsets, pending = [0, 0], [b'', b'']
     phases, phase_since, values, seen = [0, 0], [0., 0.], [None, None], [[], []]
     detected, detection_seconds = [False, False], [None, None]

@@ -18,6 +18,7 @@
 #include "core_dll/engine/MatchContext.hpp"
 #include "core_dll/engine/SessionScore.hpp"
 #include "core_dll/mbaa_mem/TrainingMetrics.hpp"
+#include "core_dll/mbaa_mem/FrameBar.hpp"
 #include "core_dll/engine/TrainingState.hpp"
 #include <cstdint>
 #include <array>
@@ -45,6 +46,7 @@ class SceneRunner {
     };
     static PlayerNamesSnapshot PlayerNames();
     static FrameAdvantageResult FrameAdvantage();
+    static const FrameBarHistory &FrameBar(); // ゲームスレッドの描画専用
     static TrainingStateEvent TrainingStateNotice();
     static bool HasTrainingState();
     struct SpectatorInfo { uint32_t frame, latest, viewers, state; bool catching; };

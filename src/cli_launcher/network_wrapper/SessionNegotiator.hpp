@@ -34,7 +34,8 @@ class SessionNegotiator {
     // skipHostDisplay: true の場合、HOST内のグローバルIP取得・画面クリア・クリップボードコピーをスキップ
     //                  （ハッシュモードでは既にGenerateConnectionHash()で完了しているため）
     NegotiationResult RunNegotiation(bool isIpv6, bool isHost, const std::string &targetIp, uint16_t port,
-                                     bool isHeadless = false, bool skipHostDisplay = false);
+                                     bool isHeadless = false, bool skipHostDisplay = false,
+                                     bool allowRelay = true, int connectTimeoutMs = 12000);
 
     // ハッシュ文字列からアドレスを解決して接続試行（IPv4優先、失敗時IPv6）
     NegotiationResult RunNegotiationFromHash(const std::string &hash);

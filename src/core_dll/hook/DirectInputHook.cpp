@@ -9,6 +9,7 @@
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/VirtualControllerTest.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
+#include "core_dll/engine/SceneRunner.hpp"
 #include <windows.h>
 #include <dinput.h>
 #include <cfgmgr32.h>
@@ -635,6 +636,9 @@ static bool CheckInputBind(int joyId, const std::string &bindStr) {
             ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU)) & 0x8000))
             return false;
         const auto key = g_keyboardKeys.find(bindStr);
+        if (key != g_keyboardKeys.end() && key->second == VK_F1 &&
+            cccaster::domain::ui::FrameBarDisplay::Available(cccaster::domain::session::SceneRunner::AppMode()))
+            return false;
         if (key != g_keyboardKeys.end() &&
             ((hudShortcut.f3 && key->second == VK_F3) ||
              (hudShortcut.control && (key->second == VK_CONTROL || key->second == VK_LCONTROL ||

@@ -33,13 +33,13 @@ if (-not (Test-Path $binDll)) { Write-Output "ビルド成果物がありませ�
 # ── [1] デプロイ（これを飛ばすと古い DLL がテストされる）──
 Write-Output '[1] デプロイ'
 foreach ($i in 1,2) {
-    $dst = Join-Path $test "MBAACC_$i\cccaster"
+    $dst = Join-Path $test "MBAACC_$i\cccaster_B"
     if (-not (Test-Path $dst)) { Write-Output "  テスト環境がありません: $dst"; exit 1 }
     Copy-Item -Force $binDll,$binExe $dst
 }
 $want = (Get-FileHash $binDll -Algorithm MD5).Hash
 foreach ($i in 1,2) {
-    $got = (Get-FileHash (Join-Path $test "MBAACC_$i\cccaster\libcccaster_hook.dll") -Algorithm MD5).Hash
+    $got = (Get-FileHash (Join-Path $test "MBAACC_$i\cccaster_B\libcccaster_hook.dll") -Algorithm MD5).Hash
     if ($got -ne $want) { Write-Output "  MBAACC_$i のデプロイに失敗"; exit 1 }
 }
 Write-Output "  OK (md5=$($want.Substring(0,8)))"
@@ -49,7 +49,7 @@ Write-Output '[2] 既存プロセス停止とログ削除'
 Get-Process -Name 'MBAA','CCCaster_v10' | Stop-Process -Force
 Start-Sleep -Seconds 2
 foreach ($i in 1,2) {
-    Remove-Item -Force (Join-Path $test "MBAACC_$i\cccaster\cccaster_hook_log.txt")
+    Remove-Item -Force (Join-Path $test "MBAACC_$i\cccaster_B\cccaster_hook_log.txt")
 }
 
 # ── [3] 起動（入力は自動生成）──
@@ -82,7 +82,7 @@ Start-Sleep -Seconds 1
 
 # ── [6] 判定 ──
 $logs = @{}
-foreach ($i in 1,2) { $logs[$i] = Join-Path $test "MBAACC_$i\cccaster\cccaster_hook_log.txt" }
+foreach ($i in 1,2) { $logs[$i] = Join-Path $test "MBAACC_$i\cccaster_B\cccaster_hook_log.txt" }
 
 function Read-Rec($path) {
     $map = @{}

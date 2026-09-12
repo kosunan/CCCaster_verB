@@ -29,7 +29,7 @@ $taskOldStartupAssets=$env:CCCASTER_STARTUP_ASSETS_BASELINE
 $taskOldStartupFirst=$env:CCCASTER_STARTUP_FIRST_BASELINE
 try {
     foreach($taskSide in 1,2) {
-        $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster"
+        $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
         $taskGamePath=Join-Path $taskTest "MBAACC_$taskSide\MBAA.exe"
         if(!(Test-Path -LiteralPath $taskGamePath)){throw "ゲームがない: $taskGamePath"}
         $taskExisting=@(Get-CimInstance Win32_Process -Filter "Name='MBAA.exe'" | Where-Object {$_.ExecutablePath -eq $taskGamePath})
@@ -49,7 +49,7 @@ try {
     $env:CCCASTER_SCRIPT_INPUT=if($VirtualController -or $ManualInput){'0'}else{'1'};$env:CCCASTER_INPUT_TRACE='1';if(!$VirtualController){Remove-Item Env:CCCASTER_TEST_VIRTUAL_PRODUCT -ErrorAction SilentlyContinue};$env:CCCASTER_MEM_TRACE='1';$env:CCCASTER_TIME_SCALE='1'
     if($Network){$env:CCCASTER_TEST_NETWORK=$Network}else{Remove-Item Env:CCCASTER_TEST_NETWORK -ErrorAction SilentlyContinue}
     foreach($taskSide in 1,2) {
-        $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster"
+        $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
         if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){'05C4054C'}else{'09CC054C'}}
         $taskArgs=if($taskSide -eq 1){"--headless --host --port $Port"}else{"--headless --ip 127.0.0.1 --port $Port"}
         if($DebugSpikes){$taskArgs+=' --debug-spikes'}
@@ -128,7 +128,7 @@ try {
     }
     Start-Sleep -Milliseconds 500
     foreach($taskSide in $taskStartedSides) {
-        $taskLog=Join-Path $taskTest "MBAACC_$taskSide\cccaster\cccaster_hook_log.txt"
+        $taskLog=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B\cccaster_hook_log.txt"
         if(Test-Path -LiteralPath $taskLog){Copy-Item -LiteralPath $taskLog -Destination (Join-Path $taskOut "game_$taskSide.log")}
         if($DebugSpikes){
             $taskDebugLogs=@(Get-ChildItem -LiteralPath (Split-Path -Parent $taskLog) -Filter 'spike_debug_*.tsv' |
