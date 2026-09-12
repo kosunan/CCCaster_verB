@@ -62,7 +62,7 @@ inline void Install() {
     const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     game_build::PeIdentity identity;
     if (base != 0x400000 || !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base),4096}, identity) ||
-        game_build::IdentifyHeaders(identity) != game_build::Edition::Carnival140) return;
+        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity))) return;
     // 分岐先まで照合し、類似版や他パッチの上へ書かない。
     constexpr unsigned char context[] = {
         0xe8,0xd3,0xa7,0x08,0x00,0x8b,0x15,0x48,0x74,0x76,0x00,0x83,0xc2,0x60,0x52,

@@ -18,6 +18,7 @@
 #include "core_dll/mbaa_mem/SoundPrewarm.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
+#include "shared_contracts/GameBuild.hpp"
 
 #include <windows.h>
 #include <cstring>
@@ -408,11 +409,11 @@ bool RealGameMemory::PrepareBattleAudio() {
         return true;
     }
     auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-    auto dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(base);
-    auto nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(base + dos->e_lfanew);
+    game_build::PeIdentity identity;
     constexpr unsigned char expected[] = {0x8b,0x47,0x04,0x56,0x8b,0x30};
-    if (base != 0x400000 || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386 ||
-        nt->FileHeader.TimeDateStamp != 0x4fe44444 || nt->OptionalHeader.SizeOfImage != 0x3b4000 ||
+    if (base != 0x400000 ||
+        !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base), 4096}, identity) ||
+        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity)) ||
         std::memcmp(reinterpret_cast<void *>(0x40f3a0), expected, sizeof(expected))) {
         DebugLog("[SoundPrewarm] skipped=image_mismatch");
         return true;

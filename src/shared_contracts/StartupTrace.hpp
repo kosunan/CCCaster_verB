@@ -31,9 +31,11 @@ inline bool Enabled() {
     static const bool value = std::getenv("CCCASTER_STARTUP_TRACE") != nullptr;
     return value;
 }
-// 比較試験専用。同じ計測コードのまま従来の待機・ナビを再現する。
+// 2026-09-13: コミュニティEXE対応に伴い起動高速化を再有効化。
+// 比較試験だけ環境変数で従来経路へ戻す。
+inline constexpr bool AccelerationEnabled = true;
 inline bool Baseline() {
-    static const bool value = std::getenv("CCCASTER_STARTUP_BASELINE") != nullptr;
+    static const bool value = !AccelerationEnabled || std::getenv("CCCASTER_STARTUP_BASELINE") != nullptr;
     return value;
 }
 inline int64_t QpcUs() {

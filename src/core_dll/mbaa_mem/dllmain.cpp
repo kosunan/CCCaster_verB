@@ -266,9 +266,13 @@ DWORD WINAPI InitThread(LPVOID lpParam) {
         HookLog("[InitThread] FAILED game timing imports unavailable");
         ExitProcess(1);
     }
-    // MBAA本体のインポートだけを変更。DLL・音声側のSleep/時計は通常のまま。
-    cccaster::core::hooks::TimeHooks::SetTimeMultiplier(1000);
-    cccaster::core::hooks::TimeHooks::SetSleepBypass(true);
+    // 起動高速化停止中はゲーム本来の時計・Sleepで素材準備とメニューを進める。
+    // キャラ選択到達後にSceneFastBootが既存の入力／同期用の設定へ引き継ぐ。
+    const bool accelerateStartup = !cccaster::diagnostics::startup::Baseline();
+    cccaster::core::hooks::TimeHooks::SetTimeMultiplier(accelerateStartup ? 1000 : 1);
+    cccaster::core::hooks::TimeHooks::SetSleepBypass(accelerateStartup);
+    HookLog(accelerateStartup ? "[StartupPolicy] acceleration=on" :
+        "[StartupPolicy] acceleration=off gameClock=1 sleepBypass=0 originalAssets=1");
 
     // ================================================================
     // (4) ネットプレイ通信初期化（UDPソケット生成・受信開始）

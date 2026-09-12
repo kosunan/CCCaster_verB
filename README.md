@@ -1,14 +1,14 @@
-# CCCaster verB 1.0 beta
+# CCCaster verB beta_1.1
 
 **A faster, easier CCCaster for MBAACC.**
 
-CCCaster verB 1.0 beta supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
+CCCaster verB beta_1.1 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
 ![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
 
 ## What changed?
 
-- **Faster startup:** training started in about **2.1 seconds**, compared with **8.7 seconds** in our old-version test.
+- **Fast startup with verified Community EXE support:** startup acceleration is enabled, with a full-file SHA-256 check at every game launch. The specified Community EXE reached Training selection in **2.84 seconds** in one local test. See [supported hashes and validation](docs/design/2026-09-13_community_exe.md).
 - **Easy launcher:** host, join, spectate, or start training from an English/Japanese GUI.
 - **Fairer settings:** both players use the same agreed delay and rollback values.
 - **Steadier timing:** in our latest offline test, **99.7% of measured frame intervals were within 3µs of the target**.
@@ -19,6 +19,8 @@ CCCaster verB 1.0 beta supports **Melty Blood Actress Again Current Code Ver.1.0
 Results vary by PC and connection. The 3µs figure describes frame pacing, not controller or display latency. See the [benchmarks](docs/benchmarks/2026-09-13_offline_pacing.md) for the full conditions.
 
 ## How to play
+
+Download [beta_1.1](https://github.com/kosunan/CCCaster_verB/releases/tag/beta_1.1). See the [release notes and update instructions](docs/releases/beta_1.1.md).
 
 Put the included files in the `cccaster_B` folder next to `MBAA.exe`, then open **CCCaster_v10_GUI.exe**.
 

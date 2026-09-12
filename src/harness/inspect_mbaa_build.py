@@ -10,6 +10,7 @@ import time
 
 BUILDS = {
     "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d": "carnival_140",
+    "6d1415ca9573100e86a779ac2f81e9bedd322664e3daeae0229a67d13720310a": "carnival_140_community",
     "11270cf2da851054aa6c1bff309d50b042429abd936dca5df833bcd1de5e6c46": "steam_20170105",
 }
 

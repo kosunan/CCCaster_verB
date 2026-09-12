@@ -258,7 +258,11 @@ bool Change(bool enable) {
 }
 bool Active() {return active;}
 void Initialize(uint8_t mode) {
-    if(mode>1 || !cccaster::diagnostics::startup::HasGate() || cccaster::diagnostics::startup::Baseline() ||
+    if (cccaster::diagnostics::startup::Baseline()) {
+        cccaster::domain::session::DebugLog("[StartupAssets] disabled; original D3DX texture loading (no direct DDS or cache)");
+        return;
+    }
+    if(mode>1 || !cccaster::diagnostics::startup::HasGate() ||
         std::getenv("CCCASTER_STARTUP_ASSETS_BASELINE") || !startup::MatchesMenuCode()) return;
     firstFast=std::getenv("CCCASTER_STARTUP_FIRST_BASELINE")==nullptr;
     verify=std::getenv("CCCASTER_STARTUP_ASSETS_VERIFY")!=nullptr;
