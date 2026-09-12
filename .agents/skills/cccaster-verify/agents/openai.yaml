@@ -1,0 +1,4 @@
+interface:
+  display_name: "CCCaster 検証・配布"
+  short_description: "32bitビルド、短い実対戦、同期比較と配布物の確認"
+  default_prompt: "$cccaster-verify を使って、このCCCasterの変更に必要な範囲の検証を行ってください。"

@@ -1,0 +1,133 @@
+{
+  "upstream_commit": "038887d7d8e6e70963ce9eb5780a25ac35cf1cac",
+  "local_layout_sha256": "b6bb86743b429610931f40c8879e94f1c13aa5067afa6f9824d30355ec559ff0",
+  "limitation": "FullSaveの実コピー範囲と固定保存ノードのみの静的比較。動的ノード・別経路保存・実行時変更は判定しない。保存漏れやデシンクの証明ではない。",
+  "regions": [
+    {
+      "name": "CameraZoom",
+      "va": "0x54eb70",
+      "size": 12,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "CameraDestination",
+      "va": "0x555124",
+      "size": 12,
+      "outside_direct_snapshot": [
+        {
+          "begin": "0x55512c",
+          "end_exclusive": "0x555130",
+          "size": 4
+        }
+      ]
+    },
+    {
+      "name": "Player1",
+      "va": "0x555130",
+      "size": 1000,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "Player2",
+      "va": "0x555c2c",
+      "size": 1000,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "Player3",
+      "va": "0x556728",
+      "size": 1000,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "Player4",
+      "va": "0x557224",
+      "size": 1000,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "PlayerAux4",
+      "va": "0x557db8",
+      "size": 2096,
+      "outside_direct_snapshot": [
+        {
+          "begin": "0x5581d0",
+          "end_exclusive": "0x5585e8",
+          "size": 1048
+        }
+      ]
+    },
+    {
+      "name": "StopSituation",
+      "va": "0x558600",
+      "size": 3896,
+      "outside_direct_snapshot": [
+        {
+          "begin": "0x558600",
+          "end_exclusive": "0x558608",
+          "size": 8
+        }
+      ]
+    },
+    {
+      "name": "FrameCount",
+      "va": "0x55d1cc",
+      "size": 4,
+      "outside_direct_snapshot": [
+        {
+          "begin": "0x55d1cc",
+          "end_exclusive": "0x55d1d0",
+          "size": 4
+        }
+      ]
+    },
+    {
+      "name": "SlowMo",
+      "va": "0x55d208",
+      "size": 2,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "Camera",
+      "va": "0x55dec4",
+      "size": 12,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "TrueFrameCount",
+      "va": "0x562a40",
+      "size": 4,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "GlobalFreeze",
+      "va": "0x562a48",
+      "size": 4,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "RNG",
+      "va": "0x564068",
+      "size": 228,
+      "outside_direct_snapshot": [
+        {
+          "begin": "0x56406c",
+          "end_exclusive": "0x564070",
+          "size": 4
+        }
+      ]
+    },
+    {
+      "name": "CameraNext",
+      "va": "0x564b14",
+      "size": 12,
+      "outside_direct_snapshot": []
+    },
+    {
+      "name": "Effects",
+      "va": "0x67bde8",
+      "size": 828000,
+      "outside_direct_snapshot": []
+    }
+  ]
+}

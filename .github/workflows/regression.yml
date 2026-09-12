@@ -1,0 +1,28 @@
+name: 同期ロジックの高速回帰チェック
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  logic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 構成
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: ビルド
+        run: cmake --build build -j2
+      - name: 同期ロジック
+        run: ctest --test-dir build --output-on-failure --no-tests=error --timeout 30
+      - name: ログ判定器と解析器
+        run: python3 -m unittest discover -s src/harness -p 'test_*.py'
+      - name: 失敗時もテスト記録を保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logic-test-logs
+          path: build/Testing/Temporary/
+          retention-days: 14

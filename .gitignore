@@ -1,0 +1,36 @@
+# ビルド成果物
+build/
+build_*/
+build-*/
+build_logs/
+*.exe
+*.dll
+*.pdb
+*.obj
+*.o
+*.a
+*.lib
+
+# 実ゲーム・ローカル検証環境
+_TEST_MBAACC/
+_TEST_CLOSE_MBAACC/
+_temp_backup/
+tests/MBAACC_Training/
+
+# ログ・一時ファイル
+*.log
+compile_commands.json
+__pycache__/
+*.py[cod]
+.cache/
+.ai_workspace/
+
+# エディタ設定
+.vscode/
+.clangd
+
+# ローカルツール
+tools/
+fix_*.py
+rename_*.py
+test_compile.*
