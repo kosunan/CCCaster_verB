@@ -13,7 +13,7 @@
 
 ```text
 =======================================
-     CCCaster v10 - Rollback Engine
+     CCCaster verB 1.0 beta - Rollback Engine
 =======================================
 (Use UP/DOWN arrows to navigate, ENTER to select)
 
@@ -163,7 +163,7 @@ UDP接続確立を担うクラスの動作仕様です。
 
 ```text
 =======================================
-     CCCaster v10 - Rollback Engine
+     CCCaster verB 1.0 beta - Rollback Engine
 =======================================
 ```
 
@@ -249,7 +249,7 @@ Launching Game...
 
 ---
 
-# CCCaster v10: CLI 業務画面・UI遷移設計書
+# CCCaster verB 1.0 beta: CLI 業務画面・UI遷移設計書
 
 本ドキュメントは、再構築されたインデックス駆動型 `MainController` および `ConsoleRenderer` が提供するコンソールユーザーインターフェース（CLI UI）の画面遷移ルール、各画面の業務（ドメイン）定義、および入力仕様をまとめたものです。
 
@@ -714,5 +714,4 @@ build/
 
 
 ---
-
 

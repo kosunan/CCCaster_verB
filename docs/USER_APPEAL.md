@@ -1,4 +1,4 @@
-# CCCaster v10 — Faster startup. More consistent frame pacing.
+# CCCaster verB 1.0 beta — Faster startup. More consistent frame pacing.
 
 For MBAACC Ver.1.07 Rev.1.4.0 (32-bit). Updated September 13, 2026.
 
@@ -73,7 +73,7 @@ Press **F4** to review or change controller mappings. The setup screen checks du
 
 ## Short announcement
 
-> **CCCaster v10: faster startup, more consistent frame pacing, and streamlined netplay.**
+> **CCCaster verB 1.0 beta: faster startup, more consistent frame pacing, and streamlined netplay.**
 >
 > Start training in about **2.1 seconds**, down from **8.7 seconds** in our legacy-build comparison. The latest offline timing update kept **99.7% of measured frame intervals within 3µs of 1/60 second** on our test PC.
 >

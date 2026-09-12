@@ -1,8 +1,8 @@
-# CCCaster v10
+# CCCaster verB 1.0 beta
 
 **A faster, easier CCCaster for MBAACC.**
 
-CCCaster v10 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
+CCCaster verB 1.0 beta supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
 ![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
 

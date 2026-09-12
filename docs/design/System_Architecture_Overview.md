@@ -153,7 +153,7 @@
 
 ---
 
-# CCCaster v10: EXE-DLL間連携 (API/IPC) 業務設計書
+# CCCaster verB 1.0 beta: EXE-DLL間連携 (API/IPC) 業務設計書
 
 ## 1. 背景と目的
 現在、`CCCaster_v10.exe` (main_app) はユーザーのUI入力を受け付け、対象のIP・ポート・ホスト/クライアントの役割を確定させた上で、`GameLauncher` を使用して `MBAA.exe` を起動し `libcccaster_hook.dll` (core_dll) をインジェクトしています。
@@ -516,5 +516,4 @@ namespace cccaster::app {
 
 
 ---
-
 
