@@ -1,5 +1,11 @@
 # 現行仕様・確認状況
 
+配布版は `beta_1.1`。検証済みのCLI／GUI／DLLと同じコミットのソースを、既存の公開リポジトリ `kosunan/CCCaster_verB` へまとめる。[リリースノートと更新方法](releases/beta_1.1.md)。
+
+指定されたコミュニティ版MBAA.exe（SHA-256 `6d1415...310a`）を対応版へ追加し、起動高速化を再有効化した。CLI／GUI共通で起動ごとにEXE全体のSHA-256を照合・表示し、不一致はゲーム生成前に拒否する。DLL側も.textと追加.new00を照合。従来の検証用EXEも対応を維持する。指定EXEの差分命令と主要14フック箇所を確認し、32bitビルド・37 CTest・633検査・7種類の起動前拒否が成功した。[実装と差分確認](design/2026-09-13_community_exe.md)。
+
+指定EXEの独立コピーでTrainingのモード・入力・描画経路へ到達（単発2.835秒）。同一PC2窓、脚本入力、40秒・15〜25ms／5%損失・短縮コード参加で、新EXE同士1,295確定F、新旧EXE混在1,234確定Fの差分／欠落0。全側で高速化ONとWASAPI active。元の指定EXEを含む77件のEXE／INI不変。通常テスト1・2とCommunityRegressionの1・2へCLI／GUI／DLLを反映し、差し替えZIPを再読照合した。報告者PC・別回線・物理操作は未確認。根拠: `build_logs/community_support_20260913/`。[起動拒否の経緯](issues/BUG_REPORT_TRAINING_LAUNCH.md)、[高速化を一時停止した時点の記録](design/2026-09-13_startup_disabled.md)。
+
 「コードで参加」の接続コード入力欄を1pxの紅色枠で常時囲み、貼り付け先を見つけやすくした。32bit GUIビルド成功。通常テスト1・2へ反映し、ビルド元とのSHA-256一致を確認した。
 
 新規接続コードを先頭1＋Base62へ短縮し、PC識別子4文字を除外。接続先・ポート・トークン・6時間期限を維持し、CRC16で誤入力を検出する。旧Base32も読取可能。新形式は大小文字を区別し、IPv4のみ最大24文字、IPv4＋LAN最大30文字、IPv6を含む全アドレスで最大51文字。32bit CLI/GUI、3,656項目の符号化検査と関連4 CTest、ローカル接続支援試験成功。実発行51文字で40秒対戦し、15〜25ms/5%損失で1,324確定Fが差分・欠落0、27 INI不変。通常テスト1・2へCLI／GUIを配置。テスト2も通常名 `CCCaster_v10_GUI.exe` を更新版へ差し替え、配置先の別名版は撤去した。[仕様・互換性](design/2026-09-13_compact_connection_codes.md)、根拠: build_logs/compact_codes_20260913/。

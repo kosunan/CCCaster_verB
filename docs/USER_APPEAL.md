@@ -1,6 +1,8 @@
-# CCCaster verB 1.0 beta — Faster startup. More consistent frame pacing.
+# CCCaster verB beta_1.1 — Faster startup. More consistent frame pacing.
 
 For MBAACC Ver.1.07 Rev.1.4.0 (32-bit). Updated September 13, 2026.
+
+Startup acceleration has been re-enabled with support for the specified Community EXE and full-file SHA-256 validation at every game launch. The latest Community EXE test reached Training selection in 2.835 seconds in one run. The comparison figures below remain the earlier three-run measurements using the previous reference EXE. See [supported hashes and validation](design/2026-09-13_community_exe.md).
 
 **Get into training faster, keep both players on shared netplay settings, and recover efficiently when inputs need correcting.**
 
@@ -73,7 +75,7 @@ Press **F4** to review or change controller mappings. The setup screen checks du
 
 ## Short announcement
 
-> **CCCaster verB 1.0 beta: faster startup, more consistent frame pacing, and streamlined netplay.**
+> **CCCaster verB beta_1.1: faster startup, more consistent frame pacing, and streamlined netplay.**
 >
 > Start training in about **2.1 seconds**, down from **8.7 seconds** in our legacy-build comparison. The latest offline timing update kept **99.7% of measured frame intervals within 3µs of 1/60 second** on our test PC.
 >

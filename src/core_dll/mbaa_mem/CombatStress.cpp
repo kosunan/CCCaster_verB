@@ -2,6 +2,7 @@
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
 #include "core_dll/common/DebugLog.hpp"
+#include "shared_contracts/GameBuild.hpp"
 #include <windows.h>
 #include <MinHook.h>
 #include <cstring>
@@ -31,11 +32,11 @@ bool Install() {
     const char *v = std::getenv("CCCASTER_COMBAT_STRESS");
     if (!IsScriptedInputEnabled() || !v || (v[0] != '1' && v[0] != '2')) return false;
     auto module = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-    const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(module);
-    const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(module + dos->e_lfanew);
+    game_build::PeIdentity identity;
     constexpr unsigned char setter[] = {0x8a,0x43,0x10,0x84,0xc0,0x74,0x0f,0x88,0x87,0x76,0x01,0,0};
-    if (module != 0x400000 || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386 ||
-        nt->FileHeader.TimeDateStamp != 0x4fe44444 || nt->OptionalHeader.SizeOfImage != 0x3b4000 ||
+    if (module != 0x400000 ||
+        !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(module), 4096}, identity) ||
+        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity)) ||
         std::memcmp(reinterpret_cast<void *>(0x45f4ee), setter, sizeof(setter))) return false;
     if (v[0] == '2') {
         auto r = MH_Initialize();

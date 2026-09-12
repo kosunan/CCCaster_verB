@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 #include "core_dll/common/DebugLog.hpp"
+#include "shared_contracts/GameBuild.hpp"
 
 namespace cccaster::game_interface::scene_pair_merge {
 // このゲーム版の連続EndScene/BeginSceneだけを対象にする。
@@ -22,11 +23,10 @@ inline void Initialize() {
         return;
     }
     const auto module = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-    const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(module);
-    if (!module || dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) return;
-    const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(module + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386 ||
-        nt->FileHeader.TimeDateStamp != 0x4fe44444 || nt->OptionalHeader.SizeOfImage != 0x3b4000) {
+    game_build::PeIdentity identity;
+    if (module != 0x400000 ||
+        !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(module), 4096}, identity) ||
+        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity))) {
         domain::session::DebugLog("[SceneMerge] game image mismatch; unchanged");
         return;
     }

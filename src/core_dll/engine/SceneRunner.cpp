@@ -344,7 +344,8 @@ void SceneRunner::Init(MatchContext &ctx) {
     } else if (ctx.appMode == 2) {
         cccaster::spectator::Transport::Get().StartViewer(ctx.peerIp, ctx.peerPort);
     }
-    FrameControl::SetModeHighSpeedSkip();
+    if (cccaster::diagnostics::startup::Baseline()) FrameControl::SetModeNormalSpeed();
+    else FrameControl::SetModeHighSpeedSkip();
     scene::SceneFastBoot::Start(ctx.appMode == 2 ? cccaster::public_api::IpcGameMode::Versus
                                                : static_cast<cccaster::public_api::IpcGameMode>(ctx.appMode));
     runtime.ready.store(true, std::memory_order_release);

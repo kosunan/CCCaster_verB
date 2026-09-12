@@ -8,5 +8,6 @@ target_include_directories(launcher PUBLIC
 )
 
 if(WIN32)
+    target_link_libraries(launcher PUBLIC bcrypt)
     target_link_options(launcher PRIVATE -static -static-libgcc -static-libstdc++)
 endif()

@@ -17,6 +17,7 @@
 #include "core_dll/mbaa_mem/StartupPatch.hpp"
 #include "core_dll/mbaa_mem/StartupSystemInfo.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
+#include "core_dll/hook/TimeHooks.hpp"
 
 #include <cstring>
 
@@ -127,6 +128,10 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
             for (unsigned i=0; i<20; ++i) nonzero += keys[i] != 0;
             DebugLog("[StartupKeys] nonzero=%u", nonzero);
         }
+        // 起動中だけ元のゲーム時計を使う。以後の60Hz待機・ロールバックは既存経路へ戻す。
+        cccaster::core::hooks::TimeHooks::SetTimeMultiplier(1000);
+        cccaster::core::hooks::TimeHooks::SetSleepBypass(true);
+        DebugLog("[StartupPolicy] character selection reached; runtime pacing active");
         DebugLog("[FastBoot] ★ CharaSelect reached! (frame=%u) Switching to NormalSpeed.", s_frameCount);
         GC::SetModeNormalSpeed();
         return true;
@@ -146,7 +151,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // イントロスキップ: gameState == 1 or 99 → 101 に書き換え
     // ================================================================
     uint32_t gameState = *CC_GAME_STATE_ADDR;
-    if (gameState == CC_GAME_STATE_CHARA_INTRO || gameState == CC_GAME_STATE_INTRO_DONE) {
+    if (!cccaster::diagnostics::startup::Baseline() &&
+        (gameState == CC_GAME_STATE_CHARA_INTRO || gameState == CC_GAME_STATE_INTRO_DONE)) {
         *CC_GAME_STATE_ADDR = CC_GAME_STATE_INTRO_SKIP;
     }
 
@@ -199,6 +205,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // 遷移画面 (gameMode == 2 or 3):
     //   ダイレクトジャンプ命令を書き込み
     // ================================================================
+    // ランチャーで選んだモードへ入るための分岐は維持する。
+    // 速度・描画・暗転の短縮とは別で、通常入力だけでは別項目へ遷移し得る。
     if (!s_forceGotoAttempted && (gameMode == 2 || gameMode == 3)) {
         s_forceGotoAttempted = true;
         uint8_t forcePatch[2] = {0xEB, 0x00};

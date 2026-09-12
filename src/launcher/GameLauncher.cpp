@@ -2,6 +2,7 @@
 #include "shared_contracts/StartupTrace.hpp"
 #include "shared_contracts/GameBuild.hpp"
 #include "launcher/RemoteGameImage.hpp"
+#include "launcher/GameFileHash.hpp"
 
 #include <iostream>
 #include <chrono>
@@ -12,19 +13,113 @@
 #include <fstream>
 #include <vector>
 #include <cstdlib>
+#include <filesystem>
+#include <iomanip>
 
 namespace cccaster::main_app {
 
 namespace {
-cccaster::game_build::Edition InspectGameFile(const std::string &path) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    const auto size = file.tellg();
-    if (!file || size <= 0 || size > 64 * 1024 * 1024) return cccaster::game_build::Edition::Unknown;
+struct GameFileLock {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    ~GameFileLock() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
+};
+cccaster::game_build::Edition InspectGameFile(const std::string &path, GameFileLock &file) {
+    using namespace cccaster::game_build;
+    std::cerr << "[GameBuild] File: " << path << "\n";
+    std::error_code error;
+    const auto status = std::filesystem::status(path, error);
+    if (status.type() == std::filesystem::file_type::not_found) {
+        std::cerr << "[GameBuild] MBAA.exe was not found at the path above.\n"
+                     "[GameBuild] Place cccaster_B directly inside the game folder, next to MBAA.exe.\n";
+        return Edition::Unknown;
+    }
+    if (error || !std::filesystem::is_regular_file(status)) {
+        std::cerr << "[GameBuild] Cannot access MBAA.exe as a regular file (system error="
+                  << error.value() << "). Check the path and file permissions.\n";
+        return Edition::Unknown;
+    }
+    // 検査からCreateProcess完了まで書込み・削除共有を許可せず、検査後の差替えを防ぐ。
+    file.handle = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file.handle == INVALID_HANDLE_VALUE) {
+        std::cerr << "[GameBuild] Cannot open MBAA.exe for reading (system error=" << GetLastError()
+                  << "). Check file permissions or file locks.\n";
+        return Edition::Unknown;
+    }
+    LARGE_INTEGER fileSize{};
+    if (!GetFileSizeEx(file.handle, &fileSize)) {
+        std::cerr << "[GameBuild] Cannot read executable size (system error=" << GetLastError() << ").\n";
+        return Edition::Unknown;
+    }
+    const auto size = fileSize.QuadPart;
+    if (size <= 0 || size > 64 * 1024 * 1024) {
+        std::cerr << "[GameBuild] Invalid executable size: " << size << " bytes (expected 1..67108864).\n";
+        return Edition::Unknown;
+    }
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
-    file.seekg(0);
-    if (!file.read(reinterpret_cast<char *>(bytes.data()), bytes.size()))
-        return cccaster::game_build::Edition::Unknown;
-    return cccaster::game_build::IdentifyFile(bytes);
+    DWORD read = 0;
+    if (!ReadFile(file.handle, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) ||
+        read != bytes.size()) {
+        std::cerr << "[GameBuild] Failed to read the complete executable. Check file access and retry.\n";
+        return Edition::Unknown;
+    }
+    std::string sha256;
+    if (!FileSha256(bytes, sha256)) {
+        std::cerr << "[GameBuild] SHA-256 calculation failed. Executable validation is required.\n";
+        return Edition::Unknown;
+    }
+    std::cerr << "[GameBuild] SHA-256: " << sha256 << "\n";
+    const auto inspection = InspectFile(bytes);
+    if (inspection.issue == FileIssue::None) {
+        if (sha256 != ExpectedFileSha256(inspection.edition)) {
+            std::cerr << "[GameBuild] Full-file SHA-256 mismatch. This executable is not a verified build.\n"
+                      << "[GameBuild] Expected SHA-256: " << ExpectedFileSha256(inspection.edition) << "\n";
+            return Edition::Unknown;
+        }
+        std::cerr << "[GameBuild] Full-file SHA-256 verified.\n";
+        return inspection.edition;
+    }
+    switch (inspection.issue) {
+    case FileIssue::InvalidPe:
+        std::cerr << "[GameBuild] Invalid or incomplete PE32 executable headers.\n";
+        break;
+    case FileIssue::ImageBaseMismatch:
+        std::cerr << "[GameBuild] Executable image base differs from the supported build.\n";
+        break;
+    case FileIssue::TruncatedText:
+        std::cerr << "[GameBuild] Executable code section is incomplete.\n";
+        break;
+    case FileIssue::UnknownBuild:
+        std::cerr << "[GameBuild] Executable headers do not match a recognized build.\n";
+        break;
+    case FileIssue::CodeMismatch:
+        std::cerr << "[GameBuild] Headers match " << Name(inspection.headerEdition)
+                  << ", but executable code differs. A matching version label alone is insufficient.\n";
+        break;
+    case FileIssue::ExtraSectionMismatch:
+        std::cerr << "[GameBuild] Community executable extension section is incomplete or differs.\n";
+        break;
+    default: break;
+    }
+    if (inspection.issue != FileIssue::InvalidPe) {
+        const auto &p = inspection.identity;
+        const auto flags = std::cerr.flags();
+        std::cerr << "[GameBuild] bytes=" << size << std::hex << std::showbase
+                  << " machine=" << p.machine << " timestamp=" << p.timestamp
+                  << " base=" << p.imageBase << " imageSize=" << p.imageSize
+                  << " entry=" << p.entryRva << " textRva=" << p.textRva
+                  << " textSize=" << p.textSize << " textOffset=" << p.textOffset << "\n";
+        if (inspection.issue == FileIssue::CodeMismatch || inspection.issue == FileIssue::UnknownBuild) {
+            std::cerr << "[GameBuild] codeHash(FNV64)=" << inspection.codeHash;
+            if (inspection.issue == FileIssue::CodeMismatch)
+                std::cerr << " expected=" << inspection.expectedCodeHash;
+            std::cerr << "\n";
+        }
+        std::cerr.flags(flags);
+    }
+    std::cerr << "[GameBuild] This launcher requires Carnival Phantasm Ver.1.07 Rev.1.4.0.\n"
+                 "[GameBuild] Please include all GameBuild lines and the MBAA.exe SHA-256 in a bug report.\n";
+    return Edition::Unknown;
 }
 }
 
@@ -208,7 +303,8 @@ bool GameLauncher::MonitorBootSequence() {
     } else return false;
     long long tsInject = elapsedMs();
     std::cerr << "[FastBoot] [" << tsInject << "ms] DLL Injection complete\n";
-    if (!cccaster::diagnostics::startup::Baseline()) {
+    // 高速化を止めても、フックの準備完了前にゲーム入口を解放しない。
+    {
         const HANDLE handles[] = {gate.handle, _pi.hProcess};
         if (WaitForMultipleObjects(2, handles, FALSE, 30000) != WAIT_OBJECT_0) {
             std::cerr << "[FastBoot] DLL preparation failed or timed out.\n";
@@ -240,12 +336,14 @@ bool GameLauncher::MonitorBootSequence() {
  *        一連のシーケンス(サスペンド起動 -> インジェクト準備 -> DLL注入 -> 実行再開)を完遂します。
  */
 bool GameLauncher::BootAndMonitor(const std::string &exePath) {
-    const auto edition = InspectGameFile(exePath);
-    std::cerr << "[GameBuild] " << cccaster::game_build::Name(edition) << "\n";
+    GameFileLock gameFile;
+    const auto edition = InspectGameFile(exePath, gameFile);
+    if (edition != cccaster::game_build::Edition::Unknown)
+        std::cerr << "[GameBuild] " << cccaster::game_build::Name(edition) << "\n";
     if (!cccaster::game_build::SupportsRuntime(edition)) {
         std::cerr << (edition == cccaster::game_build::Edition::Steam20170105
-            ? "[GameBuild] Steam executable recognized; runtime port is not ready. No game was started.\n"
-            : "[GameBuild] Unsupported or modified executable. No game was started.\n");
+            ? "[GameBuild] Steam executable recognized. This launcher supports the Carnival Phantasm edition only. No game was started.\n"
+            : "[GameBuild] Executable validation failed. No game was started.\n");
         return false;
     }
     if (cccaster::diagnostics::startup::Enabled())

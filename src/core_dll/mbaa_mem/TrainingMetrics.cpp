@@ -56,7 +56,7 @@ bool SupportedImage() {
     if (base != 0x400000 || !ReadableImageRange(base, 4096)) return false;
     game_build::PeIdentity identity;
     return game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base), 4096}, identity) &&
-        game_build::IdentifyHeaders(identity) == game_build::Edition::Carnival140;
+        game_build::SupportsRuntime(game_build::IdentifyHeaders(identity));
 }
 }
 
