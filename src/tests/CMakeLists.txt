@@ -2,6 +2,12 @@
 # 単体テスト
 # ==========================================
 if(WIN32)
+    add_executable(test_connection_hash test_connection_hash.cpp ../cli_launcher/network_wrapper/ConnectionHash.cpp)
+    target_include_directories(test_connection_hash PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(test_connection_hash PRIVATE ws2_32)
+    target_link_options(test_connection_hash PRIVATE -static -static-libgcc -static-libstdc++)
+    add_test(NAME connection_hash COMMAND test_connection_hash)
+
     add_executable(relay_negotiation_probe relay_negotiation_probe.cpp
         ../cli_launcher/network_wrapper/SessionNegotiator.cpp
         ../cli_launcher/network_wrapper/ConnectionHash.cpp

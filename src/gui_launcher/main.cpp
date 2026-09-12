@@ -308,7 +308,7 @@ void Draw(Session& session) {
         static char spectatorCode[256]{};
         ImGui::BeginDisabled(session.Running());
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextWithHint("##spectatorCode", "S-...", spectatorCode, sizeof(spectatorCode));
+        ImGui::InputTextWithHint("##spectatorCode", Text("S-... / case-sensitive", "S-... / 大文字・小文字を区別"), spectatorCode, sizeof(spectatorCode));
         network_wrapper::ConnectionHash::DecodedAddress address;
         const bool valid = std::strncmp(spectatorCode, "S-", 2) == 0 &&
             network_wrapper::ConnectionHash::Decode(spectatorCode + 2, address) &&
@@ -371,9 +371,14 @@ void Draw(Session& session) {
                 valid = port > 0 && port <= 65535;
                 if (!valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1), Text("Enter a port between 1 and 65535.", "1〜65535 のポート番号を入力してください。"));
             } else {
-                ImGui::TextWrapped(Text("Paste the code from your opponent, then join.", "相手のコードを貼り付けて、参加します。"));
+                ImGui::TextWrapped(Text("Paste the code exactly as shared (case-sensitive), then join.", "大文字・小文字を変えずに相手のコードを貼り付けて、参加します。"));
                 ImGui::SetNextItemWidth(-1);
+                // 貼り付け先を見失わないよう、入力欄だけを細い紅色の線で常時囲む。
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
+                ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(.90f, .18f, .30f, 1.f));
                 ImGui::InputTextWithHint("##hash", Text("Connection code / Ctrl+V to paste", "接続コードを入力 / Ctrl+V で貼り付け"), hash, sizeof(hash));
+                ImGui::PopStyleColor();
+                ImGui::PopStyleVar();
                 network_wrapper::ConnectionHash::DecodedAddress address;
                 const bool asciiCode = std::all_of(hash, hash + std::strlen(hash), [](unsigned char c) {
                     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
@@ -391,7 +396,7 @@ void Draw(Session& session) {
         }
         ImGui::EndDisabled();
         if (!session.code.empty() && session.Running() && !session.booting) {
-            ImGui::TextWrapped(Text("Post this code on your bulletin board. It expires 6 hours after creation.", "募集掲示板へこのコードを貼ってください。有効期限は作成から6時間です。"));
+            ImGui::TextWrapped(Text("Post this code exactly as shown (case-sensitive). It expires in 6 hours.", "大文字・小文字を変えずにコードを共有してください。有効期限は作成から6時間です。"));
             ImGui::Spacing(); ImGui::TextUnformatted(Text("Share this connection code with your opponent", "この接続コードを相手に共有してください"));
             ImGui::SetNextItemWidth(-130);
             ImGui::InputText("##share", session.code.data(), session.code.size()+1, ImGuiInputTextFlags_ReadOnly);
