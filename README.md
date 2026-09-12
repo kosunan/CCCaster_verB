@@ -1,11 +1,11 @@
-# CCCaster verB beta_1.1　Please forgive the inclusion of many strange, AI-generated documents in the following files.
+# CCCaster verB beta_1.1
 
 **A faster, easier CCCaster for MBAACC.**
 
 CCCaster verB beta_1.1 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
 ![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
-
+Please forgive the inclusion of many strange, AI-generated documents in the following files.
 ## What changed?
 
 - **Fast startup with verified Community EXE support:** startup acceleration is enabled, with a full-file SHA-256 check at every game launch. The specified Community EXE reached Training selection in **2.84 seconds** in one local test. See [supported hashes and validation](docs/design/2026-09-13_community_exe.md).
