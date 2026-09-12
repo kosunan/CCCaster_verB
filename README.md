@@ -5,6 +5,8 @@
 CCCaster verB beta_1.1 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
 ![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
+
+
 Please forgive the inclusion of many strange, AI-generated documents in the following files.
 ## What changed?
 
