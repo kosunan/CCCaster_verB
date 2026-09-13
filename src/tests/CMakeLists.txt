@@ -46,6 +46,7 @@ target_include_directories(test_controller_mapping PRIVATE ${CMAKE_SOURCE_DIR}/s
 if(WIN32)
     target_link_options(test_controller_mapping PRIVATE -static -static-libgcc -static-libstdc++)
     target_sources(test_controller_mapping PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/tests/stub_hooklog.cpp
         ${CMAKE_SOURCE_DIR}/src/core_dll/ui/Controller_Ui_Logic.cpp
         ${CMAKE_SOURCE_DIR}/src/cli_launcher/ConfigManager.cpp
         ${CMAKE_SOURCE_DIR}/src/core_dll/common/DataPaths.cpp)

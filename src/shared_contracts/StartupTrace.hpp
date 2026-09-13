@@ -21,10 +21,15 @@ inline bool HasGate() {
     }();
     return available;
 }
-inline void SignalReady() {
+inline bool SignalReady() {
     char name[96]{}; GateName(name, sizeof(name), GetCurrentProcessId());
     const HANDLE event = OpenEventA(EVENT_MODIFY_STATE, FALSE, name);
-    if (event) { SetEvent(event); CloseHandle(event); }
+    if (!event) return false;
+    const bool signaled = SetEvent(event) != 0;
+    const DWORD error = GetLastError();
+    CloseHandle(event);
+    if (!signaled) SetLastError(error);
+    return signaled;
 }
 #endif
 inline bool Enabled() {

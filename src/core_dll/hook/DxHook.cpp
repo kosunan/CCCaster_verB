@@ -334,9 +334,12 @@ bool DxHook::InstallFactoryImport() {
 }
 
 IDirect3D9 *WINAPI DxHook::Hooked_Direct3DCreate9(UINT sdkVersion) {
+    HookLog("[DxHook] Direct3DCreate9 begin");
     cccaster::diagnostics::startup::Mark("d3d_factory_begin");
     auto d3d = originalFactory(sdkVersion);
+    cccaster::domain::session::DebugLog("[DxHook] Direct3DCreate9 returned object=%p", static_cast<void *>(d3d));
     if (d3d && !originalCreateDevice) {
+        HookLog("[DxHook] Installing CreateDevice hook...");
         auto target = (*reinterpret_cast<void ***>(d3d))[16];
         void *trampoline = nullptr;
         if (MH_CreateHook(target, reinterpret_cast<void *>(&Hooked_CreateDevice), &trampoline) == MH_OK) {
@@ -354,6 +357,7 @@ IDirect3D9 *WINAPI DxHook::Hooked_Direct3DCreate9(UINT sdkVersion) {
                 HookLog("[DxHook] ERROR: dummy fallback failed");
         }
     }
+    HookLog("[DxHook] Direct3DCreate9 interception complete");
     cccaster::diagnostics::startup::Mark("d3d_factory_end");
     return d3d;
 }
@@ -369,6 +373,7 @@ HRESULT WINAPI DxHook::Hooked_CreateDevice(IDirect3D9 *self, UINT adapter, D3DDE
     }
     cccaster::domain::session::DebugLog("[D3DDeviceFlags] flags=%u", unsigned(flags));
     const auto result = originalCreateDevice(self, adapter, type, window, flags, parameters, device);
+    cccaster::domain::session::DebugLog("[DxHook] CreateDevice returned HRESULT=0x%08lX", static_cast<unsigned long>(result));
     cccaster::diagnostics::startup::Mark("game_device_created");
     if (SUCCEEDED(result) && device && *device) {
         cccaster::diagnostics::driver_lock::Install();

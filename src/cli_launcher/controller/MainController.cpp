@@ -73,6 +73,11 @@ void MainController::ShowGameNotFoundError() {
 
 void MainController::LaunchAndMonitorGame() {
     if (_guiSession && gui::Cancelled()) return;
+    std::cout << "[Release] CCCaster verB 1.2\n" << std::flush;
+    // Trainingの開始席はP1。メニューから来た場合や直前の接続役割に依存させない。
+    // 起動ナビをP2へ送るとゲームがP2側でTrainingへ入り、P1設定では操作できなくなる。
+    if (_targetGameMode == cccaster::public_api::IpcGameMode::Training)
+        _isHost = true;
     std::cout << "  \x1b[1;36m[ INFO ]\x1b[0m Launching ..\\MBAA.exe via Launcher\\GameLauncher...\n\n"
               << std::flush;
 

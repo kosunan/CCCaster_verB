@@ -61,7 +61,7 @@ void ConsoleRenderer::ClearScreen() {
 
 void ConsoleRenderer::PrintHeader() {
     std::cout << ANSI_COLOR_CYAN_BOLD << "╔══════════════════════════════════════════════════════╗\n"
-              << "║               CCCaster v10 - Rollback Engine         ║\n"
+              << "║            CCCaster verB 1.2 - Rollback Engine        ║\n"
               << "╚══════════════════════════════════════════════════════╝\n"
               << ANSI_COLOR_RESET;
 }

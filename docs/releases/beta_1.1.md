@@ -1,5 +1,9 @@
 # CCCaster verB beta_1.1
 
+**更新先: [1.2の通常配布](https://github.com/kosunan/CCCaster_verB/releases/tag/v1.2)。この1.1の標準ZIPには起動停止・Trainingの修正が含まれていません。修正は1.2の `cccaster_B.zip` に統合しました。**
+
+2026-09-13 追加: [英語版の起動停止診断ZIP](https://github.com/kosunan/CCCaster_verB/releases/download/beta_1.1/cccaster_B_startup_diagnostic_EN_20260913.zip) を同リリースへ掲載した。ZIP内READMEとリリース上の診断説明は英語表記。多重起動対策のWindows APIへの副作用を修正し、起動ログを追加したもの。報告者PCでの復旧・Special K併用・高FPSの解決は未確認。[確認範囲と手順](../issues/BUG_REPORT_NO_WINDOW.md)。既存の通常版・ソースZIP・SHA256SUMS.txtは元のリリースに対応する。診断ZIPのSHA-256は `2fafaa92bd323c7b8fde4bd783a199e5c17a0be56428f5877c65aca579a6da04`。
+
 コミュニティで使用されている指定MBAA.exeが起動判定で拒否され、Trainingを開始できなかった問題を修正した。起動高速化を有効にし、ゲーム起動時にEXE全体のSHA-256を毎回照合する。
 
 ## 変更点
