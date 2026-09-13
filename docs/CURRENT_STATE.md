@@ -1,5 +1,7 @@
 # 現行仕様・確認状況
 
+2026-09-14 [CCCaster verB 1.2](https://github.com/kosunan/CCCaster_verB/releases/tag/v1.2) を通常リリース（prerelease=false）として公開し、Latestを1.2へ設定済み。タグv1.2／製品コミットは `ff9848d127fa7b619a826a58be7fef2085a3c901`。対策入り通常ZIP・同一コミットのソースZIP・SHA256一覧を公開URLから再取得し全一致、旧1.1の先頭に更新案内を追加し旧4資産の保持を確認した。Windows37 CTest・Python74件・Training・1,331確定F一致成功。GitHub CIはビルド／C++同期テスト成功、従来と同じLinux解析2件のWinDLL importエラーが残る。根拠: `build_logs/release_1.2/public_verification.json`、`previous_release_redirect_verified.json`、`ci_status.json`。以下の準備中記録は公開前の経緯。
+
 2026-09-14 1.2の標準配布を準備。1.1の通常ZIPが未対策のまま、修正版を追加オプションのように掲載していたことが今回の旧版使用を招いたとのユーザー確認を受領。起動時のWindows API干渉対策・Training P1修正・キャラセレ待機短縮を通常配布へ統合し、GUI・CLI・ログへ1.2を表示した。最終32bitビルド・37 CTest・GUIワーカーTraining起動とAPI観測成功。40秒、15〜25ms／5%損失の同一PC2窓で1,331確定F差分／欠落0。報告者PCでの1.2復旧と物理操作は未確認。[リリース仕様](releases/1.2.md)、根拠: `build_logs/release_1.2/`。公開結果は確認後に追記する。
 
 2026-09-14 画面未表示の続報ログは起動停止対策前のDLL識別文言であり、使用世代を確認。旧版には初期化完了の通常ログ自体がなく、前回のログ欠落による停止判定・診断用環境変数原因説を撤回した。既存のTraining P1修正ZIPにWindows API干渉対策も含まれることを再読確認し、3バイナリ更新と新規ログ確認を案内。今回の報告者環境での原因確定・復旧は未確認。コード変更・新規実ゲーム試験はなし。[訂正と証跡](issues/BUG_REPORT_NO_WINDOW.md)。
