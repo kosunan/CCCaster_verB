@@ -23,6 +23,7 @@
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
 #include "core_dll/common/InputTrace.hpp"
+#include "core_dll/common/InputDiagnostic.hpp"
 #include "core_dll/sync/NetplaySession.hpp"
 #include "core_dll/sync/InputTimeline.hpp"
 #include "core_dll/sync/MatchInputBuffer.hpp"
@@ -198,7 +199,9 @@ bool AbortRequested() {
 
 template <class Predicate>
 bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t deadlineTicks = 0,
-          int64_t readyHintTicks = 0) {
+          int64_t readyHintTicks = 0,
+          int64_t spinGuardUs = cccaster::core::timer::FrameTiming::SimulationSpinGuardUs,
+          int64_t readyHintSpinGuardUs = 1000) {
     const int64_t started = cccaster::platform::RealMonotonicUs();
     const uint32_t beforeWT = cccaster::game_interface::GameMem().WorldTimer();
     static const bool stageTrace = std::getenv("CCCASTER_PACE_TRACE") != nullptr;
@@ -215,10 +218,12 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
         timeoutUs,
         [&] {
             const auto hintNow = readyHintTicks ? cccaster::core::timer::WasapiClock::GetTimeTicks() : 0;
-            if (readyHintTicks && hintNow >= readyHintTicks - 60000 && hintNow < readyHintTicks + 60000) {
-                // 入力公開直前に500usのOS待機を繰り返すと、公開済みでも起床待ちになる。
-                // 最大2msで外側の中断/疎通/期限検査へ戻り、入力未着を無期限スピンしない。
-                const auto until = readyHintTicks + 60000;
+            const auto readyHintGuardTicks = 60 * std::max<int64_t>(0, readyHintSpinGuardUs);
+            if (readyHintTicks && hintNow >= readyHintTicks - readyHintGuardTicks &&
+                hintNow < readyHintTicks + readyHintGuardTicks) {
+                // 入力公開直前だけCPU待機に切り替える。キャラセレは対戦中の
+                // 締切精度を必要としないため、呼出側がこの区間を短くできる。
+                const auto until = readyHintTicks + readyHintGuardTicks;
                 do {
                     if (predicate())
                         return true;
@@ -228,7 +233,7 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
             }
             if (deadlineTicks &&
                 deadlineTicks - cccaster::core::timer::WasapiClock::GetTimeTicks() <=
-                    60 * cccaster::core::timer::FrameTiming::SimulationSpinGuardUs) {
+                    60 * spinGuardUs) {
                 spinStart = stageTrace ? cccaster::platform::RealMonotonicUs() : 0;
                 if (probe) {
                     auto &sample = Probe::sample;
@@ -260,15 +265,15 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
                     state.isPeerAlive.load(std::memory_order_acquire));
         },
         cccaster::platform::RealMonotonicUs,
-        [deadlineTicks, readyHintTicks] {
+        [deadlineTicks, readyHintTicks, spinGuardUs, readyHintSpinGuardUs] {
             const auto remaining =
                 deadlineTicks ? (deadlineTicks - cccaster::core::timer::WasapiClock::GetTimeTicks()) / 60
                               : 500;
             // 更新締切の最後の3msはOSタイマーの再起床誤差を持ち込まない。
-            if ((deadlineTicks && remaining <= cccaster::core::timer::FrameTiming::SimulationSpinGuardUs) ||
+            if ((deadlineTicks && remaining <= spinGuardUs) ||
                 (readyHintTicks &&
-                 cccaster::core::timer::WasapiClock::GetTimeTicks() >= readyHintTicks - 60000 &&
-                 cccaster::core::timer::WasapiClock::GetTimeTicks() < readyHintTicks + 60000))
+                 cccaster::core::timer::WasapiClock::GetTimeTicks() >= readyHintTicks - 60 * readyHintSpinGuardUs &&
+                 cccaster::core::timer::WasapiClock::GetTimeTicks() < readyHintTicks + 60 * readyHintSpinGuardUs))
                 cccaster::platform::CpuRelax();
             else
                 cccaster::platform::PreciseWaitUs(std::min<int64_t>(500, remaining));
@@ -685,8 +690,11 @@ reconcileBoundary:
         // 起動中の高速化を終えた後、処理込みの絶対締切で60Hzを刻む。
         if (!metronome.IsRunning()) metronome.Start();
         const bool finalGate = OfflinePacing::Mode() != OfflinePacing::Variant::Legacy;
+        // トレーニングのキャラセレは対戦の同期締切を持たない。ここだけ最後の
+        // CPUスピンを200µsに抑え、対戦中の従来2msガードはそのまま残す。
+        const int64_t offlineSpinGuardUs = ctx.appMode == 1 && phase == GamePhase::CharaSelect ? 200 : 2000;
         offlineDue = metronome.WaitForNextTick(false, finalGate ?
-            60 * cccaster::core::timer::FrameTiming::ReleasePreparationUs : 0);
+            60 * cccaster::core::timer::FrameTiming::ReleasePreparationUs : 0, offlineSpinGuardUs);
         OfflinePacing::Waited(mem.WorldTimer(), offlineDue);
     }
     if (ctx.appMode != 0) {
@@ -705,12 +713,17 @@ reconcileBoundary:
                 DebugLog("[TrainingState] event=%d saved=%d beforeWT=%u afterWT=%u", int(event),
                     int(runtime.trainingState.HasState()), beforeWorld, mem.WorldTimer());
         }
-        FrameControl::WriteInput(
-            runtime.localInputGate.Apply(
-                GameInput::Unpack(cccaster::game_interface::DirectInputHook::GetPlayer1Input()), configuring),
-            runtime.secondInputGate.Apply(
-                GameInput::Unpack(cccaster::game_interface::DirectInputHook::GetPlayer2Input()),
-                configuring));
+        const auto raw1 = cccaster::game_interface::DirectInputHook::GetPlayer1Input();
+        const auto raw2 = cccaster::game_interface::DirectInputHook::GetPlayer2Input();
+        const auto output1 = runtime.localInputGate.Apply(GameInput::Unpack(raw1), configuring);
+        const auto output2 = runtime.secondInputGate.Apply(GameInput::Unpack(raw2), configuring);
+        FrameControl::WriteInput(output1, output2);
+        if (cccaster::diagnostics::input::Enabled()) {
+            static cccaster::diagnostics::input::Sampler samples;
+            if (samples.Record(raw1, raw2, configuring))
+                DebugLog("[InputRoute] wt=%u mode=%u configuring=%u raw1=%08X raw2=%08X output1=%08X output2=%08X",
+                    mem.WorldTimer(), mem.GameMode(), unsigned(configuring), raw1, raw2, output1.Pack(), output2.Pack());
+        }
         if (phase == GamePhase::CharaSelect) cccaster::diagnostics::startup::InputReady();
         runtime.previous = phase;
         runtime.previousIntro = intro;
@@ -870,7 +883,7 @@ reconcileBoundary:
             return;
         }
         if (!Wait("local selection clock", 3000000, [&] { return timeline.HasCaptured(frame); },
-                  0, timeline.NextDeadlineTicks())) return;
+                  0, timeline.NextDeadlineTicks(), 0, 200)) return;
         uint32_t localInput = 0;
         if (!buf.TryGetLocalInput(frame, localInput)) {
             Fail(Error::SyncTimeout, "local selection input missing"); return;
@@ -948,7 +961,8 @@ reconcileBoundary:
         cccaster::core::timer::FrameTiming::presentDueTicks = due +
                          60 * cccaster::core::timer::FrameTiming::PresentBudgetUs();
         if (!Wait("local selection deadline", 3000000,
-                  [&] { return cccaster::core::timer::WasapiClock::GetTimeTicks() >= due; }, due)) return;
+                  [&] { return cccaster::core::timer::WasapiClock::GetTimeTicks() >= due; }, due,
+                  0, 200)) return;
         FrameControl::WriteInput(ctx.isHost ? own : remoteInput, ctx.isHost ? remoteInput : own);
         if (std::getenv("CCCASTER_PACE_TRACE")) {
             const auto now = cccaster::platform::RealMonotonicUs();

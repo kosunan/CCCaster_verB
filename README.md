@@ -1,8 +1,8 @@
-# CCCaster verB beta_1.1
+# CCCaster verB 1.2
 
 **A faster, easier CCCaster for MBAACC.**
 
-CCCaster verB beta_1.1 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
+CCCaster verB 1.2 supports **Melty Blood Actress Again Current Code Ver.1.07 Rev.1.4.0 (32-bit)** on Windows.
 
 ![CCCaster verB graphical launcher](docs/images/cccaster-verB-gui.png)
 
@@ -10,6 +10,7 @@ CCCaster verB beta_1.1 supports **Melty Blood Actress Again Current Code Ver.1.0
 Please forgive the inclusion of many strange, AI-generated documents in the following files.
 ## What changed?
 
+- **Startup and Training fixes are included in the standard download.** Version 1.2 replaces the original beta_1.1 package, which did not include the fixes offered separately as a diagnostic download. No optional patch is required.
 - **Fast startup with verified Community EXE support:** startup acceleration is enabled, with a full-file SHA-256 check at every game launch. The specified Community EXE reached Training selection in **2.84 seconds** in one local test. See [supported hashes and validation](docs/design/2026-09-13_community_exe.md).
 - **Easy launcher:** host, join, spectate, or start training from an English/Japanese GUI.
 - **Fairer settings:** both players use the same agreed delay and rollback values.
@@ -22,7 +23,7 @@ Results vary by PC and connection. The 3µs figure describes frame pacing, not c
 
 ## How to play
 
-Download [beta_1.1](https://github.com/kosunan/CCCaster_verB/releases/tag/beta_1.1). See the [release notes and update instructions](docs/releases/beta_1.1.md).
+Download [cccaster_B.zip for version 1.2](https://github.com/kosunan/CCCaster_verB/releases/download/v1.2/cccaster_B.zip). See the [release notes and update instructions](docs/releases/1.2.md). Replace all three launcher/DLL files together and keep your INI files and controller profiles.
 
 Put the included files in the `cccaster_B` folder next to `MBAA.exe`, then open **CCCaster_v10_GUI.exe**.
 

@@ -493,7 +493,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     WNDCLASSEXW wc{}; wc.cbSize = sizeof(wc); wc.style = CS_CLASSDC; wc.lpfnWndProc = WindowProc;
     wc.hInstance = instance; wc.hCursor = LoadCursor(nullptr, IDC_ARROW); wc.lpszClassName = L"CCCasterV10Gui";
     RegisterClassExW(&wc);
-    HWND window = CreateWindowW(wc.lpszClassName, L"CCCaster v10", WS_OVERLAPPEDWINDOW,
+    HWND window = CreateWindowW(wc.lpszClassName, L"CCCaster verB 1.2", WS_OVERLAPPEDWINDOW,
                                  CW_USEDEFAULT, CW_USEDEFAULT, 870, 640, nullptr, nullptr, instance, nullptr);
     d3d = Direct3DCreate9(D3D_SDK_VERSION);
     present.Windowed = TRUE; present.SwapEffect = D3DSWAPEFFECT_DISCARD;

@@ -1,5 +1,7 @@
 #include "core_dll/ui/Controller_Ui_Logic.hpp"
 #include "core_dll/common/DataPaths.hpp"
+#include "core_dll/common/InputDiagnostic.hpp"
+#include "core_dll/common/DebugLog.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include <imgui.h>
 #include <fstream>
@@ -31,7 +33,11 @@ std::string Path(const DeviceIdentity &device, bool read) {
         return cccaster::core::paths::Resolve(ProfileFilename(device, true));
     return path;
 }
-void Message(std::string text, bool error = false) { status = std::move(text); statusError = error; }
+void Message(std::string text, bool error = false) {
+    status = std::move(text); statusError = error;
+    if (cccaster::diagnostics::input::Enabled())
+        cccaster::domain::session::DebugLog("[InputSetup] error=%u message=%s", unsigned(error), status.c_str());
+}
 void LoadDraft(Draft &draft) {
     Config config;
     if (!draft.device.Empty()) config.Load(Path(draft.device, true));
@@ -215,6 +221,8 @@ bool ControllerUiLogic::EndUiSession() {
         Hook::ReloadConfigs();
     }
     CancelCapture(); active = false;
+    if (cccaster::diagnostics::input::Enabled())
+        cccaster::domain::session::DebugLog("[InputSetup] saved settings accepted; setup close permitted");
     return true;
 }
 } // namespace cccaster::domain::ui

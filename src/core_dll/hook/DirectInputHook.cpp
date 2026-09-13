@@ -5,6 +5,7 @@
 #include "cli_launcher/ConfigManager.hpp"
 #include "core_dll/common/DataPaths.hpp"
 #include "core_dll/common/DebugLog.hpp"
+#include "core_dll/common/InputDiagnostic.hpp"
 #include "core_dll/common/StartupTrace.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/VirtualControllerTest.hpp"
@@ -742,6 +743,16 @@ void DirectInputHook::ReloadConfigs() {
     s_p2Config.Clear();
     if (p2Idx != -1)
         LoadDeviceConfig(s_p2Config, p2Idx);
+    if (cccaster::diagnostics::input::Enabled()) {
+        using cccaster::domain::session::DebugLog;
+        DebugLog("[InputConfig] P1 device=%s resolved=%d guid=%s", s_p1Device.c_str(), p1Idx, s_p1DeviceGuid.c_str());
+        DebugLog("[InputConfig] P2 device=%s resolved=%d guid=%s", s_p2Device.c_str(), p2Idx, s_p2DeviceGuid.c_str());
+        for (int p = 0; p < 2; ++p) {
+            const auto &config = p == 0 ? s_p1Config : s_p2Config;
+            for (const auto *key : cccaster::input::BindingKeys)
+                DebugLog("[InputConfig] P%d %s=%s", p + 1, key, config.GetString("Mapping", key, "").c_str());
+        }
+    }
 }
 
 static uint32_t BuildPlayerInput(int joyId, const cccaster::main_app::Config &deviceConfig) {
@@ -858,7 +869,16 @@ uint32_t DirectInputHook::GetPlayer1Input() {
         return GetLocalPlayerInput(true, false); // オフライン試験も同じ実DirectInput経路を使う。
     if (g_testModeEnabled)
         return g_testInputP1;
-    return BuildPlayerInput(s_p1Resolved, s_p1Config);
+    const auto value = BuildPlayerInput(s_p1Resolved, s_p1Config);
+    if (cccaster::diagnostics::input::Enabled()) {
+        static cccaster::diagnostics::input::Sampler samples;
+        const auto foreground = GetForegroundWindow();
+        if (samples.Record(value, uint32_t(s_p1Resolved), foreground == g_hwnd))
+            cccaster::domain::session::DebugLog(
+                "[InputSource] P1 resolved=%d mapped=%08X foreground=%p gameWindow=%p initialized=%u",
+                s_p1Resolved, value, static_cast<void *>(foreground), static_cast<void *>(g_hwnd), unsigned(g_initialized));
+    }
+    return value;
 }
 
 uint32_t DirectInputHook::GetPlayer2Input() {

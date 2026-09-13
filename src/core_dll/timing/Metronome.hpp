@@ -25,7 +25,8 @@ class Metronome {
     /// @param skipWait true: 待機せず次ティック時刻のみ進める（キャッチアップ用）
     /// preparationTicks: 締切前に入力準備を済ませる余裕（1/60µs）。
     /// 戻り値は次フレームの絶対締切。準備後の最終ゲートでも同じ締切を使う。
-    int64_t WaitForNextTick(bool skipWait = false, int64_t preparationTicks = 0);
+    int64_t WaitForNextTick(bool skipWait = false, int64_t preparationTicks = 0,
+                            int64_t spinGuardUs = 2000);
 
     // 採用時計の周期補正。1/60µsの百万分率、整数µsを経由しない。
     void SetPeriodCorrectionParts(int64_t parts) { correctionParts_.store(parts,std::memory_order_release); }
@@ -40,7 +41,7 @@ class Metronome {
     static constexpr int64_t MIN_TICK_US = 14000;  // 最小（加速下限）
 
   private:
-    static void SleepUntil(int64_t targetTicks, bool preciseSleep);
+    static void SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinGuardUs);
 
     // ─── 次ティック時刻 ────────────────────────────────
     timer::FrameCadence cadence_;

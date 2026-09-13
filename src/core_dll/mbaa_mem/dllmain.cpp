@@ -42,59 +42,38 @@
 static HMODULE g_hModule = nullptr;
 
 // ============================================================================
-// ApplyMultiInstanceBypass — MBAA 多重起動防止バイパス
-//
-// MBAA.exe は起動時に以下の2つのAPIで多重起動を検出する:
-//   1. FindWindowA/W — 既存ウィンドウの検出
-//   2. CreateMutexA  — 排他Mutexの存在チェック (ERROR_ALREADY_EXISTS)
-//
-// これらのAPI関数本体を直接パッチ（インラインフック）して無効化する。
-// DllMain(DLL_PROCESS_ATTACH) から呼ばれるため、ゲーム本体の初期化より先に適用される。
+// ApplyMultiInstanceBypass — ゲームの多重起動判定呼出しだけを成功へ置換。
+// Windows API本体を変更すると、D3Dや外部DLLまで偽のMutexを受け取る。
+// ValidateLoadedRuntime成功後、まだ停止中のゲーム入口でのみ適用する。
 // ============================================================================
-static void PatchFunctionBytes(void *target, const BYTE *patch, size_t size) {
-    DWORD oldProtect;
-    VirtualProtect(target, size, PAGE_EXECUTE_READWRITE, &oldProtect);
-    memcpy(target, patch, size);
-    VirtualProtect(target, size, oldProtect, &oldProtect);
-    FlushInstructionCache(GetCurrentProcess(), target, size);
-}
-
-static void ApplyMultiInstanceBypass() {
-    // FindWindowA: xor eax, eax; ret 8 → 常に NULL を返す
-    FARPROC pFW = GetProcAddress(GetModuleHandleA("user32.dll"), "FindWindowA");
-    if (pFW) {
-        BYTE patch[] = {0x31, 0xC0, 0xC2, 0x08, 0x00};
-        PatchFunctionBytes((void *)pFW, patch, sizeof(patch));
-    }
-
-    // FindWindowW: xor eax, eax; ret 8 → 常に NULL を返す
-    FARPROC pFWW = GetProcAddress(GetModuleHandleA("user32.dll"), "FindWindowW");
-    if (pFWW) {
-        BYTE patch[] = {0x31, 0xC0, 0xC2, 0x08, 0x00};
-        PatchFunctionBytes((void *)pFWW, patch, sizeof(patch));
-    }
-
-    // CreateMutexA: SetLastError(0) + mov eax, 0x1337 + ret 12
-    //   → ERROR_ALREADY_EXISTS を回避し、フェイクハンドルを返す
-    FARPROC pCM = GetProcAddress(GetModuleHandleA("kernel32.dll"), "CreateMutexA");
-    FARPROC pSLE = GetProcAddress(GetModuleHandleA("kernel32.dll"), "SetLastError");
-    if (pCM && pSLE) {
-        BYTE patch[16];
-        patch[0] = 0x6A;
-        patch[1] = 0x00;                                           // push 0
-        patch[2] = 0xE8;                                           // call rel32
-        INT32 rel = (INT32)((BYTE *)pSLE - ((BYTE *)pCM + 2 + 5)); // relative offset
-        memcpy(&patch[3], &rel, 4);
-        patch[7] = 0xB8; // mov eax, imm32
-        patch[8] = 0x37;
-        patch[9] = 0x13;
-        patch[10] = 0x00;
-        patch[11] = 0x00; // 0x1337
-        patch[12] = 0xC2;
-        patch[13] = 0x0C;
-        patch[14] = 0x00; // ret 12
-        PatchFunctionBytes((void *)pCM, patch, 15);
-    }
+static bool ApplyMultiInstanceBypass() {
+    constexpr uint8_t caller[] = {0xE8,0x18,0x02,0,0,0x85,0xC0,0x75,0x06,
+        0x8B,0xE5,0x5D,0xC2,0x10,0};
+    // CreateMutexA/GetLastError/FindWindowA/ReleaseMutexだけの判定関数。
+    // 従来版・コミュニティ版の両実体で、この80バイトと呼出元を照合済み。
+    constexpr uint8_t check[] = {
+        0x56,0x68,0xC4,0x51,0x53,0,0x6A,1,0x6A,0,0xFF,0x15,0x38,0xB0,0x51,0,
+        0x8B,0xF0,0xFF,0x15,0x30,0xB0,0x51,0,0x3D,0xB7,0,0,0,0x75,0x23,0x6A,0,
+        0x68,0xC4,0x51,0x53,0,0xFF,0x15,0xC4,0xB2,0x51,0,0x85,0xC0,0x74,0x0E,
+        0x50,0xFF,0x15,0x30,0xB2,0x51,0,0x50,0xFF,0x15,0x98,0xB2,0x51,0,
+        0x33,0xC0,0x5E,0xC3,0x56,0xFF,0x15,0x34,0xB0,0x51,0,0xB8,1,0,0,0,0x5E,0xC3};
+    constexpr uintptr_t base = 0x400000, site = 0x40D253, target = 0x40D470;
+    if (reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) != base ||
+        !cccaster::game_build::ReadableLoadedRange(base, site, sizeof(caller)) ||
+        !cccaster::game_build::ReadableLoadedRange(base, target, sizeof(check)) ||
+        std::memcmp(reinterpret_cast<void *>(site), caller, sizeof(caller)) ||
+        std::memcmp(reinterpret_cast<void *>(target), check, sizeof(check))) return false;
+    // call判定関数（引数なし）→mov eax,1。続くtest/jneは元のまま。
+    constexpr uint8_t patch[] = {0xB8,1,0,0,0};
+    auto *code = reinterpret_cast<void *>(site);
+    DWORD protection{}, ignored{};
+    if (!VirtualProtect(code, sizeof(patch), PAGE_EXECUTE_READWRITE, &protection)) return false;
+    std::memcpy(code, patch, sizeof(patch));
+    const bool flushed = FlushInstructionCache(GetCurrentProcess(), code, sizeof(patch)) != 0;
+    const bool restored = VirtualProtect(code, sizeof(patch), protection, &ignored) != 0;
+    // 部分適用のままDLLをアンロードして実行を続けない。
+    if (!flushed || !restored || std::memcmp(code, patch, sizeof(patch))) ExitProcess(ERROR_WRITE_FAULT);
+    return true;
 }
 
 // ============================================================================
@@ -149,6 +128,7 @@ DWORD WINAPI InitThread(LPVOID lpParam) {
 
     HookLog("=====================================");
     HookLog("[InitThread] Starting hook initialization...");
+    HookLog("[Release] CCCaster verB 1.2");
 
     // ── 設定ファイルの読み込み ──────────────────────────────
     // ConfigManager はプロセスごとの共通Configへ委譲する。
@@ -333,7 +313,11 @@ DWORD WINAPI InitThread(LPVOID lpParam) {
     cccaster::game_memory::startup_system_info::Initialize(ctx.appMode);
     cccaster::game_memory::startup_assets::Initialize(ctx.appMode);
     cccaster::game_memory::startup_profile::Initialize();
-    cccaster::diagnostics::startup::SignalReady();
+    HookLog("[InitThread] Initialization complete; signaling startup gate.");
+    if (cccaster::diagnostics::startup::SignalReady())
+        HookLog("[InitThread] Startup gate signaled; init thread returning.");
+    else
+        cccaster::domain::session::DebugLog("[InitThread] Startup gate signal failed (error=%lu).", GetLastError());
 
     return 0;
 }
@@ -352,8 +336,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         }
         g_hModule = hModule; // ← ログパス解決のため最初に設定
         DisableThreadLibraryCalls(hModule);
-        ApplyMultiInstanceBypass(); // ← 多重起動バイパス（ゲーム初期化より先に適用）
-        HookLog("[DllMain] DLL_PROCESS_ATTACH (multi-instance bypass applied)");
+        if (!ApplyMultiInstanceBypass()) {
+            OutputDebugStringA("[CCCaster] Multi-instance call-site validation/patch failed.\n");
+            g_hModule = nullptr;
+            return FALSE;
+        }
+        HookLog("[DllMain] DLL_PROCESS_ATTACH (game-only multi-instance bypass applied; Windows APIs unchanged)");
         CreateThread(nullptr, 0, InitThread, hModule, 0, nullptr);
         break;
 
