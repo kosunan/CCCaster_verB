@@ -1,3 +1,4 @@
+#include <string>
 #pragma once
 /**
  * @file IGameMemory.hpp
@@ -48,6 +49,8 @@ class IGameMemory {
     virtual uint32_t RealTimer() const = 0;        ///< ラウンド開始後にカウントアップ
     virtual uint32_t MenuStateCounter() const = 0; ///< メニュー階層のスタック深度
     virtual domain::session::MatchResultFacts ReadMatchResult() const { return {}; }
+    virtual std::string ReplayFilePath() const { return {}; }
+    virtual bool SaveReplay(const char *, const char *, int) { return false; }
     virtual TrainingFrameSample ReadTrainingFrame() const { return {}; }
 
     // ── 書き込み ──

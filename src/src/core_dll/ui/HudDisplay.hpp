@@ -11,12 +11,13 @@ enum class HudDisplayMode { Compact, Detailed, Hidden };
 
 class FrameBarDisplay {
   public:
-    static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2; }
-    static bool Visible(int appMode = 1) { return (appMode == 2 ? spectatorVisible_ : visible_).load(std::memory_order_relaxed); }
-    static void Toggle(int appMode = 1) { (appMode == 2 ? spectatorVisible_ : visible_).store(!Visible(appMode), std::memory_order_relaxed); }
+    static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2 || appMode == 4; }
+    static bool Visible(int appMode = 1) { return (appMode == 4 ? replayVisible_ : appMode == 2 ? spectatorVisible_ : visible_).load(std::memory_order_relaxed); }
+    static void Toggle(int appMode = 1) { (appMode == 4 ? replayVisible_ : appMode == 2 ? spectatorVisible_ : visible_).store(!Visible(appMode), std::memory_order_relaxed); }
   private:
     inline static std::atomic<bool> visible_{true};
     inline static std::atomic<bool> spectatorVisible_{false};
+    inline static std::atomic<bool> replayVisible_{false};
 };
 
 // キーを離す順番に依存せず、HUD操作で使ったキーだけ解放まで抑止する。

@@ -99,7 +99,8 @@ void GameFrameOrchestrator::OnAfterPresent(LPDIRECT3DDEVICE9 pDevice) {
         cccaster::game_interface::DirectInputHook::PollUi();
         // 再検出は設定を行うキャラクター選択中だけ。対戦中のDirectInput列挙を避ける。
         auto &inputMem = cccaster::game_interface::GameMem();
-        if (inputMem.IsAvailable() && inputMem.GameMode() == CC_GAME_MODE_CHARA_SELECT)
+        if (inputMem.IsAvailable() && (inputMem.GameMode() == CC_GAME_MODE_CHARA_SELECT ||
+            (SceneRunner::AppMode() == 4 && inputMem.GameMode() == CC_GAME_MODE_REPLAY)))
             cccaster::game_interface::DirectInputHook::UpdateHotplug();
     }
 

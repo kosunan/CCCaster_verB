@@ -73,7 +73,7 @@ struct Session {
     std::string log, code, connectionStage;
     std::string ipResults[2];
     Message status = {"Ready when you are.", "開始できます。"};
-    bool booting = false, cancelling = false, training = false, spectating = false;
+    bool booting = false, cancelling = false, training = false, spectating = false, replay = false;
     bool revealCloseLog = false;
     bool failed = false;
     ~Session() {
@@ -135,7 +135,10 @@ struct Session {
             }
         }
         booting = booting || log.find("Booting game") != std::string::npos;
-        if (training && log.find("[ TRAINING READY ]") != std::string::npos)
+        if (replay) status = log.find("[ REPLAY READY ]") != std::string::npos
+            ? Message{"Replay viewer is running. Press F4 in the game for controller settings.", "リプレイ観戦を起動しました。ゲーム内のF4でコントローラ設定を開けます。"}
+            : Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."};
+        else if (training && log.find("[ TRAINING READY ]") != std::string::npos)
             status = {"Training is running. Switch to the game window.", "トレーニングを起動しました。ゲーム画面に切り替えてください。"};
         else if (training) status = {"Launching training...", "トレーニングを起動しています..."};
         else if (log.find("[ IN GAME ]") != std::string::npos) status = spectating
@@ -177,7 +180,7 @@ struct Session {
         ShowCloseStatus();
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
-    void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false, int preference = 0) {
+    void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false, int preference = 0, bool replayMode = false) {
         if (Running()) return;
         failed = true; // 準備段階の失敗もメイン画面で強調する。
         if (!offline && !cccaster::public_api::NetplaySettings::IsValid(
@@ -205,7 +208,7 @@ struct Session {
         }
         freshLog.close();
         std::wstring args = L"\"" + exePath.wstring() + L"\" --worker \"" + eventName + L"\" \"" + logPath.wstring() + L"\" ";
-        args += offline ? L"training 0" : watch ? L"spectate " + std::wstring(hash, hash + std::strlen(hash))
+        args += replayMode ? L"replay 0" : offline ? L"training 0" : watch ? L"spectate " + std::wstring(hash, hash + std::strlen(hash))
             : host ? L"host " + std::to_wstring(port) : L"join " + std::wstring(hash, hash + std::strlen(hash));
         if(host&&!offline) args += L" " + std::to_wstring(preference);
         STARTUPINFOW startup{}; startup.cb = sizeof(startup);
@@ -218,10 +221,11 @@ struct Session {
         }
         CloseHandle(info.hThread); process = info.hProcess;
         failed = false;
-        log.clear(); code.clear(); connectionStage.clear(); training = offline; spectating = watch; booting = offline || watch; cancelling = false;
+        log.clear(); code.clear(); connectionStage.clear(); training = offline && !replayMode; spectating = watch; replay = replayMode; booting = offline || watch; cancelling = false;
         ipResults[0].clear(); ipResults[1].clear();
         peerNoticeSeen = localNoticeSeen = revealCloseLog = false;
-        status = offline ? Message{"Launching training...", "トレーニングを起動しています..."}
+        status = replayMode ? Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."}
+                         : offline ? Message{"Launching training...", "トレーニングを起動しています..."}
                          : host ? Message{"Creating your connection code...", "接続コードを作成しています..."}
                       : Message{"Connecting to your opponent...", "対戦相手に接続しています..."};
     }
@@ -303,7 +307,7 @@ void Draw(Session& session) {
         nameLoaded = true;
     }
     static int page = 0, mode = 0, port = 7500;
-    static float reveal[4] = {1, 0, 0, 0};
+    static float reveal[5] = {1, 0, 0, 0, 0};
     static char hash[512]{};
     const auto size = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowPos(ImVec2(0, 0)); ImGui::SetNextWindowSize(size);
@@ -334,13 +338,14 @@ void Draw(Session& session) {
     if (ModeButton("##play", "01", Text("VERSUS", "対戦"), Text("Host / Join with code", "募集・コードで参加"), page == 0, reveal[0])) page = 0;
     if (ModeButton("##spectate", "02", Text("SPECTATE", "観戦"), Text("Watch with connection code", "接続コードで観戦"), page == 3, reveal[1])) page = 3;
     if (ModeButton("##training", "03", Text("TRAINING", "トレーニング"), Text("Offline practice", "オフラインで練習"), page == 2, reveal[2])) page = 2;
-    if (ModeButton("##guide", "04", Text("HOW TO PLAY", "操作ガイド"), Text("Set up & controls", "準備と操作方法"), page == 1, reveal[3])) page = 1;
+    if (ModeButton("##replay", "04", Text("REPLAY", "リプレイ観戦"), Text("Watch saved matches", "保存した試合を再生"), page == 4, reveal[4])) page = 4;
+    if (ModeButton("##guide", "05", Text("HOW TO PLAY", "操作ガイド"), Text("Set up & controls", "準備と操作方法"), page == 1, reveal[3])) page = 1;
     ImGui::Dummy(ImVec2(0, 4));
     if (ImGui::Button(Text("日本語###language", "English###language"), ImVec2(-1, 32))) japanese = !japanese;
     ImGui::TextColored(muted, Text("Display language", "表示言語"));
     ImGui::EndChild(); ImGui::SameLine();
     ImGui::BeginChild("content", ImVec2(0, -28), true);
-    Heading(page == 3 ? Text("SPECTATE", "観戦") : page == 2 ? Text("TRAINING", "トレーニング")
+    Heading(page == 4 ? Text("REPLAY", "リプレイ観戦") : page == 3 ? Text("SPECTATE", "観戦") : page == 2 ? Text("TRAINING", "トレーニング")
         : page == 1 ? Text("HOW TO PLAY", "操作ガイド") : Text("PLAY ONLINE", "ネット対戦"));
     ImGui::Separator();
     ImGui::Dummy(ImVec2(0, 4));
@@ -384,14 +389,100 @@ void Draw(Session& session) {
         ImGui::TextWrapped(Text("Direct connection uses the host's TCP port. If the current match history is unavailable, wait for the next match. Up to 8 viewers.", "直接接続には募集側のTCPポートへの到達が必要です。現在の試合履歴が残っていない場合は次の試合を待ちます。最大8人。"));
         if (QuietDetails(Text("Session log###watchLog", "詳細ログ###watchLog"))) ImGui::TextUnformatted(session.log.c_str());
     } else if (page == 1) {
-        Heading(Text("01   Set up your game folder", "01   ゲームフォルダーに配置"));
-        ImGui::TextWrapped(Text("Create a cccaster_B folder next to MBAA.exe. Place this launcher, libcccaster_hook.dll and cccaster.ini inside it.", "MBAA.exe のあるフォルダー内に cccaster_B フォルダーを作り、このGUIと libcccaster_hook.dll、cccaster.ini を配置します。"));
-        ImGui::Spacing(); Heading(Text("02   Host or join a match", "02   募集する・参加する"));
-        ImGui::TextWrapped(Text("Choose HOST A MATCH and share your code, or JOIN WITH CODE and paste the code from your opponent. The game launches once connected.", "募集する側は接続コードをコピーして相手に共有。参加する側はコードを貼り付けて接続します。接続成立後にゲームが起動します。"));
-        ImGui::Spacing(); Heading(Text("03   Configure in the game", "03   ゲーム内で設定"));
-        ImGui::TextWrapped(Text("Press F4 for controller settings. During character select, use Ctrl + 0-8 for input delay and Alt + 0-8 for the rollback limit. Their total must be 8 or less.", "F4：コントローラ設定。キャラクター選択中は Ctrl + 0〜8 で入力遅延、Alt + 0〜8 でロールバック上限を変更します。合計は8以下です。"));
-        ImGui::Spacing(); Heading(Text("After the match", "対戦後"));
-        ImGui::TextWrapped(Text("Select ONCE on both sides for a rematch. If either player chooses character select, both return there. After closing the game, start another match from this launcher.", "双方が ONCE を選ぶと再戦。片側がキャラセレを選ぶとキャラクター選択に戻ります。ゲーム終了後はこの画面から次の対戦を開始できます。"));
+        ImGui::TextWrapped(Text("Start here, then keep the controls close at hand.", "初めての起動から、対戦後のリプレイまで。"));
+        ImGui::Spacing();
+        if (ImGui::BeginTabBar("guideTopics")) {
+            const auto section = [](const char* title, const char* body) {
+                ImGui::Spacing(); Heading(title);
+                ImGui::TextWrapped("%s", body);
+                ImGui::Dummy(ImVec2(0, 8));
+            };
+            if (ImGui::BeginTabItem(Text("GET STARTED###guideStart", "はじめに###guideStart"))) {
+                section(Text("01   Place the launcher", "01   ファイルを配置"),
+                    Text("Place the cccaster_B folder beside MBAA.exe. Keep CCCaster_B_GUI.exe, libcccaster_hook.dll and cccaster.ini together inside it.",
+                         "MBAA.exe と同じ場所に cccaster_B フォルダーを配置します。中に CCCaster_B_GUI.exe、libcccaster_hook.dll、cccaster.ini を揃えてください。"));
+                section(Text("02   Try TRAINING first", "02   まずはトレーニングへ"),
+                    Text("Choose TRAINING on the left and start the game. You can check your controls without an opponent or a connection code.",
+                         "左の「トレーニング」から起動。対戦相手や接続コードなしで、操作を確認できます。"));
+                ImGui::PushStyleColor(ImGuiCol_Text, accent);
+                Heading(Text("F4   Set up your controller", "F4   コントローラを設定"));
+                ImGui::PopStyleColor();
+                ImGui::TextWrapped(Text("At character select, press F4. Choose your device for PLAYER 1, check the bindings, then press F4 to save and close. Configure the local player's device under PLAYER 1 even when joining a match.",
+                    "キャラクター選択で F4 を押し、PLAYER 1 の機器とボタン割当を確認します。もう一度 F4 で保存して閉じます。対戦に参加する側も、自分の機器は PLAYER 1 に設定してください。"));
+                ImGui::Spacing(); ImGui::Separator(); ImGui::Spacing();
+                ImGui::TextWrapped(Text("Ready to play? Open MODES for hosting, joining and watching matches.", "準備ができたら「各モード」で、対戦や観戦の始め方を確認できます。"));
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem(Text("MODES###guideModes", "各モード###guideModes"))) {
+                section(Text("VERSUS   Play online", "対戦   募集・コードで参加"),
+                    Text("Set your player name. Host a match and share the generated code, or join with your opponent's code. Codes are case-sensitive. The game launches after connection. Leave connection priority on Automatic to start.",
+                         "プレイヤー名を入力。募集する側は発行されたコードを相手へ共有し、参加する側はそのコードを貼り付けます。大文字・小文字を区別します。接続後にゲームが起動。接続方式はまず「自動」で利用できます。"));
+                section(Text("SPECTATE   Watch a live match", "観戦   進行中の試合を見る"),
+                    Text("Paste the host's connection code as-is and start spectating. No prefix is needed. Playback catches up automatically; if the current match is unavailable, wait for the next one.",
+                         "募集側の接続コードをそのまま貼り付けて開始。接頭辞は不要です。途中参加は自動で追いつきます。現在の試合を取得できない場合は、次の試合を待ちます。"));
+                section(Text("TRAINING   Practice offline", "トレーニング   オフラインで練習"),
+                    Text("Start without a connection code. Controller settings are available with F4 at character select and during practice. See CONTROLS for FN1 / FN2 and the frame bar.",
+                         "接続コードなしで起動。キャラ選択中と練習中に F4 で設定できます。FN1・FN2やフレームバーは「操作」を確認してください。"));
+                section(Text("REPLAY   Watch a saved match", "リプレイ観戦   保存した試合を見る"),
+                    Text("Open the standard replay list. It reads ReplayVS beside MBAA.exe. Press F4 to set up your controller, then use directions and A to choose a replay; B goes back.",
+                         "MBAA.exe と同じ場所の ReplayVS を一覧表示します。F4 で機器を設定し、方向入力と A で再生。B で戻ります。"));
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem(Text("CONTROLS###guideControls", "操作###guideControls"))) {
+                ImGui::Spacing();
+                ImGui::TextWrapped(Text("A / B / FN1 / FN2 refer to your configured buttons, not fixed keyboard keys.", "A・B・FN1・FN2は、設定したボタンの名前です。固定のキーボードキーではありません。"));
+                ImGui::Spacing();
+                if (ImGui::BeginTable("guideKeys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+                    ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthFixed, 132.f);
+                    ImGui::TableSetupColumn("action");
+                    const auto row = [](const char* key, const char* detail) {
+                        ImGui::TableNextRow(); ImGui::TableNextColumn();
+                        ImGui::TextUnformatted(key); ImGui::TableNextColumn(); ImGui::TextWrapped("%s", detail);
+                    };
+                    row("F4", Text("Controller settings: character select, training battle or replay list. Press again to save and close.", "コントローラ設定。キャラ選択・練習中・リプレイ一覧で使用。再度押すと保存して閉じます。"));
+                    row("A / B", Text("Confirm / back. At character select, B is blocked before choosing a character.", "決定／戻る。キャラ未選択時の B は、選択画面から抜けないよう無効になります。"));
+                    row("Ctrl + 0-8", Text("Input delay D, in frames. Available during online character select.", "入力ディレイ D（フレーム）。ネット対戦のキャラ選択中に変更。"));
+                    row("Alt + 0-8", Text("Rollback limit R, in frames. D + R must be 8 or less. Default: D2 / R4.", "ロールバック上限 R（フレーム）。D＋Rは8以下。既定値は D2／R4。"));
+                    row("F1", Text("Toggle the frame bar in training, live spectating and replay battles.", "トレーニング・ネット観戦・リプレイ再生中のフレームバー表示を切り替えます。"));
+                    row("FN1", Text("Training: save the current state once. Hold to freeze both characters; release to resume.", "練習中：現在の状態を1回保存。押している間は両キャラを停止し、離すと再開。"));
+                    row("FN2", Text("Training: reset, then restore the saved state. With no saved state, perform the normal reset.", "練習中：通常リセット後に保存状態を復元。保存がなければ通常リセット。"));
+                    ImGui::EndTable();
+                }
+                ImGui::Spacing();
+                ImGui::TextWrapped(Text("Training has one temporary save slot. Leaving battle for character select clears it.", "練習用の保存は一時的な1枠です。キャラクター選択などで戦闘を離れると消去されます。"));
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem(Text("AFTER A MATCH###guideAfter", "対戦後###guideAfter"))) {
+                section(Text("Play again", "同じ相手と続ける"),
+                    Text("Both players choose ONCE AGAIN for a rematch. If either chooses CHARACTER SELECT, both return to character select.",
+                         "双方が ONCE AGAIN を選ぶと再戦。片側が CHARACTER SELECT を選ぶと、双方がキャラクター選択に戻ります。"));
+                section(Text("Your replay is saved automatically", "リプレイは自動保存"),
+                    Text("When the online match result is confirmed, each player saves one standard .rep file in ReplayVS. You do not need to select SAVE REPLAY.",
+                         "ネット対戦の結果確定時に、各プレイヤーの ReplayVS へ標準の .rep ファイルを1回保存します。SAVE REPLAY の選択は不要です。"));
+                section(Text("Find the match you want", "日時・名前・勝者で探す"),
+                    Text("Filenames contain the date, time, PLAYER 1 name and PLAYER 2 name. [WIN] follows the winner's name. [UNDECIDED] means the winner could not be determined.",
+                         "ファイル名には日時、1P名、2P名が入ります。勝者の名前の後ろに [WIN]、勝者を確定できなかった場合は末尾に [UNDECIDED] が付きます。"));
+                ImGui::Separator(); ImGui::Spacing();
+                ImGui::TextWrapped(Text("Close the game, then choose REPLAY in this launcher to watch a saved match, or select another mode.",
+                    "ゲームを閉じ、GUIの「リプレイ観戦」で保存した試合を再生できます。別のモードを始める場合も、先にゲームを終了してください。"));
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+        }
+    } else if (page == 4) {
+        Heading(Text("Watch saved matches", "保存した試合を観戦する"));
+        ImGui::TextWrapped(Text("Open the game's replay list and select a match to watch. No connection code is needed.", "ゲームのリプレイ一覧を開き、観戦する試合を選びます。接続コードは不要です。"));
+        ImGui::Spacing();
+        ImGui::BeginDisabled(session.Running());
+        if (PrimaryButton(Text("OPEN REPLAY VIEWER###startReplay", "リプレイ観戦を開始###startReplay")))
+            session.Start(true, 0, "", true, false, 0, true);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("%s", session.status.c_str());
+        ImGui::Spacing();
+        ImGui::TextWrapped(Text("Press F4 in the replay list to configure your controller. Use your configured directional controls and A to select a replay; B goes back.", "リプレイ一覧で F4 を押すとコントローラ設定ができます。設定した方向入力と A でリプレイを選び、B で戻ります。"));
+        ImGui::TextWrapped(Text("Replays are in the ReplayVS folder beside MBAA.exe. Auto-saved filenames contain the date, time and both player names; [WIN] marks the winner.", "MBAA.exe と同じ場所の ReplayVS フォルダーを読み込みます。自動保存ファイルは日時・両プレイヤー名で識別でき、[WIN] が勝者です。"));
+        ImGui::TextWrapped(Text("Close the game to start another mode.", "ゲームを終了すると、別のモードを開始できます。"));
+        if (QuietDetails(Text("Session log###replayLog", "詳細ログ###replayLog"))) ImGui::TextUnformatted(session.log.c_str());
     } else if (page == 2) {
         Heading(Text("Practice at your own pace", "自分のペースで練習する"));
         ImGui::TextWrapped(Text("Launch offline training. No opponent or connection code is needed.", "対戦相手や接続コードなしで、オフラインのトレーニングを開始します。"));
@@ -555,11 +646,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         if (!gui::cancelEvent) { LocalFree(argv); return 1; }
         if (!_wfreopen(argv[3], L"wb", stdout)) { CloseHandle(gui::cancelEvent); LocalFree(argv); return 1; }
         std::cout << std::unitbuf;
+        const bool replay = wcscmp(argv[4], L"replay") == 0;
         const bool training = wcscmp(argv[4], L"training") == 0;
         const bool spectator = wcscmp(argv[4], L"spectate") == 0;
-        const bool host = training || wcscmp(argv[4], L"host") == 0;
+        const bool host = training || replay || wcscmp(argv[4], L"host") == 0;
         const std::wstring value = argv[5];
-        if(argc==7 && host && !training) {
+        if(argc==7 && host && !training && !replay) {
             if(wcscmp(argv[6],L"1")==0) gui::hostPreference=1;
             else if(wcscmp(argv[6],L"2")==0) gui::hostPreference=2;
         }
@@ -568,7 +660,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         try {
             controller::MainController app(true, false, host, "", host ? static_cast<uint16_t>(std::stoi(value)) : 0,
                                            host ? "" : std::string(value.begin(), value.end()), true,
-                                           spectator ? cccaster::public_api::IpcGameMode::Spectator
+                                           replay ? cccaster::public_api::IpcGameMode::Replay
+                                           : spectator ? cccaster::public_api::IpcGameMode::Spectator
                                            : training ? cccaster::public_api::IpcGameMode::Training
                                                     : cccaster::public_api::IpcGameMode::Versus);
             app.Run();

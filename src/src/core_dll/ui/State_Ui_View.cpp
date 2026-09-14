@@ -30,7 +30,7 @@ LatencyWarningSnapshot ReadLatencyWarning(int delay, int rollback) {
     return cached;
 }
 
-void DrawBattleIdentity(int delay, int rollback) {
+void DrawBattleIdentity(int delay, int rollback, bool namesOnly = false) {
     const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
     const auto score = cccaster::domain::session::SceneRunner::Score();
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -55,6 +55,11 @@ void DrawBattleIdentity(int delay, int rollback) {
         draw->AddText(font, textSize, ImVec2(x, y), normal, text);
     };
 
+    if (namesOnly) {
+        drawName(names.p1.data(), 12.0f * scale, false, 220.0f * scale);
+        drawName(names.p2.data(), display.x - 12.0f * scale, true, 220.0f * scale);
+        return;
+    }
     char scoreText[32];
     std::snprintf(scoreText, sizeof(scoreText), "%u - %u",
                   std::min(score.p1Wins, 999u), std::min(score.p2Wins, 999u));
@@ -270,6 +275,7 @@ void DrawHud(bool selection) {
     const auto mode = HudDisplay::Get();
     const bool fallback = cccaster::core::timer::WasapiClock::GetInstance().IsFallback();
     const auto appMode = cccaster::domain::session::SceneRunner::AppMode();
+    if (appMode == 4) { DrawBattleIdentity(0, 0, true); return; }
     if (appMode == 2) {
         const auto s = cccaster::domain::session::SceneRunner::SpectatorStatus();
         if (selection || !FrameBarDisplay::Visible(appMode)) DrawBattleIdentity(s.delay, s.rollback);
@@ -361,26 +367,7 @@ void DrawHud(bool selection) {
 } // namespace
 void StateUiView::DrawCharaSelectBar() { DrawHud(true); }
 void StateUiView::DrawInGameBar() { DrawHud(false); }
-void StateUiView::DrawRematchBar() {
-    if (cccaster::domain::session::SceneRunner::AppMode() == 2) {
-        DrawHud(true);
-        return;
-    }
-    const auto mode = HudDisplay::Get();
-    const bool fallback = cccaster::core::timer::WasapiClock::GetInstance().IsFallback();
-    if (mode == HudDisplayMode::Hidden && !fallback) return;
-    // 再戦の選択肢は中央にあるため、通常HUDと同じ1行だけを上端へ表示する。
-    Panel panel(true, 1);
-    if (mode != HudDisplayMode::Hidden) {
-        const auto net = StateUiLogic::GetNetworkMetrics();
-        const auto &timing = cccaster::core::timer::FrameTiming::Get();
-        panel.MetricRow(FormatHudFixedValues(net.available, net.stale, net.latestRttMs,
-                                             net.jitterAvailable, net.jitterMs,
-                                             StateUiLogic::GetDelay(), StateUiLogic::GetRollback(),
-                                             timing.last), fallback);
-    } else if (fallback)
-        panel.Row("CLOCK: QPC FALLBACK (WASAPI unavailable)", warning);
-}
+void StateUiView::DrawRematchBar() { /* 再戦画面にはHUDを重ねない。 */ }
 void StateUiView::DrawDelayPopup() { DrawHud(true); }
 void StateUiView::DrawRollbackPopup() { DrawHud(true); }
 } // namespace cccaster::domain::ui

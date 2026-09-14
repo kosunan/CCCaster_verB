@@ -190,7 +190,8 @@ struct ReplayContainer {
 struct ReplayRound {
     char unknown[0x120];
     ReplayContainer *inputs;
-    char tail[0x1c];
+    char tail[0x10];
+    uint32_t *rngBegin, *rngEnd, *rngCapacity; // 標準serializer 0x445D14のvector
 };
 #pragma pack(pop)
 struct ReplayCursor {
@@ -199,6 +200,7 @@ struct ReplayCursor {
     uint32_t endOffset = 0;
     bool hasLast = false;
     ReplayState last{};
+    uint32_t rngCount = 0; // 先頭プレイヤーのスロットでラウンド全体の追記位置を保持
 };
 using ReplayCursors = std::array<ReplayCursor, 4>;
 static uint32_t CurrentReplayRoundIndex() {
@@ -219,6 +221,10 @@ static bool ReadReplayCursors(ReplayCursors &cursors) {
     // intro=2では次ラウンドが未作成。前ラウンド末尾を保存しない。
     if (!round || !round->inputs)
         return true;
+    const auto rngBytes = uintptr_t(round->rngEnd) - uintptr_t(round->rngBegin);
+    if (rngBytes % 4 || rngBytes > 16000000 ||
+        (rngBytes && IsBadReadPtr(round->rngBegin, rngBytes))) return false;
+    cursors[0].rngCount = static_cast<uint32_t>(rngBytes / 4);
     if (IsBadReadPtr(round->inputs, 4 * sizeof(ReplayContainer)))
         return false;
     for (int i = 0; i < 4; ++i) {
@@ -253,9 +259,11 @@ static bool WriteReplayCursors(const ReplayCursors &cursors) {
     if (!CurrentReplayRound(round)) return false;
     for (const auto &saved : cursors) {
         if (saved.round != CurrentReplayRoundIndex() + 1) return false;
-        if ((!round || !round->inputs) && (saved.hasLast || saved.endOffset)) return false;
+        if ((!round || !round->inputs) && (saved.hasLast || saved.endOffset || saved.rngCount)) return false;
     }
     if (!round || !round->inputs) return true;
+    const auto rngBytes = uintptr_t(round->rngEnd) - uintptr_t(round->rngBegin);
+    if (rngBytes % 4 || rngBytes > 16000000 || cursors[0].rngCount > rngBytes / 4) return false;
     // メモリを戻す前に4プレイヤー分を検証。再確保されたバッファは現在のポインターを使う。
     for (int i = 0; i < 4; ++i) {
         const auto &saved = cursors[i];
@@ -291,6 +299,8 @@ static bool WriteReplayCursors(const ReplayCursors &cursors) {
         c.total2 = saved.total2;
         c.end = c.states ? reinterpret_cast<char *>(c.states) + saved.endOffset : nullptr;
     }
+    // vectorの容量と現在のバッファは保持。訂正再計算で古い予測の乱数列を上書きする。
+    round->rngEnd = round->rngBegin ? round->rngBegin + cursors[0].rngCount : nullptr;
     return true;
 }
 size_t RealGameMemory::SnapshotSize() const {

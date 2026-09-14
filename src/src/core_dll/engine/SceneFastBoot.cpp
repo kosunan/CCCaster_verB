@@ -110,7 +110,9 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     }
 
     // キャラセレ到達判定
-    if (gameMode == CC_GAME_MODE_CHARA_SELECT) {
+    const bool replay = s_targetMode == cccaster::public_api::IpcGameMode::Replay;
+    if (gameMode == CC_GAME_MODE_CHARA_SELECT || (replay && gameMode == CC_GAME_MODE_REPLAY)) {
+        if (replay && !cccaster::game_memory::startup::SetReplayEntry(false)) ExitProcess(ERROR_WRITE_FAULT);
         cccaster::game_memory::startup_assets::Restore(true);
         if (!cccaster::game_memory::startup::SetBootFade(false))
             ExitProcess(ERROR_WRITE_FAULT);
@@ -132,7 +134,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
         cccaster::core::hooks::TimeHooks::SetTimeMultiplier(1000);
         cccaster::core::hooks::TimeHooks::SetSleepBypass(true);
         DebugLog("[StartupPolicy] character selection reached; runtime pacing active");
-        DebugLog("[FastBoot] ★ CharaSelect reached! (frame=%u) Switching to NormalSpeed.", s_frameCount);
+        if (replay) DebugLog("[FastBoot] Replay reached (frame=%u).", s_frameCount);
+        else DebugLog("[FastBoot] ★ CharaSelect reached! (frame=%u) Switching to NormalSpeed.", s_frameCount);
         GC::SetModeNormalSpeed();
         return true;
     }
@@ -165,7 +168,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // ================================================================
     if (gameMode == 25) {
         // ナビ回数: Versus=1, Training=5
-        int targetNav = (s_targetMode == cccaster::public_api::IpcGameMode::Training) ? 5 : 1;
+        int targetNav = replay ? 7 : (s_targetMode == cccaster::public_api::IpcGameMode::Training) ? 5 : 1;
+        if (replay && s_forceGotoApplied) targetNav = 0;
         if (s_forceGotoApplied && !cccaster::diagnostics::startup::Baseline() &&
             (s_targetMode == cccaster::public_api::IpcGameMode::Training ||
              s_targetMode == cccaster::public_api::IpcGameMode::Versus)) targetNav = 0;
@@ -230,7 +234,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
         }
 
         // 照合に失敗した命令は上書きしない。成功した場合だけ方向入力を省略する。
-        s_forceGotoApplied = cccaster::game_memory::startup::Apply(forcePatch[1]);
+        s_forceGotoApplied = replay ? cccaster::game_memory::startup::SetReplayEntry(true)
+                                   : cccaster::game_memory::startup::Apply(forcePatch[1]);
         if (s_forceGotoApplied && !cccaster::diagnostics::startup::Baseline() &&
             (s_targetMode == cccaster::public_api::IpcGameMode::Training ||
              s_targetMode == cccaster::public_api::IpcGameMode::Versus)) {

@@ -14,6 +14,7 @@ foreach ($name in $files) {
 }
 $hashes = $files | ForEach-Object { (Get-FileHash (Join-Path $stage $_)).Hash + '  ' + $_ }
 $hashes | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ascii
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.txt') -Destination $stage
 $zip = Join-Path $PSScriptRoot "packages/CCCaster_verB-$version.zip"
 if (Test-Path -LiteralPath $zip) { throw "Package already exists: $zip" }
 Compress-Archive -Path $stage -DestinationPath $zip

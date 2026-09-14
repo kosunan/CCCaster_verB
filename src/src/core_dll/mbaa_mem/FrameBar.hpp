@@ -41,7 +41,7 @@ class FrameBarHistory {
     // 1セル=実際に観測したtrueFrameの1更新。停止も独立した印を付けて残す。
     // 描画や壁時計からの補間は禁止。ロード/欠測/操作交代は履歴を破棄する。
     void Update(int mode, const TrainingFrameSample &s) {
-        if ((mode != 1 && mode != 2) || !s.valid) { Reset(); return; }
+        if ((mode != 1 && mode != 2 && mode != 4) || !s.valid) { Reset(); return; }
         if (havePrevious_) {
             const bool identity = mode == mode_ && s.round == previous_.round &&
                 s.activeCharacter[0] == previous_.activeCharacter[0] &&
