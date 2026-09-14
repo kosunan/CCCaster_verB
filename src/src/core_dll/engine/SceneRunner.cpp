@@ -1,3 +1,4 @@
+#include "core_dll/engine/ReplayFileName.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
 #include "core_dll/spectator/Playback.hpp"
 #include <cstdio>
@@ -615,7 +616,7 @@ reconcileBoundary:
         DebugLog("[PostRoundDelay] first=%u extra=%u", runtime.postRoundDelay.first,
                  runtime.postRoundDelay.extra);
     }
-    if (ctx.appMode == 1 || ctx.appMode == 2) {
+    if (ctx.appMode == 1 || ctx.appMode == 2 || ctx.appMode == 4) {
         if (phase == GamePhase::InGame) {
             const auto sample = mem.ReadTrainingFrame();
             runtime.advantage.Update(ctx.appMode, sample);
@@ -636,8 +637,13 @@ reconcileBoundary:
             : phase == GamePhase::Rematch ? ScoreScene::Result
             : phase == GamePhase::CharaSelect ? ScoreScene::CharacterSelect : ScoreScene::Other;
         const auto facts = scoreScene == ScoreScene::Result ? mem.ReadMatchResult() : MatchResultFacts{};
+        const auto previousScore = runtime.score.Snapshot();
         if (runtime.score.Observe(scoreScene, runtime.sequence.Base(), facts, true)) {
             const auto score = runtime.score.Snapshot();
+            const auto names = PlayerNames();
+            const int winner = score.p1Wins > previousScore.p1Wins ? 1 : score.p2Wins > previousScore.p2Wins ? 2 : 0;
+            // 入力訂正済みの試合結果確定時に一度だけ。独立再戦へ進む前に標準REPを保存する。
+            mem.SaveReplay(names.p1.data(), names.p2.data(), winner);
             if (runtime.broadcasting) {
                 cccaster::spectator::Record record;
                 record.Set(cccaster::spectator::Result, runtime.sequence.Next(),
@@ -667,7 +673,7 @@ reconcileBoundary:
         runtime.previousIntro = intro;
         return;
     }
-    if (phase == GamePhase::CharaSelect && !scene::SceneFastBoot::IsComplete())
+    if ((phase == GamePhase::CharaSelect || ctx.appMode == 4) && !scene::SceneFastBoot::IsComplete())
         scene::SceneFastBoot::ProcessFrame(ctx.isHost);
     if (runtime.fastRematchTransition) {
         // 選択と合意は解決済み。この区間に新たな操作はなく、
@@ -1388,6 +1394,12 @@ SceneRunner::PlayerNamesSnapshot SceneRunner::PlayerNames() {
     PlayerNamesSnapshot result{};
     if (!IsReady() || !runtime.context)
         return result;
+    if (AppMode() == 4) {
+        const auto names = ReplayFilePlayerNames(cccaster::game_interface::GameMem().ReplayFilePath());
+        cccaster::public_api::NormalizePlayerName(result.p1.data(), result.p1.size(), names[0].c_str(), "PLAYER 1");
+        cccaster::public_api::NormalizePlayerName(result.p2.data(), result.p2.size(), names[1].c_str(), "PLAYER 2");
+        return result;
+    }
     if (AppMode() == 2) {
         std::memcpy(result.p1.data(), runtime.spectator.match.names[0], 32);
         std::memcpy(result.p2.data(), runtime.spectator.match.names[1], 32);

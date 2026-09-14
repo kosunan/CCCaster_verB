@@ -28,11 +28,14 @@ void UIManager::Render(UiPhase phase) {
     // 相手側の画面遷移などで設定画面を離れても、入力遮断状態を次画面へ持ち越さない。
     // 強制遷移では自動保存しない。未保存ドラフトだけ次回F4へ保持する。
     const bool training = cccaster::domain::session::SceneRunner::AppMode() == 1;
-    if (phase != UiPhase::CharaSelect && !(training && phase == UiPhase::InGame) && StateUiLogic::IsMappingWindowOpen()) {
+    const bool replayList = cccaster::domain::session::SceneRunner::AppMode() == 4 &&
+        cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_REPLAY;
+    if (phase != UiPhase::CharaSelect && !(training && phase == UiPhase::InGame) && !replayList && StateUiLogic::IsMappingWindowOpen()) {
         StateUiLogic::CloseMappingWindow();
         ControllerUiLogic::Suspend();
     }
     if (StateUiLogic::IsMappingWindowOpen()) { ControllerUiView::Draw(); return; }
+    if (cccaster::domain::session::SceneRunner::AppMode() == 4 && phase != UiPhase::InGame) return;
     switch (phase) {
     case UiPhase::CharaSelect:
         CharaSelectUiView::Draw();
@@ -133,7 +136,9 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
             auto &mem = cccaster::game_interface::GameMem();
             const bool trainingBattle = cccaster::domain::session::SceneRunner::AppMode() == 1 &&
                                         mem.GameMode() == CC_GAME_MODE_IN_GAME;
-            if (!mem.IsAvailable() || (mem.GameMode() != CC_GAME_MODE_CHARA_SELECT && !trainingBattle)) {
+            const bool replayList = cccaster::domain::session::SceneRunner::AppMode() == 4 &&
+                                    mem.GameMode() == CC_GAME_MODE_REPLAY;
+            if (!mem.IsAvailable() || (mem.GameMode() != CC_GAME_MODE_CHARA_SELECT && !trainingBattle && !replayList)) {
                 return 1; // キャラセレ以外では無視
             }
             OnMappingInput();

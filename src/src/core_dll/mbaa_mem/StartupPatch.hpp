@@ -6,6 +6,26 @@
 namespace cccaster::game_memory::startup {
 inline const double BootFadeStep = 1.0;
 inline bool fadePatched = false;
+// 旧版forceGotoReplayと同じ標準初期化入口。到達後は通常メニューへ戻す。
+inline bool replayPatched = false;
+inline bool SetReplayEntry(bool enable) {
+    if (replayPatched == enable) return true;
+    if (reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000) return false;
+    constexpr uint8_t original[] = {0x84,0xC0,0x74,0x12,0x0F};
+    constexpr uint8_t jump[] = {0xE9,0xC7,0,0,0};
+    constexpr uint8_t destination[] = {0x0F,0xB6,0x05,0x0F,0xDF,0x55,0,0x50,
+        0xE8,0xB2,0xED,0xFF,0xFF};
+    auto *code = reinterpret_cast<void*>(0x42B475);
+    if (std::memcmp(code, enable ? original : jump, 5) ||
+        std::memcmp(reinterpret_cast<void*>(0x42B541), destination, sizeof(destination))) return false;
+    DWORD protection{}, ignored{};
+    if (!VirtualProtect(code, 5, PAGE_EXECUTE_READWRITE, &protection)) return false;
+    std::memcpy(code, enable ? jump : original, 5);
+    if (!FlushInstructionCache(GetCurrentProcess(), code, 5) ||
+        !VirtualProtect(code, 5, protection, &ignored)) ExitProcess(ERROR_WRITE_FAULT);
+    replayPatched = enable;
+    return true;
+}
 // MBAACC 1.07 Rev.1.4.0の分岐と正規モード初期化入口。状態番号の直書きはしない。
 inline bool MatchesMenuCode() {
     if (reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr)) != 0x400000) return false;

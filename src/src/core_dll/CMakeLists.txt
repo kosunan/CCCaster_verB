@@ -21,6 +21,7 @@ add_library(cccaster_hook SHARED
     mbaa_mem/TrainingMetrics.cpp
     mbaa_mem/CombatStress.cpp
     mbaa_mem/NetplayMenu.cpp
+    mbaa_mem/ReplaySave.cpp
     mbaa_mem/StartupAssets.cpp
 
     # === hook/ — 外部 API フック ===

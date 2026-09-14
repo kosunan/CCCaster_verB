@@ -23,6 +23,8 @@ class RealGameMemory final : public IGameMemory {
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
     bool ConfigureNetplayMenu() override;
+    std::string ReplayFilePath() const override;
+    bool SaveReplay(const char *p1, const char *p2, int winner) override;
     void SetRetryTarget(int) override;
     bool HasIndependentRetry() const override { return true; }
     void BeginIndependentRetry() override;

@@ -52,7 +52,7 @@ MainController::MainController(bool isHeadless, bool isIpv6, bool isHost, const 
     ui::ConsoleRenderer::EnableVirtualTerminalProcessing();
 
     if (_isHeadless) {
-        _currentState = gameMode == cccaster::public_api::IpcGameMode::Training ? AppState::GameRunning
+        _currentState = (gameMode == cccaster::public_api::IpcGameMode::Training || gameMode == cccaster::public_api::IpcGameMode::Replay) ? AppState::GameRunning
             : gameMode == cccaster::public_api::IpcGameMode::Spectator ? AppState::Spectating_WaitingForHost
             : AppState::NetplayConnection;
     }
@@ -77,7 +77,8 @@ void MainController::LaunchAndMonitorGame() {
     std::cout << "[Release] " CCCASTER_PRODUCT_TITLE "\n" << std::flush;
     // Trainingの開始席はP1。メニューから来た場合や直前の接続役割に依存させない。
     // 起動ナビをP2へ送るとゲームがP2側でTrainingへ入り、P1設定では操作できなくなる。
-    if (_targetGameMode == cccaster::public_api::IpcGameMode::Training)
+    if (_targetGameMode == cccaster::public_api::IpcGameMode::Training ||
+        _targetGameMode == cccaster::public_api::IpcGameMode::Replay)
         _isHost = true;
     std::cout << "  \x1b[1;36m[ INFO ]\x1b[0m Launching ..\\MBAA.exe via Launcher\\GameLauncher...\n\n"
               << std::flush;
@@ -109,7 +110,8 @@ void MainController::LaunchAndMonitorGame() {
 
     // INI設定からRollback関連の設定値を読み込んでIPCに反映
     // cccaster.ini の [Netplay] セクション: DefaultDelay, MaxRollback
-    const bool training = _targetGameMode == cccaster::public_api::IpcGameMode::Training;
+    const bool replay = _targetGameMode == cccaster::public_api::IpcGameMode::Replay;
+    const bool training = _targetGameMode == cccaster::public_api::IpcGameMode::Training || replay;
     const int delay = training ? cccaster::public_api::NetplaySettings::DefaultDelay :
         ConfigManager::GetInt("Netplay", "DefaultDelay", cccaster::public_api::NetplaySettings::DefaultDelay);
     const int rollback = training ? cccaster::public_api::NetplaySettings::DefaultRollback : ConfigManager::GetInt("Netplay", "MaxRollback",
@@ -194,7 +196,8 @@ void MainController::LaunchAndMonitorGame() {
             // DirectDrawの起動初期化をデバッガで中断しない。自分のゲームへ同期後に接続。
             if (!monitor.StartSpikeDebugIfRequested())
                 std::cerr << "[SpikeDebug] 診断開始に失敗しました。採取なしでゲームを継続します。\n";
-            std::cout << (training ? "  [ TRAINING READY ] Offline initialization completed.\n"
+            std::cout << (replay ? "  [ REPLAY READY ] Offline initialization completed.\n"
+                                 : training ? "  [ TRAINING READY ] Offline initialization completed.\n"
                                    : "  \x1b[32m[ SYNC OK ]\x1b[0m DLL synchronization completed successfully!\n")
                       << std::flush;
 
