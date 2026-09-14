@@ -407,11 +407,13 @@ void MainController::HandleNetplayConnection() {
             std::cout << "  [HEADLESS HOST] Hash: " << hash << "\n";
             std::cout << "  [SPECTATOR CODE] " << hash << "\n"
                       << "  観戦者は「観戦」を選び、この接続コードをそのまま入力してください。\n";
-            negoResult = negotiator.RunNegotiation(false, true, "", port, true, true);
+            negoResult = negotiator.RunAutomaticHost(port, hash,
+                static_cast<network_wrapper::route::Preference>(_guiSession ? gui::hostPreference : 0), true);
         } else if (!_connectionHash.empty()) {
             negoResult = negotiator.RunNegotiationFromHash(_connectionHash);
         } else if (!_targetIp.empty()) {
-            negoResult = negotiator.RunNegotiation(_isIpv6, false, _targetIp, _port, true);
+            network_wrapper::RouteRequest request; request.addresses={_targetIp}; request.port=_port;
+            negoResult = negotiator.RunAutomatic(std::move(request));
         } else {
             std::cout << "  \x1b[31m[ HEADLESS ERROR ]\x1b[0m No --host, --hash, or --ip specified.\n";
             _currentState = AppState::Exit;
@@ -476,7 +478,7 @@ void MainController::HandleNetplayConnection() {
 
             // ハッシュモード: skipHostDisplay=true で RunNegotiation 内の
             // グローバルIP再取得・画面クリア・クリップボード上書きをスキップ
-            negoResult = negotiator.RunNegotiation(false, true, "", port, false, true);
+            negoResult = negotiator.RunAutomaticHost(port, hash);
         } else {
             // === CLIENTモード（ハッシュ接続） ===
             _isHost = false;
@@ -485,6 +487,7 @@ void MainController::HandleNetplayConnection() {
     }
 
     if (negoResult.success) {
+        _isIpv6 = negoResult.isIpv6;
         // peer情報を保持 (FastBoot中の中継用)
         _peerIp = negoResult.peerIp;
         _peerPort = negoResult.peerPort;

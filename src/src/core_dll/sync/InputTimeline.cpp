@@ -121,6 +121,9 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
             const auto pollStart = stages ? platform::RealMonotonicUs() : 0;
             if (testing::IsScriptedInputEnabled()) {
                 value = testing::ScriptedInput(next_ - base_, host_);
+                // 連続ドローの再現専用。戦闘と決着演出を無操作で自然終了させる。
+                static const bool drawIdle = std::getenv("CCCASTER_TEST_DRAW_IDLE") != nullptr;
+                if (drawIdle && phase_ == game_interface::GamePhase::InGame) value = 0;
                 // 自動試験専用: 登場演出をボタンで飛ばさず、自然終了経路も通す。
                 static const bool fullIntro = std::getenv("CCCASTER_TEST_FULL_INTRO") != nullptr;
                 if (fullIntro && phase_ == game_interface::GamePhase::InGame && next_ - base_ < 480)

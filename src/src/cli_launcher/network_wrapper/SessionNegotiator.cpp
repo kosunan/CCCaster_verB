@@ -154,7 +154,7 @@ bool SessionNegotiator::ParseAddressAndPort(const std::string &inputStr, bool is
 
 NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, const std::string &targetIp,
                                                     uint16_t port, bool isHeadless, bool skipHostDisplay,
-                                                    bool allowRelay, int connectTimeoutMs) {
+                                                    bool allowRelay, int connectTimeoutMs, SelectedRoute selected) {
     if (gui::Cancelled()) return {};
     namespace startup = cccaster::public_api::startup;
     SetEnvironmentVariableA(startup::LocalNonceEnv, nullptr);
@@ -173,7 +173,9 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
 
     // clientのportは接続先。自分も同じ番号へbindすると、host起動前に
     // localhost宛probeを自分で受信してしまう。実際の自portはIPCでDLLへ渡す。
-    auto socketOwner = std::make_unique<cccaster::network::UdpSocket>(isHost ? port : 0, isIpv6);
+    const bool routeSelected = selected.socket != nullptr;
+    auto socketOwner = routeSelected ? std::move(selected.socket)
+                                    : std::make_unique<cccaster::network::UdpSocket>(isHost ? port : 0, isIpv6);
     auto &socket = *socketOwner;
     if (!socket.IsValid()) {
         std::cout << "\x1b[31m  [ERROR] Failed to bind to Port " << port
@@ -189,7 +191,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             // ハッシュモード: IP取得・画面クリア・クリップボードコピーは
             // GenerateConnectionHash() + MainController で完了済み。
             // ポート表示のみ行う。
-            std::cout << "  \x1b[1;36m[ HOST ]\x1b[0m Waiting on Port " << port << "...\n";
+            std::cout << "  \x1b[1;36m[ HOST ]\x1b[0m Waiting on Port " << socket.GetPort() << "...\n";
         } else {
             // 旧 IP:port 直接接続モード: 従来通りグローバルIP取得 + クリップボードコピー
             std::cout << "  \x1b[1;36m[ HOST ]\x1b[0m Waiting on Port " << port << "...\n";
@@ -211,8 +213,8 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
     uint16_t activeClientPort = port;
     struct Candidate { std::string ip; uint16_t port; std::chrono::steady_clock::time_point expires; };
     std::vector<Candidate> candidates; // clientMutexで受信スレッドと共有する。
-    bool punchedConnection = false;
-    const bool forceRelay = std::getenv("CCCASTER_TEST_FORCE_RELAY") != nullptr;
+    bool punchedConnection = selected.punched;
+    const bool forceRelay = !routeSelected && std::getenv("CCCASTER_TEST_FORCE_RELAY") != nullptr;
 
     std::atomic<uint32_t> packetsReceived(0);
     uint32_t packetsSent = 0;
@@ -232,6 +234,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
     agreement.localNonce = static_cast<uint64_t>(nonceCounter.QuadPart) ^
                            (static_cast<uint64_t>(GetCurrentProcessId()) << 32);
     if (!agreement.localNonce) agreement.localNonce = 1;
+    if(selected.nonce) agreement.localNonce=selected.nonce;
     // socketのcallbackが参照する変数より先に受信スレッドを停止する。
     struct StopReceiver {
         std::unique_ptr<cccaster::network::UdpSocket> &socket;
@@ -244,6 +247,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
         {
             std::lock_guard<std::mutex> lock(clientMutex);
             const bool direct = ip == activeClientIp && recvPort == activeClientPort;
+            if(routeSelected && !direct) return;
             const bool candidate = std::any_of(candidates.begin(),candidates.end(),[&](const Candidate& c) {
                 return c.ip==ip && c.port==recvPort && std::chrono::steady_clock::now()<c.expires;
             });
@@ -253,7 +257,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             if (!connected) {
                 activeClientIp = ip;
                 activeClientPort = recvPort;
-                punchedConnection = candidate;
+                punchedConnection = selected.punched || candidate;
             }
             connected = true;
         }
@@ -351,7 +355,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             std::lock_guard<std::mutex> lock(clientMutex);
             candidates.erase(std::remove_if(candidates.begin(),candidates.end(),[&](const Candidate& c){return now>=c.expires;}),candidates.end());
         }
-        if(!isHost && !connected && now-startTime>=std::chrono::milliseconds(connectTimeoutMs)) {
+        if((!isHost || routeSelected) && !connected && now-startTime>=std::chrono::milliseconds(connectTimeoutMs)) {
             std::cout << "[CONNECT_STAGE] timeout\n[TIMEOUT] No peer response. Check the host code, hosting status and network.\n" << std::flush;
             timeEndPeriod(1); return {};
         }
@@ -404,7 +408,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             }
         }
 
-        if (connected || !isHost || !candidates.empty()) {
+        if (connected || !isHost || routeSelected || !candidates.empty()) {
             uint64_t timestampNow = std::chrono::duration_cast<std::chrono::microseconds>(
                                         std::chrono::system_clock::now().time_since_epoch())
                                         .count();
@@ -424,7 +428,7 @@ NegotiationResult SessionNegotiator::RunNegotiation(bool isIpv6, bool isHost, co
             std::vector<std::pair<std::string,uint16_t>> destinations;
             {
                 std::lock_guard<std::mutex> lock(clientMutex);
-                if(connected || (!isHost && !forceRelay)) destinations.emplace_back(activeClientIp,activeClientPort);
+                if(connected || routeSelected || (!isHost && !forceRelay)) destinations.emplace_back(activeClientIp,activeClientPort);
                 if(!connected) for(const auto& candidate:candidates)
                     if(std::find(destinations.begin(),destinations.end(),std::make_pair(candidate.ip,candidate.port))==destinations.end())
                         destinations.emplace_back(candidate.ip,candidate.port);
@@ -600,6 +604,24 @@ std::string SessionNegotiator::GenerateConnectionHash(uint16_t port) {
 // ハッシュから接続 (クライアント用)
 // ============================================================
 
+NegotiationResult SessionNegotiator::RunAutomatic(RouteRequest request) {
+    request.headless=request.headless||gui::IsWorker();
+    if(!request.cancelled) request.cancelled=[] {return gui::Cancelled();};
+    request.relays=RelayServers();
+    auto selected=SelectRoute(request);
+    if(!selected.socket) return {};
+    const auto ip=selected.ip; const auto port=selected.port; const auto ipv6=selected.ipv6;
+    return RunNegotiation(ipv6,request.host,ip,port,request.headless,true,false,12000,std::move(selected));
+}
+
+NegotiationResult SessionNegotiator::RunAutomaticHost(uint16_t port,const std::string& hash,route::Preference preference,bool headless) {
+    ConnectionHash::DecodedAddress address;
+    if(!ConnectionHash::Decode(hash,address)) return {};
+    RouteRequest request; request.host=true; request.port=port; request.token=address.sessionToken;
+    request.localIpv6=address.ipv6; request.preference=preference; request.headless=headless||gui::IsWorker();
+    return RunAutomatic(std::move(request));
+}
+
 NegotiationResult SessionNegotiator::RunNegotiationFromHash(const std::string &hash) {
     ConnectionHash::DecodedAddress addr;
     if (!ConnectionHash::Decode(hash, addr)) {
@@ -626,39 +648,9 @@ NegotiationResult SessionNegotiator::RunNegotiationFromHash(const std::string &h
         std::cout << "  IPv6:         " << addr.ipv6 << "\n";
     std::cout << "  Port:         " << addr.port << "\n\n";
 
-    // 接続試行: ローカルIPv4 → グローバルIPv4 → IPv6 の3段フォールバック
-
-    // ① ローカルIPv4（同一LAN内 → 低レイテンシ）
-    if (!addr.localIpv4.empty()) {
-        std::cout << "  Trying Local IPv4 (" << addr.localIpv4 << ":" << addr.port << ")...\n";
-        auto result = RunNegotiation(false, false, addr.localIpv4, addr.port, false, false, false, 1000);
-        if (result.success) {
-            return result;
-        }
-        std::cout << "  Local IPv4 connection failed.\n";
-    }
-
-    // ② グローバルIPv4
-    if (!addr.ipv4.empty()) {
-        std::cout << "  Trying Global IPv4 (" << addr.ipv4 << ":" << addr.port << ")...\n";
-        auto result = RunNegotiation(false, false, addr.ipv4, addr.port);
-        if (result.success) {
-            return result;
-        }
-        std::cout << "  Global IPv4 connection failed.\n";
-    }
-
-    // ③ IPv6フォールバック
-    if (!addr.ipv6.empty()) {
-        std::cout << "  Trying IPv6 ([" << addr.ipv6 << "]:" << addr.port << ")...\n";
-        auto result = RunNegotiation(true, false, addr.ipv6, addr.port, false, false, false, 3000);
-        if (result.success) {
-            return result;
-        }
-        std::cout << "  IPv6 connection failed.\n";
-    }
-
-    return NegotiationResult{};
+    RouteRequest request; request.port=addr.port; request.token=addr.sessionToken;
+    request.addresses={addr.ipv4,addr.ipv6,addr.localIpv4}; request.headless=gui::IsWorker();
+    return RunAutomatic(std::move(request));
 }
 
 } // namespace cccaster::main_app::network_wrapper

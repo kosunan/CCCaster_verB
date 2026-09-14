@@ -350,13 +350,14 @@ void RealGameMemory::BeginSimulation(uint32_t f) {
     // 起動時に設定する試験オプション。毎FのCRT環境変数参照を締切後に持ち込まない。
     static const bool quickRetry = std::getenv("CCCASTER_TEST_RETRY_QUICK") != nullptr;
     static const bool quickKo = std::getenv("CCCASTER_TEST_ROUND_KO") != nullptr;
+    static const bool quickDraw = std::getenv("CCCASTER_TEST_ROUND_DRAW") != nullptr;
     using Probe = cccaster::diagnostics::SpinProbe;
     const bool probe = Probe::Enabled() && Probe::pending && Probe::sample.frame == f;
     auto *sample = probe ? &Probe::sample : nullptr;
     if (probe) sample->simEntry = Probe::Now();
     // 再戦疎通の短時間実機試験専用。通常対戦では無効。
     // 再計算でも同じFで適用し、ゲーム本来の時間切れ・勝敗・再戦遷移を通す。
-    if ((cccaster::testing::IsScriptedInputEnabled() || cccaster::testing::IsVirtualControllerTest()) && (quickRetry || quickKo) &&
+    if ((cccaster::testing::IsScriptedInputEnabled() || cccaster::testing::IsVirtualControllerTest()) && (quickRetry || quickKo || quickDraw) &&
         CanPredict() && f % 65536 >= 600) {
         if (quickKo) {
             // 時間切れと分けたKO経路の自動試験。ゲームスレッドでのみ変更する。
@@ -368,8 +369,8 @@ void RealGameMemory::BeginSimulation(uint32_t f) {
         } else if (*CC_ROUND_TIMER_ADDR > 1) {
             *CC_ROUND_TIMER_ADDR = 1;
             *CC_P1_HEALTH_ADDR = *CC_P1_RED_HEALTH_ADDR = 11400;
-            *CC_P2_HEALTH_ADDR = *CC_P2_RED_HEALTH_ADDR = 5000;
-            cccaster::diagnostics::DeferredNumericLog::Log("[RetryTest] SHORTEN frame=%u", f);
+            *CC_P2_HEALTH_ADDR = *CC_P2_RED_HEALTH_ADDR = quickDraw ? 11400 : 5000;
+            cccaster::diagnostics::DeferredNumericLog::Log("[RetryTest] SHORTEN frame=%u draw=%d", f, int(quickDraw));
         }
     }
     if (probe) sample->retryEnd = Probe::Now();

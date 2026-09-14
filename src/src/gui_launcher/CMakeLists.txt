@@ -9,6 +9,7 @@ add_executable(CCCaster_B_GUI WIN32
     ../cli_launcher/controller/MainController.cpp
     ../cli_launcher/ui/ConsoleRenderer.cpp
     ../cli_launcher/network_wrapper/SessionNegotiator.cpp
+    ../cli_launcher/network_wrapper/DualRouteNegotiator.cpp
     ../cli_launcher/network_wrapper/ConnectionHash.cpp
 )
 if(CCCASTER_GUI_OUTPUT_NAME STREQUAL "CCCaster_GUI" OR CCCASTER_GUI_OUTPUT_NAME STREQUAL "CCCaster_v10_GUI")

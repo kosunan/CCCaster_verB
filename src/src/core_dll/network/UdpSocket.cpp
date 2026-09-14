@@ -41,13 +41,14 @@ struct UdpSocket::Impl {
     std::vector<uint8_t> recvBuffer;
     ReceiveCallback onReceiveCallback;
     bool valid = false;
+    bool receiving = false;
     std::thread ioThread;
     asio::executor_work_guard<asio::io_context::executor_type> workGuard;
 
     // 遅延シミュレーション用: 非同期タイマーの寿命を保持するリスト
     std::list<std::shared_ptr<NetworkTimer>> pendingTimers;
 
-    Impl(uint16_t port, bool isIpv6)
+    Impl(uint16_t port, bool isIpv6, bool ipv6Only)
         : socket(ioContext), recvBuffer(4096), workGuard(asio::make_work_guard(ioContext)) {
         asio::error_code ec;
         asio::ip::udp::endpoint ep(isIpv6 ? asio::ip::udp::v6() : asio::ip::udp::v4(), port);
@@ -56,7 +57,7 @@ struct UdpSocket::Impl {
             // Options to make localhost testing on the same port possible, and dual stack friendly
             socket.set_option(asio::socket_base::reuse_address(true), ec);
             if (isIpv6) {
-                socket.set_option(asio::ip::v6_only(false), ec);
+                socket.set_option(asio::ip::v6_only(ipv6Only), ec);
             }
 
             // port 0 allows OS to pick, non-zero tries to bind specific. Check if bind succeeds.
@@ -133,8 +134,8 @@ struct UdpSocket::Impl {
     }
 };
 
-UdpSocket::UdpSocket(uint16_t bindPort, bool isIpv6)
-    : _port(bindPort), _impl(std::make_unique<Impl>(bindPort, isIpv6)) {}
+UdpSocket::UdpSocket(uint16_t bindPort, bool isIpv6, bool ipv6Only)
+    : _port(bindPort), _impl(std::make_unique<Impl>(bindPort, isIpv6, ipv6Only)) {}
 
 bool UdpSocket::IsValid() const {
     return _impl && _impl->valid;
@@ -267,13 +268,13 @@ void UdpSocket::Send(const std::string &targetIp, uint16_t targetPort, const std
 }
 
 void UdpSocket::OnReceive(ReceiveCallback callback) {
-    _onReceive = std::move(callback);
-
     if (_impl && _impl->socket.is_open()) {
-        _impl->onReceiveCallback = _onReceive;
-        // 初回の非同期受信要求を投げる
-        // ioThreadが走っているので、ここから自動的にループが始まる
-        asio::post(_impl->ioContext, [this]() { _impl->DoReceive(); });
+        // 候補確認→起動交渉でも同じソケットを維持する。受信スレッドで
+        // callbackを交換し、同じバッファへの二重async_receiveを作らない。
+        asio::post(_impl->ioContext, [this, callback=std::move(callback)]() mutable {
+            _impl->onReceiveCallback=std::move(callback);
+            if(!_impl->receiving) { _impl->receiving=true; _impl->DoReceive(); }
+        });
     }
 }
 

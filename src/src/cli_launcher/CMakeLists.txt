@@ -4,6 +4,7 @@ add_executable(CCCaster_B
     controller/MainController.cpp
     ui/ConsoleRenderer.cpp
     network_wrapper/SessionNegotiator.cpp
+    network_wrapper/DualRouteNegotiator.cpp
     network_wrapper/ConnectionHash.cpp
 )
 

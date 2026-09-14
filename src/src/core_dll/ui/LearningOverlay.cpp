@@ -35,7 +35,7 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
                       visible ? IM_COL32(105, 220, 174, 255) : IM_COL32(184, 203, 218, 255),
                       visible ? "ON" : "FRAME BAR: OFF");
     };
-    if (!FrameBarDisplay::Visible()) { shortcut(false); return; }
+    if (!FrameBarDisplay::Visible(appMode)) { shortcut(false); return; }
 
     // 従来ADVの位置(y=82)へ45Fを配置。公開済み30px版の1.5倍=45px高。
     // 毎Fの目盛りは残し、定規の数値は1と5F刻みに絞る。
@@ -107,7 +107,7 @@ void LearningOverlay::Draw(int appMode, const cccaster::FrameAdvantageResult &re
     if ((appMode != 1 && appMode != 2) || StateUiLogic::IsMappingWindowOpen())
         return;
     const auto mode = HudDisplay::Get();
-    if (mode == HudDisplayMode::Hidden)
+    if (mode == HudDisplayMode::Hidden || (appMode == 2 && !FrameBarDisplay::Visible(appMode)))
         return;
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;

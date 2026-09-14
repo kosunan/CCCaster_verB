@@ -30,7 +30,7 @@ LatencyWarningSnapshot ReadLatencyWarning(int delay, int rollback) {
     return cached;
 }
 
-void DrawBattleIdentity() {
+void DrawBattleIdentity(int delay, int rollback) {
     const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
     const auto score = cccaster::domain::session::SceneRunner::Score();
     const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -41,8 +41,7 @@ void DrawBattleIdentity() {
     const float y = 4.0f * scale;
     const float padX = 6.0f * scale;
     const float padY = 2.0f * scale;
-    const float maxNameWidth = 220.0f * scale;
-    const auto drawName = [&](const char *text, float anchor, bool rightAligned) {
+    const auto drawName = [&](const char *text, float anchor, bool rightAligned, float maxNameWidth) {
         float textSize = size;
         const float measured = font->CalcTextSizeA(textSize, 100000.0f, 0.0f, text).x;
         if (measured > maxNameWidth && measured > 0)
@@ -55,8 +54,6 @@ void DrawBattleIdentity() {
         draw->AddText(font, textSize, ImVec2(x + scale, y + scale), IM_COL32(0, 0, 0, 190), text);
         draw->AddText(font, textSize, ImVec2(x, y), normal, text);
     };
-    drawName(names.p1.data(), 12.0f * scale, false);
-    drawName(names.p2.data(), display.x - 12.0f * scale, true);
 
     char scoreText[32];
     std::snprintf(scoreText, sizeof(scoreText), "%u - %u",
@@ -68,6 +65,24 @@ void DrawBattleIdentity() {
                         ImVec2(x + extent.x + 8.0f * scale, y + extent.y + padY),
                         IM_COL32(8, 16, 27, 218), 3.0f * scale);
     draw->AddText(font, scoreSize, ImVec2(x, y), accent, scoreText);
+
+    // 勝数は中央のまま、設定値をその右隣へ配置する。
+    const auto values = FormatHudFixedValues(false, false, 0, false, 0, delay, rollback, 0);
+    char settings[32];
+    std::snprintf(settings, sizeof(settings), "D %s  R %s", values.delay, values.rollback);
+    const float settingsSize = 9.0f * scale;
+    const ImVec2 settingsExtent = font->CalcTextSizeA(settingsSize, 100000.0f, 0.0f, settings);
+    const float settingsX = x + extent.x + 16.0f * scale;
+    const float settingsY = y + (extent.y - settingsExtent.y) * 0.5f;
+    draw->AddRectFilled(ImVec2(settingsX - 5.0f * scale, y - padY),
+                        ImVec2(settingsX + settingsExtent.x + 5.0f * scale, y + extent.y + padY),
+                        IM_COL32(8, 16, 27, 218), 3.0f * scale);
+    draw->AddText(font, settingsSize, ImVec2(settingsX, settingsY), accent, settings);
+    const float leftWidth = std::max(scale, std::min(220.0f * scale, x - 34.0f * scale));
+    const float rightWidth = std::max(scale, std::min(220.0f * scale,
+        display.x - settingsX - settingsExtent.x - 36.0f * scale));
+    drawName(names.p1.data(), 12.0f * scale, false, leftWidth);
+    drawName(names.p2.data(), display.x - 12.0f * scale, true, rightWidth);
 }
 
 void DrawBattleMetrics(const HudFixedValues &value, bool qpcFallback) {
@@ -75,14 +90,12 @@ void DrawBattleMetrics(const HudFixedValues &value, bool qpcFallback) {
     const float scale = HudScale();
     auto *draw = ImGui::GetForegroundDrawList();
     auto *font = ImGui::GetFont();
-    char line[192], ping[8], jitter[9], delay[3], rollback[3], frame[10];
-    std::snprintf(line, sizeof(line), "RTT %7s  JIT %8s  D %2s  R %2s  1F %9s%s",
-                  value.ping, value.jitter, value.delay, value.rollback, value.frame,
+    char line[192], ping[8], jitter[9], frame[10];
+    std::snprintf(line, sizeof(line), "RTT %7s  JIT %8s  1F %9s%s",
+                  value.ping, value.jitter, value.frame,
                   qpcFallback ? "  QPC" : "");
     std::snprintf(ping, sizeof(ping), "%7s", value.ping);
     std::snprintf(jitter, sizeof(jitter), "%8s", value.jitter);
-    std::snprintf(delay, sizeof(delay), "%2s", value.delay);
-    std::snprintf(rollback, sizeof(rollback), "%2s", value.rollback);
     std::snprintf(frame, sizeof(frame), "%9s", value.frame);
     const float size = 9.0f * scale;
     const ImVec2 extent = font->CalcTextSizeA(size, 100000.0f, 0.0f, line);
@@ -98,8 +111,6 @@ void DrawBattleMetrics(const HudFixedValues &value, bool qpcFallback) {
     };
     part("RTT ", normal); part(ping, accent);
     part("  JIT ", normal); part(jitter, accent);
-    part("  D ", normal); part(delay, accent);
-    part("  R ", normal); part(rollback, accent);
     part("  1F ", normal); part(frame, accent);
     if (qpcFallback) part("  QPC", warning);
 }
@@ -261,29 +272,13 @@ void DrawHud(bool selection) {
     const auto appMode = cccaster::domain::session::SceneRunner::AppMode();
     if (appMode == 2) {
         const auto s = cccaster::domain::session::SceneRunner::SpectatorStatus();
-        // 最上端のADVと名前/勝数を重ねない。学習HUD表示中は観戦帯へまとめる。
-        const bool learningHud = !selection && (FrameBarDisplay::Visible() || mode != HudDisplayMode::Hidden);
-        if (selection || !learningHud) DrawBattleIdentity();
-        char line[192];
-        const bool measured = s.frame && s.latest / 65536 == s.frame / 65536 && s.latest >= s.frame;
-        if (measured) std::snprintf(line, sizeof(line), "SPECTATOR  |  %s  |  BUFFER %u F%s",
-            s.catching ? "CATCHING UP" : "PLAYING", s.latest >= s.frame ? s.latest - s.frame : 0, fallback ? "  |  QPC FALLBACK" : "");
-        else std::snprintf(line, sizeof(line), "SPECTATOR  |  %s%s",
-            s.state <= 1 ? "CONNECTING" : "WAITING FOR MATCH", fallback ? "  |  QPC FALLBACK" : "");
-        if (learningHud) {
-            const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
-            const auto score = cccaster::domain::session::SceneRunner::Score();
-            char status[192];
-            std::snprintf(status, sizeof(status), "%s", line);
-            std::snprintf(line, sizeof(line), "%s  |  %.31s %u - %u %.31s", status,
-                names.p1.data(), std::min(score.p1Wins, 999u), std::min(score.p2Wins, 999u), names.p2.data());
-        }
-        Panel panel(selection, 1); panel.Row(line, s.catching ? warning : accent);
+        if (selection || !FrameBarDisplay::Visible(appMode)) DrawBattleIdentity(s.delay, s.rollback);
         return;
     }
     if (appMode != 0) {
         if (appMode != 1 && appMode != 2) return;
         if (selection) {
+            DrawBattleIdentity(StateUiLogic::GetDelay(), StateUiLogic::GetRollback());
             Panel panel(true, 2, true);
             panel.Row(ControllerSetupGuidance(StateUiLogic::IsControllerConfirmationActive()),
                       StateUiLogic::IsControllerConfirmationActive() ? accent : warning);
@@ -342,8 +337,9 @@ void DrawHud(bool selection) {
     const auto net = StateUiLogic::GetNetworkMetrics();
     const auto &timing = cccaster::core::timer::FrameTiming::Get();
     if (selection) {
+        // Panelのクリップ範囲に上端の名前・勝数・D/Rを巻き込まない。
+        DrawBattleIdentity(d, r);
         Panel panel(true, 2, true);
-        DrawBattleIdentity();
         const bool confirmed = StateUiLogic::IsControllerConfirmationActive();
         panel.Row(ControllerSetupGuidance(confirmed),
                   confirmed ? accent : warning);
@@ -352,12 +348,11 @@ void DrawHud(bool selection) {
         else if (latency.severity != LatencyWarningSeverity::None)
             panel.LatencyWarningRow(latency, fallback);
         else
-            panel.CompactSettingsRow(FormatHudFixedValues(net.available, net.stale, net.latestRttMs,
-                                                           net.jitterAvailable, net.jitterMs, d, r,
-                                                           timing.last), fallback);
+            panel.Row(fallback ? "Ctrl+0-8: DELAY  |  Alt+0-8: ROLLBACK  |  CLOCK QPC"
+                               : "Ctrl+0-8: DELAY  |  Alt+0-8: ROLLBACK", fallback ? warning : normal);
         return;
     }
-    DrawBattleIdentity();
+    DrawBattleIdentity(d, r);
     DrawBattleLatencyWarning(latency);
     DrawBattleMetrics(FormatHudFixedValues(net.available, net.stale, net.latestRttMs,
                                             net.jitterAvailable, net.jitterMs, d, r,
@@ -367,6 +362,10 @@ void DrawHud(bool selection) {
 void StateUiView::DrawCharaSelectBar() { DrawHud(true); }
 void StateUiView::DrawInGameBar() { DrawHud(false); }
 void StateUiView::DrawRematchBar() {
+    if (cccaster::domain::session::SceneRunner::AppMode() == 2) {
+        DrawHud(true);
+        return;
+    }
     const auto mode = HudDisplay::Get();
     const bool fallback = cccaster::core::timer::WasapiClock::GetInstance().IsFallback();
     if (mode == HudDisplayMode::Hidden && !fallback) return;

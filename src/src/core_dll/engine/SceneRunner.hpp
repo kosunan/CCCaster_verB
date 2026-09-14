@@ -49,7 +49,7 @@ class SceneRunner {
     static const FrameBarHistory &FrameBar(); // ゲームスレッドの描画専用
     static TrainingStateEvent TrainingStateNotice();
     static bool HasTrainingState();
-    struct SpectatorInfo { uint32_t frame, latest, viewers, state; bool catching; };
+    struct SpectatorInfo { uint32_t frame, latest, viewers, state; bool catching; uint32_t delay, rollback; };
     static SpectatorInfo SpectatorStatus();
 };
 

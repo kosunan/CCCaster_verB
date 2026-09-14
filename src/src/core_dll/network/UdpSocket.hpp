@@ -24,7 +24,7 @@ class UdpSocket {
     using ReceiveCallback = std::function<void(const std::vector<uint8_t> &, const std::string &, uint16_t)>;
 
     // 待受用ポートを指定してインスタンス化
-    UdpSocket(uint16_t bindPort, bool isIpv6 = false);
+    UdpSocket(uint16_t bindPort, bool isIpv6 = false, bool ipv6Only = false);
     ~UdpSocket();
     UdpSocket(const UdpSocket &) = delete;
     UdpSocket &operator=(const UdpSocket &) = delete;

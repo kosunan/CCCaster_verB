@@ -97,7 +97,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
         frameBarF1Held = true;
         if (!(lParam & (1u << 30)) && !IsMappingWindowOpen() &&
             !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000))
-            FrameBarDisplay::Toggle();
+            FrameBarDisplay::Toggle(cccaster::domain::session::SceneRunner::AppMode());
         return 1;
     }
     static bool hudF3Held = false;
