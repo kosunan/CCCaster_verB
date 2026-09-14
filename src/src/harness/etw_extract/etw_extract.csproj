@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <TraceEventDir Condition="'$(TraceEventDir)' == ''">C:/Program Files (x86)/Microsoft Visual Studio/Installer/Feedback</TraceEventDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.Diagnostics.Tracing.TraceEvent"><HintPath>$(TraceEventDir)/Microsoft.Diagnostics.Tracing.TraceEvent.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Diagnostics.FastSerialization"><HintPath>$(TraceEventDir)/Microsoft.Diagnostics.FastSerialization.dll</HintPath></Reference>
+    <Reference Include="OSExtensions"><HintPath>$(TraceEventDir)/OSExtensions.dll</HintPath></Reference>
+    <Reference Include="Dia2Lib"><HintPath>$(TraceEventDir)/Dia2Lib.dll</HintPath></Reference>
+    <Reference Include="TraceReloggerLib"><HintPath>$(TraceEventDir)/TraceReloggerLib.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>
