@@ -1,0 +1,105 @@
+CCCaster verB 1.0 beta - コマンドライン画面モックアップ
+================================================
+
+ツールの起動からゲーム立ち上げまでの、実際のコンソール（コマンドプロンプト）上での文字の出方とプロンプト遷移のシミュレーションです。
+
+-------------------------------------------------------------------------
+【画面1】 アプリケーション起動時のメインメニュー
+-------------------------------------------------------------------------
+=======================================
+     CCCaster verB 1.0 beta - Rollback Engine
+=======================================
+Welcome! [Your Name: LocalPlayer1]
+
+(Use UP/DOWN arrows to navigate, ENTER to select, ESC to go back/cancel)
+
+> [ 1. Netplay ] <  (Highlighted / Inverted Color)
+  2. Training Mode
+  3. Spectate
+  4. Exit
+
+
+-------------------------------------------------------------------------
+【画面2】 1. Netplay を選択後（IPv4 / IPv6の選択）
+-------------------------------------------------------------------------
+> Select Protocol:
+> [ 1. IPv4 ] <  (Highlighted)
+  2. IPv6
+(Press ESC to return to Main Menu)
+
+> Select Role:
+> [ 1. Host   ] <  (Highlighted)
+  2. Client
+(Press ESC to return to Protocol Selection)
+
+
+-------------------------------------------------------------------------
+【画面3-A】 Host を選択後（ポート入力と待機）
+-------------------------------------------------------------------------
+> Enter port to listen on (Default: 10800): 10800
+
+[IPv4 Mode]
+Detected Global IP: 203.0.113.1
+Listening on 203.0.113.1:10800... (Copied to Clipboard!)
+
+(Waiting for connection... Press ESC to cancel)
+
+...
+Connection established!
+[Opponent] Name: TargetPlayer | IP: 198.51.100.2
+[Network]  Ping: 12ms | Jitter: 1.5ms | Loss: 0.0%
+
+> Select Game Mode:
+> [ 1. Versus Online ] <  (Highlighted)
+  2. Training Mode
+
+Mode: Versus Online selected.
+Synchronizing Rollback Settings... [Delay: 0F, Rollback: 8F]
+Launching Game...  [Please check the game window. Press Ctrl+C to quit this tool]
+
+
+-------------------------------------------------------------------------
+【画面3-B】 Client を選択した場合（相手のIP入力〜ホストの選択待ち）
+-------------------------------------------------------------------------
+> Enter target IP Address (e.g., 203.0.113.1:10800): 203.0.113.1:10800
+
+Connecting to 203.0.113.1:10800...
+(Press ESC to cancel)
+
+...
+Connected to Host!
+[Opponent] Name: HostPlayer | IP: 203.0.113.1
+[Network]  Ping: 12ms | Jitter: 1.2ms | Loss: 0.0%
+
+Waiting for Host to select Game Mode...
+...
+... Host selected Mode: Training Mode.
+Synchronizing Rollback Settings... [Delay: 0F, Rollback: 8F]
+Launching Game...  [Please check the game window. Press Ctrl+C to quit this tool]
+
+
+-------------------------------------------------------------------------
+【画面4】 2. Training Mode をトップメニューから選択した場合
+-------------------------------------------------------------------------
+> Enter your choice: 2
+
+Launching Offline Training Mode...
+[Please check the game window. Press Ctrl+C to quit this tool]
+
+
+-------------------------------------------------------------------------
+【画面5】 3. Spectate (観戦) をトップメニューから選択した場合
+-------------------------------------------------------------------------
+> Enter your choice: 3
+
+> Enter target Host IP Address (e.g., 203.0.113.1:10800): 203.0.113.1:10800
+
+Connecting as Spectator to 203.0.113.1:10800...
+...
+Connected to Host!
+[Host] Name: HostPlayer
+[Guest] Name: TargetPlayer
+[Network]  Ping to Host: 25ms | Loss: 0.0%
+
+Synchronizing Game State...
+Launching Game...  [Please check the game window. Press Ctrl+C to quit this tool]

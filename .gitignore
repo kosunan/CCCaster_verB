@@ -1,0 +1,22 @@
+# CMakeの生成物
+build/
+src/build/
+src/**/build/
+
+# 実ゲームコピーと検証ログ
+test/runtime/**
+test/logs/**
+!test/runtime/.gitkeep
+!test/logs/.gitkeep
+
+# 配布物と旧環境アーカイブ
+release/staging/
+release/packages/**
+archive/**
+!release/packages/.gitkeep
+!archive/.gitkeep
+
+# 一時ファイル
+**/__pycache__/
+**/*.pyc
+**/*.pdb

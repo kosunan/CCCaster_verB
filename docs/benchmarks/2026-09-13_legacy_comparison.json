@@ -1,0 +1,250 @@
+{
+  "date": "2026-09-13",
+  "target": "MBAACC 1.07 Rev.1.4.0 x86",
+  "legacy": "I:/work_space/CCCaster/OLD の3.1.007ローカルソースのReleaseビルド（コンソールフォント列挙0件の回避のみ追加）",
+  "machine": {
+    "cpu": "AMD Ryzen 7 5800X3D",
+    "cores": 8,
+    "threads": 16,
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "driver": "32.0.16.1088",
+    "os": "Windows 11 Pro 10.0.26200",
+    "memory_bytes": 51460755456
+  },
+  "startup": {
+    "old": {
+      "trials": [
+        {
+          "startup_seconds": 9.0720236,
+          "poll_bracket_us": 1047.0,
+          "start_tick": 2123665074671,
+          "ready_tick": 2123755794907,
+          "ready_previous_poll_tick": 2123755784437,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster.v3.1.exe": "5f8a42c1c63063c75f86ce3cc5586a3fd0ce07ca54079266503a0506cb29f8c1",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster\\hook.dll": "984c3926511d6bbecf4e2ec5726aca61f0b184819c18e32563c311690a5ffaf7"
+          }
+        },
+        {
+          "startup_seconds": 8.6470445,
+          "poll_bracket_us": 993.3,
+          "start_tick": 2123787541194,
+          "ready_tick": 2123874011639,
+          "ready_previous_poll_tick": 2123874001706,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster.v3.1.exe": "5f8a42c1c63063c75f86ce3cc5586a3fd0ce07ca54079266503a0506cb29f8c1",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster\\hook.dll": "984c3926511d6bbecf4e2ec5726aca61f0b184819c18e32563c311690a5ffaf7"
+          }
+        },
+        {
+          "startup_seconds": 8.7133154,
+          "poll_bracket_us": 993.3,
+          "start_tick": 2123905782906,
+          "ready_tick": 2123992916060,
+          "ready_previous_poll_tick": 2123992906127,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster.v3.1.exe": "5f8a42c1c63063c75f86ce3cc5586a3fd0ce07ca54079266503a0506cb29f8c1",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\old\\MBAACC_1\\cccaster\\hook.dll": "984c3926511d6bbecf4e2ec5726aca61f0b184819c18e32563c311690a5ffaf7"
+          }
+        }
+      ],
+      "median": 8.7133154,
+      "min": 8.6470445,
+      "max": 9.0720236
+    },
+    "new": {
+      "trials": [
+        {
+          "startup_seconds": 2.072527,
+          "poll_bracket_us": 1072.4,
+          "start_tick": 2123761340372,
+          "ready_tick": 2123782065642,
+          "ready_previous_poll_tick": 2123782054918,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "793e17b6f04ef2fa729b45c0211d564b4cbb214121fa3767ca237f1a5cc6dd35"
+          }
+        },
+        {
+          "startup_seconds": 2.0687414,
+          "poll_bracket_us": 1037.7,
+          "start_tick": 2123879510498,
+          "ready_tick": 2123900197912,
+          "ready_previous_poll_tick": 2123900187535,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "793e17b6f04ef2fa729b45c0211d564b4cbb214121fa3767ca237f1a5cc6dd35"
+          }
+        },
+        {
+          "startup_seconds": 1.9802045,
+          "poll_bracket_us": 1043.4,
+          "start_tick": 2123998337468,
+          "ready_tick": 2124018139513,
+          "ready_previous_poll_tick": 2124018129079,
+          "files": {
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\MBAA.exe": "04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\CCCaster_v10.exe": "e9efbe9f59acc2ce6e0d596cf81ddb68fc3294670b1f0bacbea1e9f17d498802",
+            "I:\\work_space\\CCCaster_v10\\_TEST_MBAACC\\LegacyBenchmark\\new\\MBAACC_1\\cccaster\\libcccaster_hook.dll": "793e17b6f04ef2fa729b45c0211d564b4cbb214121fa3767ca237f1a5cc6dd35"
+          }
+        }
+      ],
+      "median": 2.0687414,
+      "min": 1.9802045,
+      "max": 2.072527
+    }
+  },
+  "startup_change": {
+    "reduction_percent": 76.25770094354671,
+    "saved_seconds": 6.644574,
+    "speed_ratio": 4.211892022850223
+  },
+  "cadence": {
+    "old": {
+      "folder": "build_logs\\legacy_benchmark_20260913\\stage50_old_final",
+      "scene": {
+        "mode": 1,
+        "stage": 50,
+        "p1": 0,
+        "p2": 11,
+        "p1moon": 0,
+        "p2moon": 0,
+        "p1color": 0,
+        "p2color": 0
+      },
+      "measurement": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 4231,
+        "last_ordinal": 5731,
+        "first_tick": 2135675153594,
+        "last_tick": 2135925260693,
+        "interval_us": {
+          "count": 1500,
+          "min": 16481.0,
+          "median": 16666.7,
+          "mean": 16673.8066,
+          "p95": 16712.5,
+          "p99": 16737.303,
+          "max": 16965.6
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 0.06666666666933452,
+          "mean": 7.563133333333166,
+          "p95": 46.03333333333285,
+          "p99": 71.00033333333062,
+          "max": 298.93333333333067
+        },
+        "phase_end_us": 10709.89999999851,
+        "phase_min_us": 0.0,
+        "phase_max_us": 10709.966666668653,
+        "over_3us": 278,
+        "over_100us": 10,
+        "over_1ms": 0
+      },
+      "frequency": 10000000,
+      "probe_cost_us": {
+        "count": 11967,
+        "min": 0.1,
+        "median": 0.1,
+        "mean": 0.15073117740452913,
+        "p95": 0.2,
+        "p99": 0.3,
+        "max": 30.8
+      }
+    },
+    "new": {
+      "folder": "build_logs\\legacy_benchmark_20260913\\fixed_new",
+      "scene": {
+        "mode": 1,
+        "stage": 50,
+        "p1": 0,
+        "p2": 11,
+        "p1moon": 0,
+        "p2moon": 0,
+        "p1color": 0,
+        "p2color": 0
+      },
+      "measurement": {
+        "warmup_frames": 120,
+        "intervals": 1500,
+        "first_ordinal": 3773,
+        "last_ordinal": 5273,
+        "first_tick": 2131578964266,
+        "last_tick": 2131828976337,
+        "interval_us": {
+          "count": 1500,
+          "min": 16142.0,
+          "median": 16667.5,
+          "mean": 16667.4714,
+          "p95": 16676.01,
+          "p99": 16906.628999999997,
+          "max": 17195.5
+        },
+        "abs_error_us": {
+          "count": 1500,
+          "min": 0.03333333333284827,
+          "median": 2.6666666666678793,
+          "mean": 18.02811111111086,
+          "p95": 123.84500000000016,
+          "p99": 425.8676666666686,
+          "max": 528.8333333333321
+        },
+        "phase_end_us": 1207.1000000014901,
+        "phase_min_us": 0.0,
+        "phase_max_us": 1445.8333333320916,
+        "over_3us": 689,
+        "over_100us": 83,
+        "over_1ms": 0
+      },
+      "frequency": 10000000,
+      "probe_cost_us": {
+        "count": 6002,
+        "min": 0.1,
+        "median": 0.1,
+        "mean": 0.18157280906364545,
+        "p95": 0.4,
+        "p99": 0.6,
+        "max": 14.9
+      }
+    }
+  },
+  "evidence_sha256": {
+    "build_logs\\legacy_benchmark_20260913\\startup_1_old\\result.json": "d0fe3d1e95a24c938072122965c181a70a06d61839de958550ee7b66df4e8f0f",
+    "build_logs\\legacy_benchmark_20260913\\startup_2_old\\result.json": "85f404026a940d9ae2b0aa2617a64f67c964e256cadf212c5727d84dc1f2b709",
+    "build_logs\\legacy_benchmark_20260913\\startup_3_old\\result.json": "f0b1da9e68df4529488cd635c7c05efab8ca92e3beb22c8f80d3f37e7c4d2eeb",
+    "build_logs\\legacy_benchmark_20260913\\startup_1_new\\result.json": "f274c4852ca18dc080af030c9dd36fe2f594af7d493197b695e0bf7859e0bbaa",
+    "build_logs\\legacy_benchmark_20260913\\startup_2_new\\result.json": "724ae10a362c9828ef3643f1d9609c16463bc6d11a3256316b443b0486824588",
+    "build_logs\\legacy_benchmark_20260913\\startup_3_new\\result.json": "8cc2625e48060775b68495c7f9dd4fe676ab9cb5307103a7bdb5ccc12350d03a",
+    "build_logs\\legacy_benchmark_20260913\\stage50_old_final\\result.json": "40df267d10c93606de0a122379bc72f4e8768eac336b25f943e5f0b2f6b5c98e",
+    "build_logs\\legacy_benchmark_20260913\\stage50_old_final\\frames.bin": "797c6fc71020ac41c8f0e3ff43e57c9ecd097bfd6db37e5d9cdb439ff006a5f2",
+    "build_logs\\legacy_benchmark_20260913\\fixed_new\\result.json": "befcac04048e3b2aa46ab9b2fb4409936f41514819e694d235bea421ad458eee",
+    "build_logs\\legacy_benchmark_20260913\\fixed_new\\frames.bin": "d135e6fca678564e4114d53dea7cdb2a90b05811e31118a54b91327befe442e3"
+  },
+  "source_sha256": {
+    "src\\harness\\bench_legacy_real.py": "208e584c1c204a0184d79983dcd6e6fd6ac7d6bc7e2fe4069d0ea533319ec824",
+    "src\\harness\\legacy_benchmark_probe.cpp": "16237a47e2a866ca8f12b622a3ce53d9fc04965897761ebe1d5417b61daba643",
+    "src\\harness\\legacy_benchmark_inject.cpp": "2c728fda820678c89b674e40bb12ca55846bea3c02875b75ecb7979b38b28333",
+    "src\\harness\\build_legacy_benchmark.ps1": "b8ebd7c863549a8693b6927dee19996d8641e5e7e9001b616c29831c2ac0f709",
+    "src\\harness\\test_legacy_benchmark.py": "990e986a44b488d45081b083a065ad47f61d584fbc1366c82e860976129a5ed4",
+    "src\\harness\\summarize_legacy_benchmark.py": "e90a0dd2f783382479d9f8355a70f95ee63714853f60697ca4bda77a140c07ab",
+    "src\\harness\\plot_legacy_benchmark.py": "74975abc588c9f39f7bfc94433fd8760ae0c07531d86a62bd3155891746903de",
+    ".ai_workspace\\legacy_bench_20260913\\old_source\\targets\\DllMain.cpp": "cbb9bc6482f3c001574b6f7c872d7e428191323d2726d73568201023b48cebcf",
+    ".ai_workspace\\legacy_bench_20260913\\old_source\\targets\\DllFrameRate.cpp": "f949281e06add61cd388338af2cb8170d826f4a6c87be9b7db023154274be5b4",
+    ".ai_workspace\\legacy_bench_20260913\\old_source\\targets\\DllNetplayManager.cpp": "4a8969e4d6336dac1c86489fd8fb89fb9680ecd78469608c122e6e72ddbf007d",
+    ".ai_workspace\\legacy_bench_20260913\\old_source\\lib\\ConsoleUi.cpp": "bbdbed6f8f43b9379d62ff9748d0037ff640ba6f3c91e1ba33509ec177b304d1"
+  },
+  "measurement_tools": {
+    "build_logs\\legacy_benchmark_20260913\\tools_measured\\legacy_benchmark_inject.exe": "cda6b352b147bd35c7ffdfa9f2e26ee9f487240db1074f1d7e5ac9a3d8ee17cc",
+    "build_logs\\legacy_benchmark_20260913\\tools_measured\\legacy_benchmark_probe.dll": "dfaecff141c6906baad2d430bdce0c25ca4c21999ae425071da1acee456e1ba9",
+    "build_logs\\legacy_benchmark_20260913\\legacy_console_compatibility.patch": "f019710f78bcaa0a04c62e2b9720a67059fae48adf22439662d3bc88fb1c4be2"
+  },
+  "scope": "起動は交互各3回。周期は各1回、120F準備後の最初の1500連続区間。ロールアップ・ネット対戦・物理入力遅延は今回の比較対象外。"
+}

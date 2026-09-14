@@ -1,0 +1,13 @@
+{
+  "name": "cccaster-matchmaking-trial",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test.mjs",
+    "test:http": "node smoke.mjs"
+  },
+  "devDependencies": {
+    "miniflare": "5.20260910.0-alpha",
+    "wrangler": "4.131.0"
+  }
+}

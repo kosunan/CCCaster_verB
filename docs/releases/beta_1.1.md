@@ -1,0 +1,51 @@
+# CCCaster verB beta_1.1
+
+**更新先: [1.2の通常配布](https://github.com/kosunan/CCCaster_verB/releases/tag/v1.2)。この1.1の標準ZIPには起動停止・Trainingの修正が含まれていません。修正は1.2の `cccaster_B.zip` に統合しました。**
+
+2026-09-13 追加: [英語版の起動停止診断ZIP](https://github.com/kosunan/CCCaster_verB/releases/download/beta_1.1/cccaster_B_startup_diagnostic_EN_20260913.zip) を同リリースへ掲載した。ZIP内READMEとリリース上の診断説明は英語表記。多重起動対策のWindows APIへの副作用を修正し、起動ログを追加したもの。報告者PCでの復旧・Special K併用・高FPSの解決は未確認。[確認範囲と手順](../issues/BUG_REPORT_NO_WINDOW.md)。既存の通常版・ソースZIP・SHA256SUMS.txtは元のリリースに対応する。診断ZIPのSHA-256は `2fafaa92bd323c7b8fde4bd783a199e5c17a0be56428f5877c65aca579a6da04`。
+
+コミュニティで使用されている指定MBAA.exeが起動判定で拒否され、Trainingを開始できなかった問題を修正した。起動高速化を有効にし、ゲーム起動時にEXE全体のSHA-256を毎回照合する。
+
+## 変更点
+
+- 指定されたコミュニティEXEを既知の対応版へ追加。従来の検証用EXEも引き続き対応する。
+- CLI／GUI共通の起動経路で実ファイルのパス・全体SHA-256・検査結果を表示。不一致、読込失敗、破損はゲーム生成前に拒否する。
+- DLLでも実行コードと追加セクションを照合してからフックを導入する。関連機能の版判定も統一した。
+- DDS直接転送、初期化の短縮、起動中の時計加速と描画・待機の省略を有効化。DLL準備完了との同期、キャラ選択後の通常待機は維持する。
+
+ゲーム本体のMBAA.exeファイルを書き換える修正ではない。対象はWindows・32bitのMBAACC Ver.1.07 Rev.1.4.0。Steam版は対象外。
+
+## 対応EXEのSHA-256
+
+```text
+コミュニティ版
+6d1415ca9573100e86a779ac2f81e9bedd322664e3daeae0229a67d13720310a
+
+従来の検証用
+04b5bbd582fd795ea2fd27acb5beb2c4e958c6840b1054cda4cb0b70481d949d
+```
+
+## 更新方法
+
+1. 更新するゲームとランチャーを終了する。
+2. `cccaster_B.zip` を展開し、既存の `cccaster_B` 内のCLI・GUI・DLLの3ファイルを置き換える。`cccaster_B` は `MBAA.exe` と同じフォルダー内に配置する。
+3. ゲーム本体・コントローラー設定・INIファイルを保持する。
+4. `CCCaster_v10_GUI.exe` または `CCCaster_v10.exe` から起動する。対戦する両者で今回のビルドを使用する。
+
+通信版10／拡張6は変更していない。配布ZIPにはゲーム本体・ユーザー設定・検証ログを含めない。同じリリースコミットのソースZIPと、配布ファイルのSHA256一覧を添付する。
+
+## 検証
+
+- 32bit Releaseビルド成功。CLI／GUI／DLLのPE Machineはすべて `0x014c`。
+- 37 CTest成功。既知EXE・改変・欠落・SHA標準ベクトルを含む633検査は失敗0。隔離CLIの7種の不正条件をすべて起動前に拒否した。
+- 指定EXEのTrainingは、入力経路2.823秒・Present経路2.835秒でキャラ選択へ到達し、Trainingモードを確認した。今回1回の測定。
+- 同一PC2窓・脚本入力・40秒・15〜25msの遅延／5%損失・短縮接続コード参加で、新EXE同士1,295確定F、新旧EXE混在1,234確定Fの差分・欠落0。双方でロールバックが発生した。
+- 元の指定EXEを含む77件のEXE・INIを検証前後で照合して不変。
+
+報告者のPC、別PC／別回線、全キャラ、物理コントローラー操作と実画面目視は今回未確認。描画・入力APIへの到達を、物理表示や手操作の確認とは扱わない。[実装・差分監査・根拠ログ](../design/2026-09-13_community_exe.md)。
+
+[リリースページ](https://github.com/kosunan/CCCaster_verB/releases/tag/beta_1.1)
+
+## 公開後のCI確認
+
+Linux CIのPython解析テスト2件が、既存の `bench_legacy_real.py` を読み込む際に `ctypes.WinDLL` を呼び出して失敗する。今回の製品変更前から3関連ファイルは同一で、Windows用の収集処理を解析だけのテストから分離する修正が残る。GitHub上のビルドとC++テストは成功。配布用Windowsの37 CTest・実ゲーム疎通は確認済み。 [CIログ](https://github.com/kosunan/CCCaster_verB/actions/runs/34717719169/job/103617838747)。公開後の記録追記であり、タグ `beta_1.1` と配布バイナリ・ソースZIPは `947c111` のまま維持する。

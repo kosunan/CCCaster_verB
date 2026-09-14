@@ -1,0 +1,21 @@
+name: 同期ロジックの回帰チェック
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          install: mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-make
+      - name: 32bitビルドとテスト
+        shell: msys2 {0}
+        run: |
+          cmake -S src -B build -G 'MinGW Makefiles' -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j2
+          ctest --test-dir build --output-on-failure --no-tests=error
+      - name: Python解析テスト
+        run: python -X utf8 -m unittest discover -s src/src/harness -p 'test_*.py'

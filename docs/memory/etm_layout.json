@@ -1,0 +1,2709 @@
+{
+  "upstream_commit": "038887d7d8e6e70963ce9eb5780a25ac35cf1cac",
+  "pointer_bytes": 4,
+  "packing": 1,
+  "status": "参照ソースの静的解析。実ゲーム未確認。",
+  "source_sha256": {
+    "README.md": "50ca600a96a89b7697b414a5af4fe95690c4934f8226b1fba425bd393406d89c",
+    "Common/Common.h": "f6b84dd5cc4a688c3d3f583c84fc2acd9b38579718cded030dc0f42f54ad02c2",
+    "Extended-Training-Mode-DLL/DebugInfo.h": "566bda565a8c471ec89e283f9a11169da36edc435d2c11c187566bbf679252a1",
+    "Extended-Training-Mode-DLL/SaveState.h": "31a8bd0f538a6859c527abd199cab9b8ff7a8f9f031c89f21e735e08420663ba",
+    "Extended-Training-Mode-DLL/SaveState.cpp": "f1fd3862cc48bf94ae216192e0d3c298f750f846bb8c8e443afec5cfa5d09295",
+    "Extended-Training-Mode-DLL/FrameBar.cpp": "f2641e37a4a82dc1f72d4533c18107d615bb2a78c4059d50e41a006b4d9adbbb"
+  },
+  "checked_offsets": 19,
+  "structs": [
+    {
+      "name": "CameraBoxData",
+      "size": 16,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "x1",
+          "type": "int",
+          "count": 1,
+          "offset": "0x0",
+          "size": 4,
+          "example_va": null,
+          "source_line": 222,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L222"
+        },
+        {
+          "name": "y1",
+          "type": "int",
+          "count": 1,
+          "offset": "0x4",
+          "size": 4,
+          "example_va": null,
+          "source_line": 223,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L223"
+        },
+        {
+          "name": "x2",
+          "type": "int",
+          "count": 1,
+          "offset": "0x8",
+          "size": 4,
+          "example_va": null,
+          "source_line": 224,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L224"
+        },
+        {
+          "name": "y2",
+          "type": "int",
+          "count": 1,
+          "offset": "0xC",
+          "size": 4,
+          "example_va": null,
+          "source_line": 225,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L225"
+        }
+      ]
+    },
+    {
+      "name": "RawBoxData",
+      "size": 8,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "x1",
+          "type": "short",
+          "count": 1,
+          "offset": "0x0",
+          "size": 2,
+          "example_va": null,
+          "source_line": 231,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L231"
+        },
+        {
+          "name": "y1",
+          "type": "short",
+          "count": 1,
+          "offset": "0x2",
+          "size": 2,
+          "example_va": null,
+          "source_line": 232,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L232"
+        },
+        {
+          "name": "x2",
+          "type": "short",
+          "count": 1,
+          "offset": "0x4",
+          "size": 2,
+          "example_va": null,
+          "source_line": 233,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L233"
+        },
+        {
+          "name": "y2",
+          "type": "short",
+          "count": 1,
+          "offset": "0x6",
+          "size": 2,
+          "example_va": null,
+          "source_line": 234,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L234"
+        }
+      ]
+    },
+    {
+      "name": "ActorData",
+      "size": 824,
+      "inherited_bytes": 0,
+      "example_base": "0x00555134",
+      "fields": [
+        {
+          "name": "index",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x0",
+          "size": 1,
+          "example_va": "0x00555134",
+          "source_line": 447,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L447"
+        },
+        {
+          "name": "charID",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1",
+          "size": 1,
+          "example_va": "0x00555135",
+          "source_line": 448,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L448"
+        },
+        {
+          "name": "charIDCopy",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2",
+          "size": 1,
+          "example_va": "0x00555136",
+          "source_line": 449,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L449"
+        },
+        {
+          "name": "doTrainingAction",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x3",
+          "size": 1,
+          "example_va": "0x00555137",
+          "source_line": 450,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L450"
+        },
+        {
+          "name": "source",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x4",
+          "size": 1,
+          "example_va": "0x00555138",
+          "source_line": 451,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L451"
+        },
+        {
+          "name": "someFlag",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x5",
+          "size": 1,
+          "example_va": "0x00555139",
+          "source_line": 452,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L452"
+        },
+        {
+          "name": "palette",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x6",
+          "size": 1,
+          "example_va": "0x0055513A",
+          "source_line": 453,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L453"
+        },
+        {
+          "name": "moon",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x8",
+          "size": 2,
+          "example_va": "0x0055513C",
+          "source_line": 455,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L455"
+        },
+        {
+          "name": "pattern",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xC",
+          "size": 4,
+          "example_va": "0x00555140",
+          "source_line": 457,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L457"
+        },
+        {
+          "name": "state",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x10",
+          "size": 4,
+          "example_va": "0x00555144",
+          "source_line": 458,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L458"
+        },
+        {
+          "name": "nextSprite",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x14",
+          "size": 4,
+          "example_va": "0x00555148",
+          "source_line": 459,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L459"
+        },
+        {
+          "name": "framesInCurrentState",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x18",
+          "size": 4,
+          "example_va": "0x0055514C",
+          "source_line": 460,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L460"
+        },
+        {
+          "name": "isFirstFramePlusOne",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1C",
+          "size": 1,
+          "example_va": "0x00555150",
+          "source_line": 461,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L461"
+        },
+        {
+          "name": "didPatternTransition",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1F",
+          "size": 1,
+          "example_va": "0x00555153",
+          "source_line": 463,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L463"
+        },
+        {
+          "name": "remainingLoops",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x21",
+          "size": 1,
+          "example_va": "0x00555155",
+          "source_line": 465,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L465"
+        },
+        {
+          "name": "EFTP1flagset1",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x22",
+          "size": 2,
+          "example_va": "0x00555156",
+          "source_line": 466,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L466"
+        },
+        {
+          "name": "EFTP1flagset2",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x24",
+          "size": 2,
+          "example_va": "0x00555158",
+          "source_line": 467,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L467"
+        },
+        {
+          "name": "commandSpecialVar",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x26",
+          "size": 2,
+          "example_va": "0x0055515A",
+          "source_line": 468,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L468"
+        },
+        {
+          "name": "randomAirTech",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x4C",
+          "size": 4,
+          "example_va": "0x00555180",
+          "source_line": 470,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L470"
+        },
+        {
+          "name": "randomGroundTech",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x50",
+          "size": 4,
+          "example_va": "0x00555184",
+          "source_line": 471,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L471"
+        },
+        {
+          "name": "notInCombo",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x60",
+          "size": 4,
+          "example_va": "0x00555194",
+          "source_line": 473,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L473"
+        },
+        {
+          "name": "numFrameAndPatternTransitions",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x64",
+          "size": 4,
+          "example_va": "0x00555198",
+          "source_line": 474,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L474"
+        },
+        {
+          "name": "defensiveStateFlag",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x68",
+          "size": 4,
+          "example_va": "0x0055519C",
+          "source_line": 475,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L475"
+        },
+        {
+          "name": "defensiveStateQueue",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x84",
+          "size": 4,
+          "example_va": "0x005551B8",
+          "source_line": 477,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L477"
+        },
+        {
+          "name": "flags",
+          "type": "DWORD",
+          "count": 6,
+          "offset": "0x88",
+          "size": 24,
+          "example_va": "0x005551BC",
+          "source_line": 478,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L478"
+        },
+        {
+          "name": "exGuard",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xAC",
+          "size": 4,
+          "example_va": "0x005551E0",
+          "source_line": 480,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L480"
+        },
+        {
+          "name": "exGuardTimer",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xB0",
+          "size": 4,
+          "example_va": "0x005551E4",
+          "source_line": 481,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L481"
+        },
+        {
+          "name": "doClashExtraHitstop",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xB4",
+          "size": 4,
+          "example_va": "0x005551E8",
+          "source_line": 482,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L482"
+        },
+        {
+          "name": "health",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xB8",
+          "size": 4,
+          "example_va": "0x005551EC",
+          "source_line": 483,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L483"
+        },
+        {
+          "name": "redHealth",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xBC",
+          "size": 4,
+          "example_va": "0x005551F0",
+          "source_line": 484,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L484"
+        },
+        {
+          "name": "guardGauge",
+          "type": "float",
+          "count": 1,
+          "offset": "0xC0",
+          "size": 4,
+          "example_va": "0x005551F4",
+          "source_line": 485,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L485"
+        },
+        {
+          "name": "guardGaugeHeal",
+          "type": "float",
+          "count": 1,
+          "offset": "0xC4",
+          "size": 4,
+          "example_va": "0x005551F8",
+          "source_line": 486,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L486"
+        },
+        {
+          "name": "guardGaugeState",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xC8",
+          "size": 4,
+          "example_va": "0x005551FC",
+          "source_line": 487,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L487"
+        },
+        {
+          "name": "guardGaugeStop",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xCC",
+          "size": 4,
+          "example_va": "0x00555200",
+          "source_line": 488,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L488"
+        },
+        {
+          "name": "onBlockComboCount",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xD0",
+          "size": 2,
+          "example_va": "0x00555204",
+          "source_line": 489,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L489"
+        },
+        {
+          "name": "guardQualityStop",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xD2",
+          "size": 2,
+          "example_va": "0x00555206",
+          "source_line": 490,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L490"
+        },
+        {
+          "name": "quardQuality",
+          "type": "float",
+          "count": 1,
+          "offset": "0xD4",
+          "size": 4,
+          "example_va": "0x00555208",
+          "source_line": 491,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L491"
+        },
+        {
+          "name": "exGuardMeterPenaltyTimer",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xD8",
+          "size": 2,
+          "example_va": "0x0055520C",
+          "source_line": 492,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L492"
+        },
+        {
+          "name": "magicCircuit",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xDC",
+          "size": 4,
+          "example_va": "0x00555210",
+          "source_line": 494,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L494"
+        },
+        {
+          "name": "heatTimeLeft",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xE0",
+          "size": 4,
+          "example_va": "0x00555214",
+          "source_line": 495,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L495"
+        },
+        {
+          "name": "magicCircuitState",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0xE4",
+          "size": 1,
+          "example_va": "0x00555218",
+          "source_line": 496,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L496"
+        },
+        {
+          "name": "maxHeatTime",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xE8",
+          "size": 2,
+          "example_va": "0x0055521C",
+          "source_line": 498,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L498"
+        },
+        {
+          "name": "magicCircuitPause",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xEA",
+          "size": 2,
+          "example_va": "0x0055521E",
+          "source_line": 499,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L499"
+        },
+        {
+          "name": "heatTimeCounter",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xEC",
+          "size": 4,
+          "example_va": "0x00555220",
+          "source_line": 500,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L500"
+        },
+        {
+          "name": "storedMeterUsage",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xF4",
+          "size": 4,
+          "example_va": "0x00555228",
+          "source_line": 502,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L502"
+        },
+        {
+          "name": "storedMeterCircuitState",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0xF8",
+          "size": 4,
+          "example_va": "0x0055522C",
+          "source_line": 503,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L503"
+        },
+        {
+          "name": "meterMultTimer",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xFC",
+          "size": 2,
+          "example_va": "0x00555230",
+          "source_line": 504,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L504"
+        },
+        {
+          "name": "meterMultTimerTotal",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0xFE",
+          "size": 2,
+          "example_va": "0x00555232",
+          "source_line": 505,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L505"
+        },
+        {
+          "name": "meterGainMultiplier",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x100",
+          "size": 2,
+          "example_va": "0x00555234",
+          "source_line": 506,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L506"
+        },
+        {
+          "name": "xPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x104",
+          "size": 4,
+          "example_va": "0x00555238",
+          "source_line": 508,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L508"
+        },
+        {
+          "name": "yPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x108",
+          "size": 4,
+          "example_va": "0x0055523C",
+          "source_line": 509,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L509"
+        },
+        {
+          "name": "prevXPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x110",
+          "size": 4,
+          "example_va": "0x00555244",
+          "source_line": 511,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L511"
+        },
+        {
+          "name": "prevYPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x114",
+          "size": 4,
+          "example_va": "0x00555248",
+          "source_line": 512,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L512"
+        },
+        {
+          "name": "xVel",
+          "type": "int",
+          "count": 1,
+          "offset": "0x118",
+          "size": 4,
+          "example_va": "0x0055524C",
+          "source_line": 513,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L513"
+        },
+        {
+          "name": "yVel",
+          "type": "int",
+          "count": 1,
+          "offset": "0x11C",
+          "size": 4,
+          "example_va": "0x00555250",
+          "source_line": 514,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L514"
+        },
+        {
+          "name": "xAccel",
+          "type": "short",
+          "count": 1,
+          "offset": "0x120",
+          "size": 2,
+          "example_va": "0x00555254",
+          "source_line": 515,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L515"
+        },
+        {
+          "name": "yAccel",
+          "type": "short",
+          "count": 1,
+          "offset": "0x122",
+          "size": 2,
+          "example_va": "0x00555256",
+          "source_line": 516,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L516"
+        },
+        {
+          "name": "maxXSpeed",
+          "type": "short",
+          "count": 1,
+          "offset": "0x124",
+          "size": 2,
+          "example_va": "0x00555258",
+          "source_line": 517,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L517"
+        },
+        {
+          "name": "xVelChange",
+          "type": "int",
+          "count": 1,
+          "offset": "0x128",
+          "size": 4,
+          "example_va": "0x0055525C",
+          "source_line": 519,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L519"
+        },
+        {
+          "name": "yVelChange",
+          "type": "int",
+          "count": 1,
+          "offset": "0x12C",
+          "size": 4,
+          "example_va": "0x00555260",
+          "source_line": 520,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L520"
+        },
+        {
+          "name": "xAccelChange",
+          "type": "short",
+          "count": 1,
+          "offset": "0x130",
+          "size": 2,
+          "example_va": "0x00555264",
+          "source_line": 521,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L521"
+        },
+        {
+          "name": "yAccelChange",
+          "type": "short",
+          "count": 1,
+          "offset": "0x132",
+          "size": 2,
+          "example_va": "0x00555266",
+          "source_line": 522,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L522"
+        },
+        {
+          "name": "momentum",
+          "type": "int",
+          "count": 1,
+          "offset": "0x134",
+          "size": 4,
+          "example_va": "0x00555268",
+          "source_line": 523,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L523"
+        },
+        {
+          "name": "momentumQueue",
+          "type": "int",
+          "count": 1,
+          "offset": "0x138",
+          "size": 4,
+          "example_va": "0x0055526C",
+          "source_line": 524,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L524"
+        },
+        {
+          "name": "momentumDecay",
+          "type": "short",
+          "count": 1,
+          "offset": "0x13C",
+          "size": 2,
+          "example_va": "0x00555270",
+          "source_line": 525,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L525"
+        },
+        {
+          "name": "momentumGrantingPattern",
+          "type": "short",
+          "count": 1,
+          "offset": "0x13E",
+          "size": 2,
+          "example_va": "0x00555272",
+          "source_line": 526,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L526"
+        },
+        {
+          "name": "useAddYMaxXParams",
+          "type": "short",
+          "count": 1,
+          "offset": "0x140",
+          "size": 2,
+          "example_va": "0x00555274",
+          "source_line": 527,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L527"
+        },
+        {
+          "name": "thrownXOffset",
+          "type": "int",
+          "count": 1,
+          "offset": "0x154",
+          "size": 4,
+          "example_va": "0x00555288",
+          "source_line": 529,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L529"
+        },
+        {
+          "name": "thrownYOffset",
+          "type": "int",
+          "count": 1,
+          "offset": "0x158",
+          "size": 4,
+          "example_va": "0x0055528C",
+          "source_line": 530,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L530"
+        },
+        {
+          "name": "hitType",
+          "type": "short",
+          "count": 1,
+          "offset": "0x15C",
+          "size": 2,
+          "example_va": "0x00555290",
+          "source_line": 531,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L531"
+        },
+        {
+          "name": "projectileHitType",
+          "type": "short",
+          "count": 1,
+          "offset": "0x15E",
+          "size": 2,
+          "example_va": "0x00555292",
+          "source_line": 532,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L532"
+        },
+        {
+          "name": "zPriority",
+          "type": "short",
+          "count": 1,
+          "offset": "0x160",
+          "size": 2,
+          "example_va": "0x00555294",
+          "source_line": 533,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L533"
+        },
+        {
+          "name": "zPrioritySetter",
+          "type": "short",
+          "count": 1,
+          "offset": "0x162",
+          "size": 2,
+          "example_va": "0x00555296",
+          "source_line": 534,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L534"
+        },
+        {
+          "name": "shieldHeldTime",
+          "type": "int",
+          "count": 1,
+          "offset": "0x168",
+          "size": 4,
+          "example_va": "0x0055529C",
+          "source_line": 536,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L536"
+        },
+        {
+          "name": "shieldSuccessType",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x16C",
+          "size": 1,
+          "example_va": "0x005552A0",
+          "source_line": 537,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L537"
+        },
+        {
+          "name": "autoSuperJump",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x16D",
+          "size": 1,
+          "example_va": "0x005552A1",
+          "source_line": 538,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L538"
+        },
+        {
+          "name": "hitstop",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x16E",
+          "size": 1,
+          "example_va": "0x005552A2",
+          "source_line": 539,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L539"
+        },
+        {
+          "name": "hitstopAdvanceFrames",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x16F",
+          "size": 1,
+          "example_va": "0x005552A3",
+          "source_line": 540,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L540"
+        },
+        {
+          "name": "ungrantedHitstop",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x171",
+          "size": 1,
+          "example_va": "0x005552A5",
+          "source_line": 542,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L542"
+        },
+        {
+          "name": "throwFlag",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x172",
+          "size": 1,
+          "example_va": "0x005552A6",
+          "source_line": 543,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L543"
+        },
+        {
+          "name": "noInputFlag",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x173",
+          "size": 1,
+          "example_va": "0x005552A7",
+          "source_line": 544,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L544"
+        },
+        {
+          "name": "tagFlag",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x174",
+          "size": 1,
+          "example_va": "0x005552A8",
+          "source_line": 545,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L545"
+        },
+        {
+          "name": "remainingHits",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x176",
+          "size": 1,
+          "example_va": "0x005552AA",
+          "source_line": 547,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L547"
+        },
+        {
+          "name": "inBlockstun",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x177",
+          "size": 1,
+          "example_va": "0x005552AB",
+          "source_line": 548,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L548"
+        },
+        {
+          "name": "willBlock",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x178",
+          "size": 1,
+          "example_va": "0x005552AC",
+          "source_line": 549,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L549"
+        },
+        {
+          "name": "proxyGuardTime",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x179",
+          "size": 1,
+          "example_va": "0x005552AD",
+          "source_line": 550,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L550"
+        },
+        {
+          "name": "bounceCount",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x17A",
+          "size": 1,
+          "example_va": "0x005552AE",
+          "source_line": 551,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L551"
+        },
+        {
+          "name": "comboJumpCancel",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x17D",
+          "size": 1,
+          "example_va": "0x005552B1",
+          "source_line": 553,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L553"
+        },
+        {
+          "name": "burstLock",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x17E",
+          "size": 1,
+          "example_va": "0x005552B2",
+          "source_line": 554,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L554"
+        },
+        {
+          "name": "strikeInvuln",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x181",
+          "size": 1,
+          "example_va": "0x005552B5",
+          "source_line": 556,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L556"
+        },
+        {
+          "name": "throwInvuln",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x182",
+          "size": 1,
+          "example_va": "0x005552B6",
+          "source_line": 557,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L557"
+        },
+        {
+          "name": "preJumpThrowInvuln",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x184",
+          "size": 1,
+          "example_va": "0x005552B8",
+          "source_line": 559,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L559"
+        },
+        {
+          "name": "airTime",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x186",
+          "size": 2,
+          "example_va": "0x005552BA",
+          "source_line": 561,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L561"
+        },
+        {
+          "name": "timeThrown",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x188",
+          "size": 2,
+          "example_va": "0x005552BC",
+          "source_line": 562,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L562"
+        },
+        {
+          "name": "totalUntechTime",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x18A",
+          "size": 2,
+          "example_va": "0x005552BE",
+          "source_line": 563,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L563"
+        },
+        {
+          "name": "untechTimeElapsed",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x18C",
+          "size": 2,
+          "example_va": "0x005552C0",
+          "source_line": 564,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L564"
+        },
+        {
+          "name": "canAirTech",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x190",
+          "size": 1,
+          "example_va": "0x005552C4",
+          "source_line": 566,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L566"
+        },
+        {
+          "name": "canGroundTech",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x191",
+          "size": 1,
+          "example_va": "0x005552C5",
+          "source_line": 567,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L567"
+        },
+        {
+          "name": "isGroundTech",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x192",
+          "size": 1,
+          "example_va": "0x005552C6",
+          "source_line": 568,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L568"
+        },
+        {
+          "name": "armorTimer",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x194",
+          "size": 2,
+          "example_va": "0x005552C8",
+          "source_line": 570,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L570"
+        },
+        {
+          "name": "reversedControlsTimer",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x196",
+          "size": 2,
+          "example_va": "0x005552CA",
+          "source_line": 571,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L571"
+        },
+        {
+          "name": "receivedHitstop",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1A0",
+          "size": 1,
+          "example_va": "0x005552D4",
+          "source_line": 573,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L573"
+        },
+        {
+          "name": "numOverlapHitboxes",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1A1",
+          "size": 1,
+          "example_va": "0x005552D5",
+          "source_line": 574,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L574"
+        },
+        {
+          "name": "hitstunBlockstunTimeElapsed",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x1A4",
+          "size": 4,
+          "example_va": "0x005552D8",
+          "source_line": 576,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L576"
+        },
+        {
+          "name": "hitstunTimeRemaining",
+          "type": "int",
+          "count": 1,
+          "offset": "0x1A8",
+          "size": 4,
+          "example_va": "0x005552DC",
+          "source_line": 577,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L577"
+        },
+        {
+          "name": "completedHitVectors",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1AC",
+          "size": 1,
+          "example_va": "0x005552E0",
+          "source_line": 578,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L578"
+        },
+        {
+          "name": "didHitVectorFaceLeft",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1AD",
+          "size": 1,
+          "example_va": "0x005552E1",
+          "source_line": 579,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L579"
+        },
+        {
+          "name": "receivedHitVector",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1AE",
+          "size": 1,
+          "example_va": "0x005552E2",
+          "source_line": 580,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L580"
+        },
+        {
+          "name": "someDeathFlagMaybe",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1B1",
+          "size": 1,
+          "example_va": "0x005552E5",
+          "source_line": 582,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L582"
+        },
+        {
+          "name": "jumpVariable",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1B3",
+          "size": 1,
+          "example_va": "0x005552E7",
+          "source_line": 584,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L584"
+        },
+        {
+          "name": "specialVariables",
+          "type": "BYTE",
+          "count": 10,
+          "offset": "0x1B4",
+          "size": 10,
+          "example_va": "0x005552E8",
+          "source_line": 585,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L585"
+        },
+        {
+          "name": "dashVariable",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1BE",
+          "size": 1,
+          "example_va": "0x005552F2",
+          "source_line": 586,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L586"
+        },
+        {
+          "name": "extraVariables",
+          "type": "WORD",
+          "count": 10,
+          "offset": "0x1C0",
+          "size": 20,
+          "example_va": "0x005552F4",
+          "source_line": 588,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L588"
+        },
+        {
+          "name": "xVelStorage",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1D4",
+          "size": 2,
+          "example_va": "0x00555308",
+          "source_line": 589,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L589"
+        },
+        {
+          "name": "yVelStorage",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1D6",
+          "size": 2,
+          "example_va": "0x0055530A",
+          "source_line": 590,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L590"
+        },
+        {
+          "name": "xAccStorage",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1D8",
+          "size": 2,
+          "example_va": "0x0055530C",
+          "source_line": 591,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L591"
+        },
+        {
+          "name": "yAccStorage",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1DA",
+          "size": 2,
+          "example_va": "0x0055530E",
+          "source_line": 592,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L592"
+        },
+        {
+          "name": "afterImageBlendMode",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1E2",
+          "size": 1,
+          "example_va": "0x00555316",
+          "source_line": 594,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L594"
+        },
+        {
+          "name": "numAfterImages",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1E3",
+          "size": 1,
+          "example_va": "0x00555317",
+          "source_line": 595,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L595"
+        },
+        {
+          "name": "afterImageFramePosOffset",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1E4",
+          "size": 1,
+          "example_va": "0x00555318",
+          "source_line": 596,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L596"
+        },
+        {
+          "name": "reversePenalty",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1E6",
+          "size": 2,
+          "example_va": "0x0055531A",
+          "source_line": 598,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L598"
+        },
+        {
+          "name": "reversePenaltyDecayTimer",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1E8",
+          "size": 2,
+          "example_va": "0x0055531C",
+          "source_line": 599,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L599"
+        },
+        {
+          "name": "onHitComboCount",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1EA",
+          "size": 2,
+          "example_va": "0x0055531E",
+          "source_line": 600,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L600"
+        },
+        {
+          "name": "unknownHitCounter",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x1EC",
+          "size": 2,
+          "example_va": "0x00555320",
+          "source_line": 601,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L601"
+        },
+        {
+          "name": "counterhitState",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x1F6",
+          "size": 1,
+          "example_va": "0x0055532A",
+          "source_line": 603,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L603"
+        },
+        {
+          "name": "receivingAttackDataPtrArr",
+          "type": "AttackData*",
+          "count": 8,
+          "offset": "0x1F8",
+          "size": 32,
+          "example_va": "0x0055532C",
+          "source_line": 605,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L605"
+        },
+        {
+          "name": "hitboxOverlapArr",
+          "type": "CameraBoxData",
+          "count": 8,
+          "offset": "0x218",
+          "size": 128,
+          "example_va": "0x0055534C",
+          "source_line": 606,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L606"
+        },
+        {
+          "name": "attackingSubObjPtrArr",
+          "type": "ActorData*",
+          "count": 8,
+          "offset": "0x298",
+          "size": 32,
+          "example_va": "0x005553CC",
+          "source_line": 607,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L607"
+        },
+        {
+          "name": "lastHitBySubObjPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x2B8",
+          "size": 4,
+          "example_va": "0x005553EC",
+          "source_line": 608,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L608"
+        },
+        {
+          "name": "lastHitSubObjPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x2BC",
+          "size": 4,
+          "example_va": "0x005553F0",
+          "source_line": 609,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L609"
+        },
+        {
+          "name": "isControllingSubObjPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x2C0",
+          "size": 4,
+          "example_va": "0x005553F4",
+          "source_line": 610,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L610"
+        },
+        {
+          "name": "isControllingActor",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2C4",
+          "size": 1,
+          "example_va": "0x005553F8",
+          "source_line": 611,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L611"
+        },
+        {
+          "name": "OwnerSubObjPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x2C8",
+          "size": 4,
+          "example_va": "0x005553FC",
+          "source_line": 613,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L613"
+        },
+        {
+          "name": "isControlledBySubObjPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x2CC",
+          "size": 4,
+          "example_va": "0x00555400",
+          "source_line": 614,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L614"
+        },
+        {
+          "name": "type2FlashSpawnedDuring",
+          "type": "int",
+          "count": 1,
+          "offset": "0x2D8",
+          "size": 4,
+          "example_va": "0x0055540C",
+          "source_line": 616,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L616"
+        },
+        {
+          "name": "gravity",
+          "type": "float",
+          "count": 1,
+          "offset": "0x2E0",
+          "size": 4,
+          "example_va": "0x00555414",
+          "source_line": 618,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L618"
+        },
+        {
+          "name": "untechPenalty",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x2E4",
+          "size": 2,
+          "example_va": "0x00555418",
+          "source_line": 619,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L619"
+        },
+        {
+          "name": "correctedDirInput",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2E6",
+          "size": 1,
+          "example_va": "0x0055541A",
+          "source_line": 620,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L620"
+        },
+        {
+          "name": "rawDirInput",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2E7",
+          "size": 1,
+          "example_va": "0x0055541B",
+          "source_line": 621,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L621"
+        },
+        {
+          "name": "buttonInputs",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x2E8",
+          "size": 4,
+          "example_va": "0x0055541C",
+          "source_line": 622,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L622"
+        },
+        {
+          "name": "buttonReleased",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x2EC",
+          "size": 4,
+          "example_va": "0x00555420",
+          "source_line": 623,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L623"
+        },
+        {
+          "name": "ownerIndex",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2F0",
+          "size": 1,
+          "example_va": "0x00555424",
+          "source_line": 624,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L624"
+        },
+        {
+          "name": "queueDespawn",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x2F1",
+          "size": 1,
+          "example_va": "0x00555425",
+          "source_line": 625,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L625"
+        },
+        {
+          "name": "numSpawnedEffects",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x2F2",
+          "size": 2,
+          "example_va": "0x00555426",
+          "source_line": 626,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L626"
+        },
+        {
+          "name": "grabLocX",
+          "type": "int",
+          "count": 1,
+          "offset": "0x2F4",
+          "size": 4,
+          "example_va": "0x00555428",
+          "source_line": 627,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L627"
+        },
+        {
+          "name": "grabLocY",
+          "type": "int",
+          "count": 1,
+          "offset": "0x2F8",
+          "size": 4,
+          "example_va": "0x0055542C",
+          "source_line": 628,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L628"
+        },
+        {
+          "name": "spriteRotation",
+          "type": "int",
+          "count": 1,
+          "offset": "0x2FC",
+          "size": 4,
+          "example_va": "0x00555430",
+          "source_line": 629,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L629"
+        },
+        {
+          "name": "xScale",
+          "type": "float",
+          "count": 1,
+          "offset": "0x300",
+          "size": 4,
+          "example_va": "0x00555434",
+          "source_line": 630,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L630"
+        },
+        {
+          "name": "yScale",
+          "type": "float",
+          "count": 1,
+          "offset": "0x304",
+          "size": 4,
+          "example_va": "0x00555438",
+          "source_line": 631,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L631"
+        },
+        {
+          "name": "targetPattern",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x308",
+          "size": 2,
+          "example_va": "0x0055543C",
+          "source_line": 632,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L632"
+        },
+        {
+          "name": "targetPatternPriority",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x30A",
+          "size": 2,
+          "example_va": "0x0055543E",
+          "source_line": 633,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L633"
+        },
+        {
+          "name": "targetState",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x30C",
+          "size": 2,
+          "example_va": "0x00555440",
+          "source_line": 634,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L634"
+        },
+        {
+          "name": "targetStatePriority",
+          "type": "WORD",
+          "count": 1,
+          "offset": "0x30E",
+          "size": 2,
+          "example_va": "0x00555442",
+          "source_line": 635,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L635"
+        },
+        {
+          "name": "facingLeft",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x310",
+          "size": 1,
+          "example_va": "0x00555444",
+          "source_line": 636,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L636"
+        },
+        {
+          "name": "isOpponentToLeft",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x311",
+          "size": 1,
+          "example_va": "0x00555445",
+          "source_line": 637,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L637"
+        },
+        {
+          "name": "needToCrossupInputs",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x312",
+          "size": 1,
+          "example_va": "0x00555446",
+          "source_line": 638,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L638"
+        },
+        {
+          "name": "justShielded",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x313",
+          "size": 1,
+          "example_va": "0x00555447",
+          "source_line": 639,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L639"
+        },
+        {
+          "name": "justEnteredNewPattern",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x314",
+          "size": 1,
+          "example_va": "0x00555448",
+          "source_line": 640,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L640"
+        },
+        {
+          "name": "doLanding",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x315",
+          "size": 1,
+          "example_va": "0x00555449",
+          "source_line": 641,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L641"
+        },
+        {
+          "name": "justLanded",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x316",
+          "size": 1,
+          "example_va": "0x0055544A",
+          "source_line": 642,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L642"
+        },
+        {
+          "name": "delayedStance",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x317",
+          "size": 1,
+          "example_va": "0x0055544B",
+          "source_line": 643,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L643"
+        },
+        {
+          "name": "patternDataPtr",
+          "type": "PatternData*",
+          "count": 1,
+          "offset": "0x318",
+          "size": 4,
+          "example_va": "0x0055544C",
+          "source_line": 644,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L644"
+        },
+        {
+          "name": "animationDataPtr",
+          "type": "AnimationData*",
+          "count": 1,
+          "offset": "0x31C",
+          "size": 4,
+          "example_va": "0x00555450",
+          "source_line": 645,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L645"
+        },
+        {
+          "name": "attackDataPtr",
+          "type": "AttackData*",
+          "count": 1,
+          "offset": "0x320",
+          "size": 4,
+          "example_va": "0x00555454",
+          "source_line": 646,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L646"
+        },
+        {
+          "name": "selfPtr",
+          "type": "EffectData*",
+          "count": 1,
+          "offset": "0x324",
+          "size": 4,
+          "example_va": "0x00555458",
+          "source_line": 647,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L647"
+        },
+        {
+          "name": "partnerPtr",
+          "type": "ActorData*",
+          "count": 1,
+          "offset": "0x328",
+          "size": 4,
+          "example_va": "0x0055545C",
+          "source_line": 648,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L648"
+        },
+        {
+          "name": "charFileDataPtr",
+          "type": "CharFileData*",
+          "count": 1,
+          "offset": "0x32C",
+          "size": 4,
+          "example_va": "0x00555460",
+          "source_line": 649,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L649"
+        },
+        {
+          "name": "framesIntoCurrentPattern",
+          "type": "DWORD",
+          "count": 1,
+          "offset": "0x330",
+          "size": 4,
+          "example_va": "0x00555464",
+          "source_line": 650,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L650"
+        },
+        {
+          "name": "didAdvanceFramesIntoCurrentPattern",
+          "type": "BYTE",
+          "count": 1,
+          "offset": "0x334",
+          "size": 1,
+          "example_va": "0x00555468",
+          "source_line": 651,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L651"
+        }
+      ]
+    },
+    {
+      "name": "PlayerData",
+      "size": 2812,
+      "inherited_bytes": 828,
+      "example_base": "0x00555130",
+      "fields": [
+        {
+          "name": "cmdFileDataPtr",
+          "type": "CommandFileData*",
+          "count": 1,
+          "offset": "0x33C",
+          "size": 4,
+          "example_va": "0x0055546C",
+          "source_line": 692,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L692"
+        },
+        {
+          "name": "reduceFlag",
+          "type": "int",
+          "count": 1,
+          "offset": "0x348",
+          "size": 4,
+          "example_va": "0x00555478",
+          "source_line": 694,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L694"
+        },
+        {
+          "name": "reduceCounter",
+          "type": "int",
+          "count": 1,
+          "offset": "0x34C",
+          "size": 4,
+          "example_va": "0x0055547C",
+          "source_line": 695,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L695"
+        },
+        {
+          "name": "usedNormalsInString",
+          "type": "int",
+          "count": 1,
+          "offset": "0x354",
+          "size": 4,
+          "example_va": "0x00555484",
+          "source_line": 697,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L697"
+        },
+        {
+          "name": "inputCmdID",
+          "type": "int",
+          "count": 1,
+          "offset": "0x3D8",
+          "size": 4,
+          "example_va": "0x00555508",
+          "source_line": 699,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L699"
+        },
+        {
+          "name": "chainedCmdsCounter",
+          "type": "int",
+          "count": 1,
+          "offset": "0x3E0",
+          "size": 4,
+          "example_va": "0x00555510",
+          "source_line": 701,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L701"
+        },
+        {
+          "name": "dirInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x3E8",
+          "size": 258,
+          "example_va": "0x00555518",
+          "source_line": 703,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L703"
+        },
+        {
+          "name": "aInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x4EA",
+          "size": 258,
+          "example_va": "0x0055561A",
+          "source_line": 704,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L704"
+        },
+        {
+          "name": "bInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x5EC",
+          "size": 258,
+          "example_va": "0x0055571C",
+          "source_line": 705,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L705"
+        },
+        {
+          "name": "cInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x6EE",
+          "size": 258,
+          "example_va": "0x0055581E",
+          "source_line": 706,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L706"
+        },
+        {
+          "name": "dInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x7F0",
+          "size": 258,
+          "example_va": "0x00555920",
+          "source_line": 707,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L707"
+        },
+        {
+          "name": "eInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x8F2",
+          "size": 258,
+          "example_va": "0x00555A22",
+          "source_line": 708,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L708"
+        },
+        {
+          "name": "fInputs",
+          "type": "WORD",
+          "count": 129,
+          "offset": "0x9F4",
+          "size": 258,
+          "example_va": "0x00555B24",
+          "source_line": 709,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L709"
+        }
+      ]
+    },
+    {
+      "name": "AttackDisplayData",
+      "size": 24,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "comboInvalid",
+          "type": "int",
+          "count": 1,
+          "offset": "0x0",
+          "size": 4,
+          "example_va": null,
+          "source_line": 725,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L725"
+        },
+        {
+          "name": "comboTrue",
+          "type": "int",
+          "count": 1,
+          "offset": "0x4",
+          "size": 4,
+          "example_va": null,
+          "source_line": 726,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L726"
+        },
+        {
+          "name": "damageScaled",
+          "type": "int",
+          "count": 1,
+          "offset": "0x8",
+          "size": 4,
+          "example_va": null,
+          "source_line": 727,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L727"
+        },
+        {
+          "name": "damageUnscaled",
+          "type": "int",
+          "count": 1,
+          "offset": "0xC",
+          "size": 4,
+          "example_va": null,
+          "source_line": 728,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L728"
+        },
+        {
+          "name": "vsDamage",
+          "type": "int",
+          "count": 1,
+          "offset": "0x10",
+          "size": 4,
+          "example_va": null,
+          "source_line": 729,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L729"
+        },
+        {
+          "name": "meterGain",
+          "type": "int",
+          "count": 1,
+          "offset": "0x14",
+          "size": 4,
+          "example_va": null,
+          "source_line": 730,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L730"
+        }
+      ]
+    },
+    {
+      "name": "ComboCalcData",
+      "size": 44,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "index",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x0",
+          "size": 1,
+          "example_va": null,
+          "source_line": 736,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L736"
+        },
+        {
+          "name": "field_0x2",
+          "type": "short",
+          "count": 1,
+          "offset": "0x1",
+          "size": 2,
+          "example_va": null,
+          "source_line": 737,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L737"
+        },
+        {
+          "name": "numHits",
+          "type": "int",
+          "count": 1,
+          "offset": "0x3",
+          "size": 4,
+          "example_va": null,
+          "source_line": 738,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L738"
+        },
+        {
+          "name": "damage",
+          "type": "int",
+          "count": 1,
+          "offset": "0x7",
+          "size": 4,
+          "example_va": null,
+          "source_line": 739,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L739"
+        },
+        {
+          "name": "isInvalid",
+          "type": "short",
+          "count": 1,
+          "offset": "0xB",
+          "size": 2,
+          "example_va": null,
+          "source_line": 740,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L740"
+        },
+        {
+          "name": "field_0xe",
+          "type": "short",
+          "count": 1,
+          "offset": "0xD",
+          "size": 2,
+          "example_va": null,
+          "source_line": 741,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L741"
+        },
+        {
+          "name": "proration",
+          "type": "short",
+          "count": 1,
+          "offset": "0xF",
+          "size": 2,
+          "example_va": null,
+          "source_line": 742,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L742"
+        },
+        {
+          "name": "otgMeterMult",
+          "type": "short",
+          "count": 1,
+          "offset": "0x11",
+          "size": 2,
+          "example_va": null,
+          "source_line": 743,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L743"
+        },
+        {
+          "name": "drawComboData",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x13",
+          "size": 1,
+          "example_va": null,
+          "source_line": 744,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L744"
+        },
+        {
+          "name": "field_0x15",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x14",
+          "size": 1,
+          "example_va": null,
+          "source_line": 745,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L745"
+        },
+        {
+          "name": "timer1",
+          "type": "short",
+          "count": 1,
+          "offset": "0x15",
+          "size": 2,
+          "example_va": null,
+          "source_line": 746,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L746"
+        },
+        {
+          "name": "timer2",
+          "type": "short",
+          "count": 1,
+          "offset": "0x17",
+          "size": 2,
+          "example_va": null,
+          "source_line": 747,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L747"
+        },
+        {
+          "name": "field_0x1a",
+          "type": "short",
+          "count": 1,
+          "offset": "0x19",
+          "size": 2,
+          "example_va": null,
+          "source_line": 748,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L748"
+        },
+        {
+          "name": "someFlag",
+          "type": "int",
+          "count": 1,
+          "offset": "0x1B",
+          "size": 4,
+          "example_va": null,
+          "source_line": 749,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L749"
+        },
+        {
+          "name": "timer3",
+          "type": "int",
+          "count": 1,
+          "offset": "0x1F",
+          "size": 4,
+          "example_va": null,
+          "source_line": 750,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L750"
+        },
+        {
+          "name": "xPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x23",
+          "size": 4,
+          "example_va": null,
+          "source_line": 751,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L751"
+        },
+        {
+          "name": "yPos",
+          "type": "int",
+          "count": 1,
+          "offset": "0x27",
+          "size": 4,
+          "example_va": null,
+          "source_line": 752,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L752"
+        },
+        {
+          "name": "alpha",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x2B",
+          "size": 1,
+          "example_va": null,
+          "source_line": 753,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L753"
+        }
+      ]
+    },
+    {
+      "name": "PlayerAuxData",
+      "size": 524,
+      "inherited_bytes": 0,
+      "example_base": "0x00557DB8",
+      "fields": [
+        {
+          "name": "activeCharacter",
+          "type": "int",
+          "count": 1,
+          "offset": "0x0",
+          "size": 4,
+          "example_va": "0x00557DB8",
+          "source_line": 759,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L759"
+        },
+        {
+          "name": "assistChangeState",
+          "type": "int",
+          "count": 1,
+          "offset": "0x4",
+          "size": 4,
+          "example_va": "0x00557DBC",
+          "source_line": 760,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L760"
+        },
+        {
+          "name": "hasPartner",
+          "type": "int",
+          "count": 1,
+          "offset": "0xC",
+          "size": 4,
+          "example_va": "0x00557DC4",
+          "source_line": 762,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L762"
+        },
+        {
+          "name": "dispCorrectionValue",
+          "type": "int",
+          "count": 1,
+          "offset": "0x20",
+          "size": 4,
+          "example_va": "0x00557DD8",
+          "source_line": 764,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L764"
+        },
+        {
+          "name": "someDamageMult",
+          "type": "float",
+          "count": 1,
+          "offset": "0x3C",
+          "size": 4,
+          "example_va": "0x00557DF4",
+          "source_line": 766,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L766"
+        },
+        {
+          "name": "comboCount",
+          "type": "int",
+          "count": 1,
+          "offset": "0x44",
+          "size": 4,
+          "example_va": "0x00557DFC",
+          "source_line": 768,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L768"
+        },
+        {
+          "name": "comboCountCopy",
+          "type": "int",
+          "count": 1,
+          "offset": "0x48",
+          "size": 4,
+          "example_va": "0x00557E00",
+          "source_line": 769,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L769"
+        },
+        {
+          "name": "dispMaxCombo",
+          "type": "int",
+          "count": 1,
+          "offset": "0x50",
+          "size": 4,
+          "example_va": "0x00557E08",
+          "source_line": 771,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L771"
+        },
+        {
+          "name": "maxDamage",
+          "type": "int",
+          "count": 1,
+          "offset": "0x54",
+          "size": 4,
+          "example_va": "0x00557E0C",
+          "source_line": 772,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L772"
+        },
+        {
+          "name": "maxCombo",
+          "type": "int",
+          "count": 1,
+          "offset": "0x58",
+          "size": 4,
+          "example_va": "0x00557E10",
+          "source_line": 773,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L773"
+        },
+        {
+          "name": "nextAttackDisplayIndex",
+          "type": "int",
+          "count": 1,
+          "offset": "0x64",
+          "size": 4,
+          "example_va": "0x00557E1C",
+          "source_line": 775,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L775"
+        },
+        {
+          "name": "currentAttackDisplayIndex",
+          "type": "int",
+          "count": 1,
+          "offset": "0x68",
+          "size": 4,
+          "example_va": "0x00557E20",
+          "source_line": 776,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L776"
+        },
+        {
+          "name": "attackDisplayData",
+          "type": "AttackDisplayData",
+          "count": 2,
+          "offset": "0x70",
+          "size": 48,
+          "example_va": "0x00557E28",
+          "source_line": 778,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L778"
+        },
+        {
+          "name": "comboCalcIndex",
+          "type": "byte",
+          "count": 1,
+          "offset": "0xA0",
+          "size": 1,
+          "example_va": "0x00557E58",
+          "source_line": 779,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L779"
+        },
+        {
+          "name": "comboCalcData",
+          "type": "ComboCalcData",
+          "count": 8,
+          "offset": "0xA1",
+          "size": 352,
+          "example_va": "0x00557E59",
+          "source_line": 780,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L780"
+        },
+        {
+          "name": "dispCHTimer",
+          "type": "int",
+          "count": 1,
+          "offset": "0x204",
+          "size": 4,
+          "example_va": "0x00557FBC",
+          "source_line": 782,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L782"
+        },
+        {
+          "name": "inactionableFrames",
+          "type": "int",
+          "count": 1,
+          "offset": "0x208",
+          "size": 4,
+          "example_va": "0x00557FC0",
+          "source_line": 783,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L783"
+        }
+      ]
+    },
+    {
+      "name": "CommandData",
+      "size": 44,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "ID",
+          "type": "int",
+          "count": 1,
+          "offset": "0x0",
+          "size": 4,
+          "example_va": null,
+          "source_line": 364,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L364"
+        },
+        {
+          "name": "input",
+          "type": "char",
+          "count": 20,
+          "offset": "0x4",
+          "size": 20,
+          "example_va": null,
+          "source_line": 365,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L365"
+        },
+        {
+          "name": "pattern",
+          "type": "int",
+          "count": 1,
+          "offset": "0x18",
+          "size": 4,
+          "example_va": null,
+          "source_line": 366,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L366"
+        },
+        {
+          "name": "specialFlag",
+          "type": "int",
+          "count": 1,
+          "offset": "0x1C",
+          "size": 4,
+          "example_va": null,
+          "source_line": 367,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L367"
+        },
+        {
+          "name": "meterSpend",
+          "type": "int",
+          "count": 1,
+          "offset": "0x20",
+          "size": 4,
+          "example_va": null,
+          "source_line": 368,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L368"
+        },
+        {
+          "name": "assistVar",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x24",
+          "size": 1,
+          "example_va": null,
+          "source_line": 369,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L369"
+        },
+        {
+          "name": "specialVar",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x25",
+          "size": 1,
+          "example_va": null,
+          "source_line": 370,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L370"
+        },
+        {
+          "name": "dashVar",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x26",
+          "size": 1,
+          "example_va": null,
+          "source_line": 371,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L371"
+        },
+        {
+          "name": "flagsets",
+          "type": "uint8_t",
+          "count": 4,
+          "offset": "0x28",
+          "size": 4,
+          "example_va": null,
+          "source_line": 373,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L373"
+        }
+      ]
+    },
+    {
+      "name": "CommandFileData",
+      "size": 104,
+      "inherited_bytes": 0,
+      "example_base": null,
+      "fields": [
+        {
+          "name": "cmdDataPtr",
+          "type": "ArrayContainer<CommandData*>*",
+          "count": 1,
+          "offset": "0x0",
+          "size": 4,
+          "example_va": null,
+          "source_line": 386,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L386"
+        },
+        {
+          "name": "airJumpNum",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x4",
+          "size": 1,
+          "example_va": null,
+          "source_line": 387,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L387"
+        },
+        {
+          "name": "Flags",
+          "type": "byte",
+          "count": 1,
+          "offset": "0x9",
+          "size": 1,
+          "example_va": null,
+          "source_line": 389,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L389"
+        },
+        {
+          "name": "KoRareVoice",
+          "type": "byte",
+          "count": 1,
+          "offset": "0xB",
+          "size": 1,
+          "example_va": null,
+          "source_line": 391,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L391"
+        },
+        {
+          "name": "CharaGravity_AddY",
+          "type": "int",
+          "count": 1,
+          "offset": "0x10",
+          "size": 4,
+          "example_va": null,
+          "source_line": 393,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L393"
+        },
+        {
+          "name": "CharaGravity_MaxX",
+          "type": "int",
+          "count": 1,
+          "offset": "0x14",
+          "size": 4,
+          "example_va": null,
+          "source_line": 394,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L394"
+        },
+        {
+          "name": "guts",
+          "type": "float",
+          "count": 4,
+          "offset": "0x18",
+          "size": 16,
+          "example_va": null,
+          "source_line": 395,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L395"
+        },
+        {
+          "name": "ShieldCounter_Ground",
+          "type": "int",
+          "count": 1,
+          "offset": "0x30",
+          "size": 4,
+          "example_va": null,
+          "source_line": 397,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L397"
+        },
+        {
+          "name": "ShieldCounter_Air",
+          "type": "int",
+          "count": 1,
+          "offset": "0x34",
+          "size": 4,
+          "example_va": null,
+          "source_line": 398,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L398"
+        },
+        {
+          "name": "ShieldCounter_Crouch",
+          "type": "int",
+          "count": 1,
+          "offset": "0x38",
+          "size": 4,
+          "example_va": null,
+          "source_line": 399,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L399"
+        },
+        {
+          "name": "CancelSparkPat_Ground",
+          "type": "int",
+          "count": 1,
+          "offset": "0x44",
+          "size": 4,
+          "example_va": null,
+          "source_line": 401,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L401"
+        },
+        {
+          "name": "CancelSparkPat_Air",
+          "type": "int",
+          "count": 1,
+          "offset": "0x48",
+          "size": 4,
+          "example_va": null,
+          "source_line": 402,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L402"
+        },
+        {
+          "name": "CancelHighJumpPat",
+          "type": "int",
+          "count": 1,
+          "offset": "0x4C",
+          "size": 4,
+          "example_va": null,
+          "source_line": 403,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L403"
+        },
+        {
+          "name": "isGroundThrowDefined",
+          "type": "short",
+          "count": 1,
+          "offset": "0x50",
+          "size": 2,
+          "example_va": null,
+          "source_line": 404,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L404"
+        },
+        {
+          "name": "groundThrowPat",
+          "type": "short",
+          "count": 1,
+          "offset": "0x52",
+          "size": 2,
+          "example_va": null,
+          "source_line": 405,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L405"
+        },
+        {
+          "name": "groundThrowRange",
+          "type": "short",
+          "count": 1,
+          "offset": "0x54",
+          "size": 2,
+          "example_va": null,
+          "source_line": 406,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L406"
+        },
+        {
+          "name": "isAirThrowDefined",
+          "type": "short",
+          "count": 1,
+          "offset": "0x56",
+          "size": 2,
+          "example_va": null,
+          "source_line": 407,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L407"
+        },
+        {
+          "name": "airThrowPat",
+          "type": "short",
+          "count": 1,
+          "offset": "0x58",
+          "size": 2,
+          "example_va": null,
+          "source_line": 408,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L408"
+        },
+        {
+          "name": "airThrowRange",
+          "type": "short",
+          "count": 1,
+          "offset": "0x5A",
+          "size": 2,
+          "example_va": null,
+          "source_line": 409,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L409"
+        },
+        {
+          "name": "KoAniEff",
+          "type": "int",
+          "count": 1,
+          "offset": "0x5C",
+          "size": 4,
+          "example_va": null,
+          "source_line": 410,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L410"
+        },
+        {
+          "name": "ExComCheck_Num",
+          "type": "int",
+          "count": 1,
+          "offset": "0x60",
+          "size": 4,
+          "example_va": null,
+          "source_line": 411,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L411"
+        },
+        {
+          "name": "ExComCheckPtr",
+          "type": "void*",
+          "count": 1,
+          "offset": "0x64",
+          "size": 4,
+          "example_va": null,
+          "source_line": 412,
+          "source_url": "https://github.com/fangdreth/MBAACC-Extended-Training-Mode/blob/038887d7d8e6e70963ce9eb5780a25ac35cf1cac/Extended-Training-Mode-DLL/DebugInfo.h#L412"
+        }
+      ]
+    }
+  ]
+}
