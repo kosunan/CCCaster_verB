@@ -69,7 +69,7 @@ void NetplayManager::Initialize(bool isNetplay, bool isHost, uint16_t localPort,
         const auto localNonce = readNonce(cccaster::public_api::startup::LocalNonceEnv);
         const auto peerNonce = readNonce(cccaster::public_api::startup::PeerNonceEnv);
         const auto began = cccaster::platform::RealMonotonicUs();
-        _udpSocket = std::make_unique<cccaster::network::UdpSocket>(_localPort);
+        _udpSocket = std::make_unique<cccaster::network::UdpSocket>(_localPort, targetIp.find(':') != std::string::npos);
         if (!_udpSocket->ConfigurePeer(targetIp, targetPort))
             throw std::runtime_error("UDP peer configuration failed");
         auto *socket = _udpSocket.get();

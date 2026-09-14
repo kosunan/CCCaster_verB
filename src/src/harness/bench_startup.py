@@ -25,6 +25,54 @@ def readiness(content, mode):
             'ready': present and input_ready and bool(records) and all(r == expected for r in records)}
 
 
+def measure_idle_cpu(pid, seconds, out):
+    """読取り専用。全論理CPUを100%とするプロセスCPU時間率。"""
+    import psutil
+    process = psutil.Process(pid)
+    kernel = C.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
+    kernel.OpenProcess.restype = W.HANDLE
+    kernel.ReadProcessMemory.argtypes = [W.HANDLE, C.c_void_p, W.LPVOID, C.c_size_t, W.LPVOID]
+    kernel.CloseHandle.argtypes = [W.HANDLE]
+    handle = kernel.OpenProcess(0x1010, False, pid)
+    if not handle:
+        raise C.WinError(C.get_last_error())
+    def read(address):
+        value = W.DWORD()
+        if not kernel.ReadProcessMemory(handle, address, C.byref(value), 4, None):
+            raise C.WinError(C.get_last_error())
+        return value.value
+    def sample():
+        cpu = process.cpu_times()
+        return dict(time=time.perf_counter(), user=cpu.user, kernel=cpu.system,
+                    mode=read(0x54EEE8), frame=read(0x55D1D4),
+                    rss=process.memory_info().rss,
+                    threads={str(t.id): t.user_time+t.system_time for t in process.threads()})
+    try:
+        print(f'CPU待機測定 PID={pid}: 10秒安定化 → {seconds}秒測定', flush=True)
+        time.sleep(10)
+        rows = [sample()]
+        for _ in range(seconds):
+            time.sleep(1)
+            rows.append(sample())
+        first, last = rows[0], rows[-1]
+        elapsed = last['time']-first['time']
+        cpus = psutil.cpu_count()
+        user, system = last['user']-first['user'], last['kernel']-first['kernel']
+        result = dict(pid=pid, logicalCpus=cpus, elapsedSeconds=elapsed,
+                      cpuPercent=(user+system)/elapsed/cpus*100,
+                      userPercent=user/elapsed/cpus*100, kernelPercent=system/elapsed/cpus*100,
+                      frameHz=((last['frame']-first['frame']) & 0xffffffff)/elapsed,
+                      allCharacterSelect=all(r['mode']==20 for r in rows),
+                      rows=rows)
+        (out/'idle_cpu.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+        if not result['allCharacterSelect']:
+            raise RuntimeError('測定中にキャラセレを離れました')
+        return result
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=['training', 'versus'], required=True)
@@ -38,10 +86,21 @@ def main():
     parser.add_argument('--root', type=Path, required=True,
                         help='MBAACC_1 と MBAACC_2 を含む専用テストディレクトリ')
     parser.add_argument('--port', type=int, default=18940)
+    parser.add_argument('--caster-dir', default='cccaster')
+    parser.add_argument('--ready-hold-seconds', type=float, default=2,
+                        help='キャラセレ到達後の保持秒数（画面確認用）')
+    parser.add_argument('--idle-cpu-seconds', type=int, default=0,
+                        help='Trainingキャラセレ到達後10秒安定化し、指定秒のCPU時間とモードを採取')
     parser.add_argument('--instances', type=int, choices=[1, 2],
                         help='未指定は training=1、versus=2。versus は2のみ')
     args = parser.parse_args()
+    if not 2 <= args.ready_hold_seconds <= 120:
+        parser.error('ready-hold-secondsは2..120')
+    if args.idle_cpu_seconds and (args.mode != 'training' or args.idle_cpu_seconds < 1):
+        parser.error('CPU待機測定はTrainingかつ正の秒数のみ')
     args.instances = args.instances if args.instances is not None else (1 if args.mode == 'training' else 2)
+    if args.idle_cpu_seconds and args.instances != 1:
+        parser.error('CPU待機測定は他窓の干渉を避けるため --instances 1 のみ')
     if args.mode == 'versus' and args.instances != 2:
         parser.error('versus の比較には --instances 2 が必要です')
     if os.name != 'nt':
@@ -100,16 +159,20 @@ def main():
         return Path(text.value).resolve()
     root, out = args.root.resolve(), args.out.resolve()
     sides = [root / f'MBAACC_{side}' for side in range(1, args.instances + 1)]
-    exe_name = 'CCCaster_startup_worker.exe' if args.mode == 'training' else 'CCCaster_B.exe'
+    exe_name = 'CCCaster_B.exe'
+    if args.mode == 'training':
+        exe_name = 'CCCaster_startup_worker.exe'
+        if not all((side / args.caster_dir / exe_name).is_file() for side in sides):
+            exe_name = 'CCCaster_B_GUI.exe'
     game_paths = {(side / 'MBAA.exe').resolve() for side in sides}
     if len(game_paths) != args.instances:
         raise RuntimeError('指定数の独立したゲームコピーが必要です')
-    watched_paths = game_paths | {(side / 'cccaster' / exe_name).resolve() for side in sides}
+    watched_paths = game_paths | {(side / args.caster_dir / exe_name).resolve() for side in sides}
     for side in sides:
         if not side.resolve().is_relative_to(root):
             raise RuntimeError('テストコピーが root 外を参照しています')
-        for path in [side / 'MBAA.exe', side / 'cccaster' / exe_name,
-                     side / 'cccaster' / 'libcccaster_hook.dll']:
+        for path in [side / 'MBAA.exe', side / args.caster_dir / exe_name,
+                     side / args.caster_dir / 'libcccaster_hook.dll']:
             if not path.is_file() or not path.resolve().is_relative_to(root):
                 raise RuntimeError(f'専用コピー内の必要ファイルを確認してください: {path}')
     for pid, _, name in processes():
@@ -124,7 +187,7 @@ def main():
         finally:
             close(handle)
     out.mkdir(parents=True, exist_ok=False)
-    logs = [side / 'cccaster' / 'cccaster_hook_log.txt' for side in sides]
+    logs = [side / args.caster_dir / 'cccaster_hook_log.txt' for side in sides]
     for index, log in enumerate(logs, 1):
         if log.exists():
             shutil.move(str(log), str(out / f'before_{index}.log'))
@@ -141,12 +204,13 @@ def main():
              'all': 'CCCASTER_STARTUP_BASELINE'}[args.comparison]] = '1'
     binaries = [{'side': i, 'files': {
         str(p): hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in (side / 'MBAA.exe', side / 'cccaster' / exe_name,
-                  side / 'cccaster' / 'libcccaster_hook.dll')}}
+        for p in (side / 'MBAA.exe', side / args.caster_dir / exe_name,
+                  side / args.caster_dir / 'libcccaster_hook.dll')}}
         for i, side in enumerate(sides, 1)]
     workers, events, files, games = [], [], [], {}
     starts, ready_at = [], [None] * args.instances
     game_exits = {}
+    idle_cpu = None
     status = 'timeout'
     error = None
     def discover():
@@ -167,7 +231,7 @@ def main():
                 if handle:
                     close(handle)
     try:
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + 30 + args.ready_hold_seconds
         for index, side in enumerate(sides, 1):
             launcher_log = out / f'launcher_{index}.log'
             if args.mode == 'training':
@@ -176,11 +240,11 @@ def main():
                 if not cancel:
                     raise C.WinError(C.get_last_error())
                 events.append(cancel)
-                command = [str(side / 'cccaster' / exe_name), '--worker', name,
+                command = [str(side / args.caster_dir / exe_name), '--worker', name,
                            str(launcher_log), 'training', '0']
                 stdout = subprocess.DEVNULL
             else:
-                command = [str(side / 'cccaster' / exe_name), '--headless']
+                command = [str(side / args.caster_dir / exe_name), '--headless']
                 command += ['--host'] if index == 1 else ['--ip', '127.0.0.1']
                 command += ['--port', str(args.port)]
                 stdout = launcher_log.open('wb')
@@ -194,7 +258,7 @@ def main():
                 if cache.exists():
                     raise RuntimeError('初回測定のキャッシュは未作成でなければなりません')
                 side_env['CCCASTER_STARTUP_CACHE_DIR'] = str(cache)
-            workers.append(subprocess.Popen(command, cwd=side / 'cccaster', env=side_env,
+            workers.append(subprocess.Popen(command, cwd=side / args.caster_dir, env=side_env,
                                             stdout=stdout, stderr=stderr,
                                             creationflags=subprocess.CREATE_NO_WINDOW))
         while time.monotonic() < deadline:
@@ -214,7 +278,9 @@ def main():
                     content = log.read_text(encoding='utf-8', errors='replace')
                     if readiness(content, args.mode)['ready']:
                         ready_at[index] = time.monotonic()
-            if len(games) == args.instances and all(t is not None for t in ready_at) and time.monotonic() >= max(ready_at) + 2:
+            if len(games) == args.instances and all(t is not None for t in ready_at) and time.monotonic() >= max(ready_at) + args.ready_hold_seconds:
+                if args.idle_cpu_seconds:
+                    idle_cpu = measure_idle_cpu(next(iter(games)), args.idle_cpu_seconds, out)
                 status = 'ready'
                 break
             time.sleep(0.05)
@@ -277,7 +343,11 @@ def main():
         if status == 'ready' and not all(sample['validation']['ready'] for sample in samples):
             status = 'validation_failed'
         result = {'label': args.label, 'mode': args.mode, 'variant': args.variant,
-                  'comparison': args.comparison, 'binaries': binaries,
+                  'comparison': args.comparison, 'binaries': binaries, 'idleCpu': idle_cpu,
+                  'casterDir': args.caster_dir,
+                  'readyHoldSeconds': args.ready_hold_seconds,
+                  'diagnosticEnvironment': {key: value for key, value in env.items()
+                                            if key.startswith('CCCASTER_')},
                   'emptyCache': args.empty_cache,
                   'instances': args.instances,
                   'status': status, 'error': error, 'root': str(root), 'samples': samples,
@@ -285,7 +355,7 @@ def main():
                   'launchQpcUs': starts, 'workerPids': [p.pid for p in workers],
                   'gamePids': list(games), 'network': env.get('CCCASTER_TEST_NETWORK'),
                   'gameProcesses': game_results,
-                  'note': '表示・通常入力経路・モード照合後2秒を維持。物理表示・手入力応答の確認ではありません。'}
+                  'note': '表示・通常入力経路・モード照合後2秒を維持。idleCpu有効時はさらに10秒安定化後に採取。CPU率は全論理CPUを100%とするCPU時間率。物理表示・手入力応答の確認ではありません。'}
         (out / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if status == 'ready' and not cleanup_errors else 1

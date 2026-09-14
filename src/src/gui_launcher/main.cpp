@@ -46,10 +46,32 @@ struct Message {
     const char* c_str() const { return japanese ? translated.c_str() : english.c_str(); }
 };
 
+Message IpResultText(const std::string& state) {
+    if(state=="waiting") return {"Waiting for peer (not tested)","相手待ち（未確認）"};
+    if(state=="checking_direct") return {"Testing direct connection...","直接接続を確認中..."};
+    if(state=="checking_punch") return {"Direct failed; trying hole punching...","直接接続不成立・ホールパンチング中..."};
+    if(state=="exchanging") return {"Direct failed; exchanging punch addresses...","直接接続不成立・パンチ用アドレス交換中..."};
+    if(state=="ok_direct") return {"Direct connection available","直接接続できます"};
+    if(state=="ok_punch") return {"Connected by hole punching","ホールパンチングで接続できます"};
+    if(state=="selected_direct") return {"Selected: direct connection","採用：直接接続"};
+    if(state=="selected_punch") return {"Selected: hole punching","採用：ホールパンチング"};
+    if(state=="legacy_connected") return {"Connected (peer without route comparison)","接続成功（相手は品質比較非対応）"};
+    if(state=="direct_failed") return {"No direct response","直接接続の応答なし"};
+    if(state=="peer_direct_failed") return {"Peer reports no direct response","相手側の直接確認：応答なし"};
+    if(state=="peer_punch_failed") return {"Peer reports no punch response","相手側のパンチ確認：応答なし"};
+    if(state=="punch_failed") return {"No response after hole punching","ホールパンチング後も応答なし"};
+    if(state=="punch_unavailable") return {"Punch address exchange unavailable (not tested)","パンチ用アドレス交換不可（未確認）"};
+    if(state=="no_candidate") return {"No connection candidate (not tested)","接続候補なし（未確認）"};
+    if(state=="bind_failed") return {"Could not open local socket","待受ソケットを作成できません"};
+    if(state=="cancelled") return {"Cancelled","確認をキャンセルしました"};
+    return {"Not tested","未確認"};
+}
+
 struct Session {
     HANDLE process = nullptr, cancel = nullptr;
     std::filesystem::path logPath;
     std::string log, code, connectionStage;
+    std::string ipResults[2];
     Message status = {"Ready when you are.", "開始できます。"};
     bool booting = false, cancelling = false, training = false, spectating = false;
     bool revealCloseLog = false;
@@ -104,6 +126,14 @@ struct Session {
             auto end = log.find('\n', start);
             if (end != std::string::npos) code = log.substr(start, end - start);
         }
+        for(int family=0;family<2;++family) {
+            const std::string prefix=family?"[IP_RESULT] IPv6 ":"[IP_RESULT] IPv4 ";
+            const auto pos=log.rfind(prefix);
+            if(pos!=std::string::npos) {
+                const auto end=log.find('\n',pos+prefix.size());
+                if(end!=std::string::npos) ipResults[family]=log.substr(pos+prefix.size(),end-pos-prefix.size());
+            }
+        }
         booting = booting || log.find("Booting game") != std::string::npos;
         if (training && log.find("[ TRAINING READY ]") != std::string::npos)
             status = {"Training is running. Switch to the game window.", "トレーニングを起動しました。ゲーム画面に切り替えてください。"};
@@ -147,7 +177,7 @@ struct Session {
         ShowCloseStatus();
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
-    void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false) {
+    void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false, int preference = 0) {
         if (Running()) return;
         failed = true; // 準備段階の失敗もメイン画面で強調する。
         if (!offline && !cccaster::public_api::NetplaySettings::IsValid(
@@ -177,6 +207,7 @@ struct Session {
         std::wstring args = L"\"" + exePath.wstring() + L"\" --worker \"" + eventName + L"\" \"" + logPath.wstring() + L"\" ";
         args += offline ? L"training 0" : watch ? L"spectate " + std::wstring(hash, hash + std::strlen(hash))
             : host ? L"host " + std::to_wstring(port) : L"join " + std::wstring(hash, hash + std::strlen(hash));
+        if(host&&!offline) args += L" " + std::to_wstring(preference);
         STARTUPINFOW startup{}; startup.cb = sizeof(startup);
         PROCESS_INFORMATION info{};
         if (!CreateProcessW(exePath.c_str(), args.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
@@ -188,6 +219,7 @@ struct Session {
         CloseHandle(info.hThread); process = info.hProcess;
         failed = false;
         log.clear(); code.clear(); connectionStage.clear(); training = offline; spectating = watch; booting = offline || watch; cancelling = false;
+        ipResults[0].clear(); ipResults[1].clear();
         peerNoticeSeen = localNoticeSeen = revealCloseLog = false;
         status = offline ? Message{"Launching training...", "トレーニングを起動しています..."}
                          : host ? Message{"Creating your connection code...", "接続コードを作成しています..."}
@@ -393,11 +425,32 @@ void Draw(Session& session) {
         }
         ImGui::PopFont();
         ImGui::Spacing();
+        ImGui::EndDisabled();
+        if(!session.ipResults[0].empty()||!session.ipResults[1].empty()) {
+            // 接続コードや説明で結果が画面下へ押し出されない位置に固定する。
+            for(int family=0;family<2;++family) {
+                const auto result=IpResultText(session.ipResults[family]);
+                ImGui::TextWrapped("%s: %s",family?"IPv6":"IPv4",result.c_str());
+            }
+            ImGui::Spacing();
+        }
         if (!session.Running()) {
             bool valid = true;
             if (mode == 0) {
                 ImGui::TextWrapped(Text("Create a code and share it with your opponent.", "募集を開始して、コードを相手に共有します。"));
                 ImGui::SetNextItemWidth(170); ImGui::InputInt(Text("Port###port", "ポート番号###port"), &port, 0);
+                int preference=std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2);
+                static bool preferenceSaveFailed=false;
+                ImGui::SetNextItemWidth(230);
+                if(ImGui::Combo(Text("Connection priority###priority","接続方式の優先###priority"), &preference,
+                    japanese ? "自動（接続品質で選択）\0IPv4優先\0IPv6優先\0" : "Automatic (connection quality)\0Prefer IPv4\0Prefer IPv6\0")) {
+                    const int old=ConfigManager::GetInt("GUI","ConnectionPreference",0);
+                    ConfigManager::SetInt("GUI","ConnectionPreference",preference);
+                    preferenceSaveFailed=!ConfigManager::SaveChecked(cccaster::ConfigPath(exePath.parent_path()).string());
+                    if(preferenceSaveFailed) ConfigManager::SetInt("GUI","ConnectionPreference",old);
+                }
+                if(preferenceSaveFailed) ImGui::TextColored(warning,Text("Could not save priority.","優先設定を保存できませんでした。"));
+                ImGui::TextWrapped(Text("If the preferred protocol cannot connect, the other is used.","優先した方式で接続できない場合は、もう一方を使用します。"));
                 valid = port > 0 && port <= 65535;
                 if (!valid) ImGui::TextColored(ImVec4(1,.48f,.64f,1), Text("Enter a port between 1 and 65535.", "1〜65535 のポート番号を入力してください。"));
             } else {
@@ -421,10 +474,10 @@ void Draw(Session& session) {
             ImGui::Spacing();
             ImGui::BeginDisabled(!valid);
             if (PrimaryButton(mode == 0 ? Text("START HOSTING  >###start", "募集を開始する  >###start") : Text("JOIN MATCH  >###start", "対戦に参加する  >###start")))
-                { session.Start(mode == 0, port, hash); }
+                { session.Start(mode == 0, port, hash, false, false,
+                    std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2)); }
             ImGui::EndDisabled();
         }
-        ImGui::EndDisabled();
         if (!session.code.empty() && session.Running() && !session.booting) {
             ImGui::TextWrapped(Text("Post this code exactly as shown (case-sensitive). It expires in 6 hours.", "大文字・小文字を変えずにコードを共有してください。有効期限は作成から6時間です。"));
             ImGui::Spacing(); ImGui::TextUnformatted(Text("Share this connection code with your opponent", "この接続コードを相手に共有してください"));
@@ -497,7 +550,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     const auto config = cccaster::ConfigPath(exePath.parent_path());
     if (std::filesystem::exists(config)) ConfigManager::Load(config.string());
     int argc = 0; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (argv && argc == 6 && wcscmp(argv[1], L"--worker") == 0) {
+    if (argv && (argc == 6 || argc == 7) && wcscmp(argv[1], L"--worker") == 0) {
         gui::cancelEvent = OpenEventW(SYNCHRONIZE, FALSE, argv[2]);
         if (!gui::cancelEvent) { LocalFree(argv); return 1; }
         if (!_wfreopen(argv[3], L"wb", stdout)) { CloseHandle(gui::cancelEvent); LocalFree(argv); return 1; }
@@ -506,6 +559,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         const bool spectator = wcscmp(argv[4], L"spectate") == 0;
         const bool host = training || wcscmp(argv[4], L"host") == 0;
         const std::wstring value = argv[5];
+        if(argc==7 && host && !training) {
+            if(wcscmp(argv[6],L"1")==0) gui::hostPreference=1;
+            else if(wcscmp(argv[6],L"2")==0) gui::hostPreference=2;
+        }
         LocalFree(argv);
         int result = 0;
         try {

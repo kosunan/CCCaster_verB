@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstdint>
+#include "cli_launcher/network_wrapper/DualRouteNegotiator.hpp"
 
 namespace cccaster::main_app::network_wrapper {
 
@@ -35,9 +36,14 @@ class SessionNegotiator {
     //                  （ハッシュモードでは既にGenerateConnectionHash()で完了しているため）
     NegotiationResult RunNegotiation(bool isIpv6, bool isHost, const std::string &targetIp, uint16_t port,
                                      bool isHeadless = false, bool skipHostDisplay = false,
-                                     bool allowRelay = true, int connectTimeoutMs = 12000);
+                                     bool allowRelay = true, int connectTimeoutMs = 12000,
+                                     SelectedRoute selected = {});
 
-    // ハッシュ文字列からアドレスを解決して接続試行（IPv4優先、失敗時IPv6）
+    NegotiationResult RunAutomatic(RouteRequest request);
+    NegotiationResult RunAutomaticHost(uint16_t port, const std::string& hash,
+                                      route::Preference preference = route::Preference::Auto, bool headless = false);
+
+    // 両方式を確認して経路を合意する。直接接続が両方不成立なら接続支援へ進む。
     NegotiationResult RunNegotiationFromHash(const std::string &hash);
 
     // テキストをクリップボードにコピー

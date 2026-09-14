@@ -12,10 +12,11 @@ enum class HudDisplayMode { Compact, Detailed, Hidden };
 class FrameBarDisplay {
   public:
     static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2; }
-    static bool Visible() { return visible_.load(std::memory_order_relaxed); }
-    static void Toggle() { visible_.store(!Visible(), std::memory_order_relaxed); }
+    static bool Visible(int appMode = 1) { return (appMode == 2 ? spectatorVisible_ : visible_).load(std::memory_order_relaxed); }
+    static void Toggle(int appMode = 1) { (appMode == 2 ? spectatorVisible_ : visible_).store(!Visible(appMode), std::memory_order_relaxed); }
   private:
     inline static std::atomic<bool> visible_{true};
+    inline static std::atomic<bool> spectatorVisible_{false};
 };
 
 // キーを離す順番に依存せず、HUD操作で使ったキーだけ解放まで抑止する。
@@ -89,7 +90,7 @@ inline void FormatNetplayHudLine(char *output, std::size_t outputSize,
                   value.ping, value.jitter, value.delay, value.rollback, value.frame);
 }
 
-// 対戦中は中央下端へ収めるためラベルだけを短縮する。値の幅は通常HUDと同一。
+// 対戦中の中央下端は通信・提示時間のみ。D/Rは勝数の右隣へ表示する。
 inline void FormatBattleHudLine(char *output, std::size_t outputSize,
                                 bool pingAvailable, bool stale, float pingMs,
                                 bool jitterAvailable, float jitterMs,
@@ -98,8 +99,8 @@ inline void FormatBattleHudLine(char *output, std::size_t outputSize,
     const auto value = FormatHudFixedValues(pingAvailable, stale, pingMs, jitterAvailable,
                                              jitterMs, delay, rollback, frameUs);
     std::snprintf(output, outputSize,
-                  "RTT %7s  JIT %8s  D %2s  R %2s  1F %9s%s",
-                  value.ping, value.jitter, value.delay, value.rollback, value.frame,
+                  "RTT %7s  JIT %8s  1F %9s%s",
+                  value.ping, value.jitter, value.frame,
                   qpcFallback ? "  QPC" : "");
 }
 

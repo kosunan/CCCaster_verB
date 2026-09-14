@@ -49,8 +49,10 @@ __attribute__((force_align_arg_pointer)) uintptr_t __cdecl ProbeSoundUpdate() {
 extern "C" {
 void *cccaster_sound_status_original = nullptr;
 __attribute__((force_align_arg_pointer)) int __cdecl cccaster_intro_sound_status(uint32_t sound) {
-    if (!activeFrame || *CC_GAME_MODE_ADDR != CC_GAME_MODE_IN_GAME ||
-        (*CC_INTRO_STATE_ADDR != 1 && *CC_INTRO_STATE_ADDR != 2)) return -1;
+    const bool p1Over = *CC_P1_PUPPET_STATE_ADDR ? *CC_P3_NO_INPUT_FLAG_ADDR : *CC_P1_NO_INPUT_FLAG_ADDR;
+    const bool p2Over = *CC_P2_PUPPET_STATE_ADDR ? *CC_P4_NO_INPUT_FLAG_ADDR : *CC_P2_NO_INPUT_FLAG_ADDR;
+    if (!activeFrame || !cccaster::sync::IntroSoundClock::ControlsScript(
+            *CC_GAME_MODE_ADDR == CC_GAME_MODE_IN_GAME, *CC_INTRO_STATE_ADDR, p1Over, p2Over)) return -1;
     const bool playing = cccaster::sync::IntroSoundClock::Playing(sound, activeFrame);
     static const bool voiceTrace = std::getenv("CCCASTER_INTRO_VOICE_TRACE") != nullptr;
     if (voiceTrace && sound < 1500 && cccaster::sync::IntroSoundClock::until[sound])
@@ -82,8 +84,9 @@ __attribute__((force_align_arg_pointer)) int __cdecl cccaster_sfx_should_play(ui
     cccaster::diagnostics::sound_api::SetSound(sound);
     if (sound >= 1500)
         return 1;
-    if (activeFrame && *CC_GAME_MODE_ADDR == CC_GAME_MODE_IN_GAME &&
-        (*CC_INTRO_STATE_ADDR == 1 || *CC_INTRO_STATE_ADDR == 2)) {
+    // 決着へまたがる音声も含めて開始Fを保持する。判定の置換はイントロと
+    // 双方操作終了後だけで、通常戦闘の音声APIは元の処理へ戻す。
+    if (activeFrame && *CC_GAME_MODE_ADDR == CC_GAME_MODE_IN_GAME) {
         cccaster::sync::IntroSoundClock::Start(sound, activeFrame);
         static const bool voiceTrace = std::getenv("CCCASTER_INTRO_VOICE_TRACE") != nullptr;
         if (voiceTrace)

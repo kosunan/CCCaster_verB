@@ -1417,6 +1417,6 @@ bool SceneRunner::HasTrainingState() {
 }
 SceneRunner::SpectatorInfo SceneRunner::SpectatorStatus() {
     auto &wire = cccaster::spectator::Transport::Get();
-    return {runtime.spectator.Last(), wire.Latest(), wire.Viewers(), uint32_t(wire.State()), runtime.spectator.Catching()};
+    return {runtime.spectator.Last(), wire.Latest(), wire.Viewers(), uint32_t(wire.State()), runtime.spectator.Catching(), runtime.spectator.match.p1.delay, runtime.spectator.match.p1.rollback};
 }
 } // namespace cccaster::domain::session

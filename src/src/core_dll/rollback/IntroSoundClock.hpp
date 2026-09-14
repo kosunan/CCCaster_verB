@@ -2,8 +2,11 @@
 #include <array>
 #include <cstdint>
 namespace cccaster::sync {
-// 実音声は巻き戻さない。イントロスクリプトの再生完了判定だけを同期Fで再現する。
+// 実音声は巻き戻さない。イントロ・決着スクリプトの再生完了判定を同期Fで再現する。
 struct IntroSoundClock {
+    static constexpr bool ControlsScript(bool inGame, uint32_t intro, bool p1Over, bool p2Over) {
+        return inGame && (intro == 1 || intro == 2 || (intro == 0 && p1Over && p2Over));
+    }
     inline static std::array<uint32_t, 1500> duration{};
     inline static std::array<uint32_t, 1500> until{}; // ゲームスレッドのsnapshot対象。
     static constexpr uint32_t Frames(uint32_t bytes, uint32_t align, uint32_t frequency) {

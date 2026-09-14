@@ -69,5 +69,10 @@ int main() {
     CC_CHECK(FrameBarDisplay::Visible()); FrameBarDisplay::Toggle();
     CC_CHECK(!FrameBarDisplay::Visible()); FrameBarDisplay::Toggle();
     CC_CHECK(FrameBarDisplay::Visible());
+    CC_CHECK(!FrameBarDisplay::Visible(2));
+    FrameBarDisplay::Toggle(2);
+    CC_CHECK(FrameBarDisplay::Visible(2) && FrameBarDisplay::Visible(1));
+    FrameBarDisplay::Toggle(2);
+    CC_CHECK(!FrameBarDisplay::Visible(2) && FrameBarDisplay::Visible(1));
     return cccaster::test::Summarize("frame_bar");
 }

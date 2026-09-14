@@ -7,6 +7,8 @@ src/**/build/
 test/runtime/**
 test/logs/**
 !test/runtime/.gitkeep
+!test/runtime/triple_test.bat
+!test/runtime/triple_test.ps1
 !test/logs/.gitkeep
 
 # 配布物と旧環境アーカイブ

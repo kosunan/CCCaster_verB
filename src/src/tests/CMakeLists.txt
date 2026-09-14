@@ -10,12 +10,27 @@ if(WIN32)
 
     add_executable(relay_negotiation_probe relay_negotiation_probe.cpp
         ../cli_launcher/network_wrapper/SessionNegotiator.cpp
+        ../cli_launcher/network_wrapper/DualRouteNegotiator.cpp
         ../cli_launcher/network_wrapper/ConnectionHash.cpp
         ../cli_launcher/ui/ConsoleRenderer.cpp ../cli_launcher/ConfigManager.cpp)
     target_include_directories(relay_negotiation_probe PRIVATE ${CMAKE_SOURCE_DIR}/src ${asio_SOURCE_DIR}/asio/include)
     target_link_libraries(relay_negotiation_probe PRIVATE cccaster_transport ws2_32 wsock32 wininet winmm)
     target_link_options(relay_negotiation_probe PRIVATE -static -static-libgcc -static-libstdc++)
+    add_executable(dual_route_probe dual_route_probe.cpp
+        ../cli_launcher/network_wrapper/SessionNegotiator.cpp
+        ../cli_launcher/network_wrapper/DualRouteNegotiator.cpp
+        ../cli_launcher/network_wrapper/ConnectionHash.cpp
+        ../cli_launcher/ui/ConsoleRenderer.cpp ../cli_launcher/ConfigManager.cpp)
+    target_include_directories(dual_route_probe PRIVATE ${CMAKE_SOURCE_DIR}/src ${asio_SOURCE_DIR}/asio/include)
+    target_link_libraries(dual_route_probe PRIVATE cccaster_transport ws2_32 wsock32 wininet winmm)
+    target_link_options(dual_route_probe PRIVATE -static -static-libgcc -static-libstdc++)
 endif()
+add_executable(test_route_selection test_route_selection.cpp)
+target_include_directories(test_route_selection PRIVATE ${CMAKE_SOURCE_DIR}/src)
+if(WIN32)
+    target_link_options(test_route_selection PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+add_test(NAME route_selection COMMAND test_route_selection)
 if(WIN32)
     add_executable(test_window_drag test_window_drag.cpp ${CMAKE_SOURCE_DIR}/src/core_dll/hook/WndProcHook.cpp)
     target_include_directories(test_window_drag PRIVATE ${CMAKE_SOURCE_DIR}/src)

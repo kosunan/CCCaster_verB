@@ -1,4 +1,4 @@
-﻿param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode)
+﻿param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1')
 $taskDebugStarted=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
@@ -51,8 +51,8 @@ try {
     foreach($taskSide in 1,2) {
         $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
         if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){'05C4054C'}else{'09CC054C'}}
-        $taskArgs=if($taskSide -eq 1){"--headless --host --port $Port"}else{"--headless --ip 127.0.0.1 --port $Port"}
-        if($UseConnectionCode -and $taskSide -eq 2) {
+        $taskArgs=if($taskSide -eq 1){"--headless --host --port $Port"}else{"--headless --ip $ConnectIp --port $Port"}
+        if(($UseConnectionCode -or $ConnectIp -ne '127.0.0.1') -and $taskSide -eq 2) {
             $taskCode=''
             $taskCodeDeadline=[DateTime]::UtcNow.AddSeconds(30)
             while([DateTime]::UtcNow -lt $taskCodeDeadline) {
@@ -63,7 +63,7 @@ try {
                 Start-Sleep -Milliseconds 100
             }
             if(!$taskCode){throw '接続コードが30秒以内に発行されなかった'}
-            $taskArgs="--headless --hash $taskCode"
+            if($UseConnectionCode){$taskArgs="--headless --hash $taskCode"}
             "JoinByCode length=$($taskCode.Length) compact=$($taskCode.StartsWith('1'))" |
                 Set-Content -LiteralPath (Join-Path $taskOut 'connection_code.txt')
         }

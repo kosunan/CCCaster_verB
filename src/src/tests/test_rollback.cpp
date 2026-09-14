@@ -181,6 +181,12 @@ int main() {
     CHECK(!LocateReplayRound(0x8000, 0x7fff, 0).valid);
     CHECK(!LocateReplayRound(0x8000, 0x8281, 0).valid);
     CHECK(IntroSoundClock::Frames(192000, 4, 48000) == 60);
+    CHECK(IntroSoundClock::ControlsScript(true, 1, false, false));
+    CHECK(IntroSoundClock::ControlsScript(true, 2, false, false));
+    CHECK(IntroSoundClock::ControlsScript(true, 0, true, true));
+    CHECK(!IntroSoundClock::ControlsScript(true, 0, true, false));
+    CHECK(!IntroSoundClock::ControlsScript(true, 0, false, false));
+    CHECK(!IntroSoundClock::ControlsScript(false, 0, true, true));
     CHECK(IntroSoundClock::Frames(192004, 4, 48000) == 61);
     IntroSoundClock::duration[400] = 60;
     IntroSoundClock::Start(400, 131073);
