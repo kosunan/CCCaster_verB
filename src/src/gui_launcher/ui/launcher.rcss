@@ -130,9 +130,9 @@ selection { background-color:#87466f; color:white; }
 .directory-heading h3 { font-size:18dp; }
 .count-badge { font-size:12dp; font-weight:bold; background-color:#473046; color:#f5d5e5; padding:3dp 9dp; border-radius:5dp; margin-left:8dp; }
 .directory-status { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-.people-window { height:144dp; overflow-y:auto; padding:8dp; background-color:#17111e; }
+.people-window { min-height:144dp; padding:8dp; background-color:#17111e; }
 #people { display:flex; flex-wrap:wrap; align-content:flex-start; width:100%; }
-.player-row { display:flex; align-items:center; gap:5dp; flex-shrink:0; width:20%; height:32dp; text-align:left; font-size:13dp; line-height:18dp; padding:6dp; margin:0; border:1dp #392b40; border-radius:0; background-color:#17111e; color:#fff0f7; overflow:hidden; }
+.player-row { display:flex; align-items:center; gap:5dp; flex:1 0 196dp; height:32dp; text-align:left; font-size:13dp; line-height:18dp; padding:6dp; margin:0; border:1dp #392b40; border-radius:0; background-color:#17111e; color:#fff0f7; overflow:hidden; }
 .player-name { display:block; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .player-age { display:block; flex-shrink:0; font-size:10dp; color:#bcaabd; white-space:nowrap; }
 .player-row:hover { background-color:#302035; }

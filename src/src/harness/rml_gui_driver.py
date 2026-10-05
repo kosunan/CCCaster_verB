@@ -138,7 +138,12 @@ def check_public_layout(gui, report):
         data = gui.call();elements = data['elements']
         cells = [elements['player-'+str(i)]['rect'] for i in range(20)]
         panel = elements['people-window']['rect']
-        assert len({round(r[0], 1) for r in cells}) == 5 and len({round(r[1], 1) for r in cells}) == 4
+        rows = {}
+        for cell in cells:
+            rows.setdefault(round(cell[1], 1), []).append(cell)
+        assert len(cells) == 20 and all(r[2] >= 196*scale-1 for r in cells)
+        for row in rows.values():
+            assert all(left[0]+left[2] <= right[0]+1 for left, right in zip(row, row[1:]))
         assert all(r[2] > 0 and abs(r[3]-32*scale) <= 1 and r[0] >= panel[0] and r[1] >= panel[1] and
                    r[0]+r[2] <= panel[0]+panel[2]+1 and r[1]+r[3] <= panel[1]+panel[3]+1 for r in cells)
         name = elements['matching-name']['rect'];button = elements['profile-settings']['rect']
@@ -154,7 +159,7 @@ def check_public_layout(gui, report):
         if scale == 1.0:
             assert directory[0]+directory[2] <= own[0]+1 and abs(directory[1]-own[1]) <= 1
         report.setdefault('layouts', []).append({'scale':scale,'directory':directory,'own':own,'cells':cells})
-        report['checks'].append(f'DPI {scale} コンパクトな5列20名・経過時間・名前右の設定ボタン・横幅')
+        report['checks'].append(f'DPI {scale} 名前10文字分の幅・20名の折り返し・経過時間・名前右の設定ボタン・横幅')
         gui.click('profile-settings')
         assert gui.call()['page'] == 'settings'
         gui.click('settings-back')

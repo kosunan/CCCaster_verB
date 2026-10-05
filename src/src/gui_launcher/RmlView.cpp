@@ -2,6 +2,7 @@
 #include "EmblemCatalog.hpp"
 #include "MatchingPresentation.hpp"
 #include <RmlUi/Core/Elements/ElementFormControl.h>
+#include <RmlUi/Core/StringUtilities.h>
 #include <chrono>
 #include <charconv>
 
@@ -231,9 +232,12 @@ void RmlView::People() {
     if(people.empty())rml="<div class='empty'><strong>"+std::string(ja?"表示できる募集はありません":"No listings to display")+"</strong><p>"+(ja?"自分から公開待機を始められます。":"You can start your own public standby.")+"</p></div>";
     for(size_t i=listPage_*20;i<people.size()&&i<size_t((listPage_+1)*20);++i) {
         const auto& p=people[i];const bool active=p["id"]==selectedPerson_;
+        const auto& name=p["name"].get_ref<const std::string&>();
+        const auto nameEnd=Rml::StringUtilities::ConvertCharacterOffsetToByteOffset(name,10);
+        const auto displayName=name.substr(0,nameEnd)+(size_t(nameEnd)<name.size()?"…":"");
         const auto index=std::to_string(i);
         const bool own=p.value("self",false);
-        rml+="<button id='player-"+index+"' class='player-row"+(active?std::string(" selected"):std::string{})+(own?" own":"")+"' aria-pressed='"+(active?"true":"false")+"' data-command='select-person' data-value='"+Escape(p["id"])+"'><span id='player-name-"+index+"' class='player-name'>"+Escape(p["name"])+"</span>"+(own?std::string("<span class='player-meta'><span class='player-self'>")+(ja?"自分":"You")+"</span>":std::string{})+"<span id='player-age-"+index+"' class='player-age'>"+ages[i-listPage_*20]+"</span>"+(own?"</span>":"")+"</button>";
+        rml+="<button id='player-"+index+"' class='player-row"+(active?std::string(" selected"):std::string{})+(own?" own":"")+"' aria-pressed='"+(active?"true":"false")+"' data-command='select-person' data-value='"+Escape(p["id"])+"'><span id='player-name-"+index+"' class='player-name'>"+Escape(displayName)+"</span>"+(own?std::string("<span class='player-meta'><span class='player-self'>")+(ja?"自分":"You")+"</span>":std::string{})+"<span id='player-age-"+index+"' class='player-age'>"+ages[i-listPage_*20]+"</span>"+(own?"</span>":"")+"</button>";
     }
     Find("people")->SetInnerRML(rml);
 }
