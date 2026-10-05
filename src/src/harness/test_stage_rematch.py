@@ -2,9 +2,34 @@ import tempfile
 import unittest
 from pathlib import Path
 from run_stage_rematch import analyze, analyze_intro_text, analyze_assembly_text, analyze_loading, analyze_spectator_drawing, analyze_intro_wait, analyze_round_starts, evaluate_behavior
+from run_stage_rematch import analyze_direct_rematch
+from run_stage_rematch import analyze_native_loops
 
 
 class StageRematchAnalysis(unittest.TestCase):
+    def test_native_loops_require_each_side_to_use_the_requested_code(self):
+        enabled = '[NativeLoops] enabled=1 scene=1 sse2=1'
+        disabled = '[NativeLoops] disabled=1'
+        self.assertTrue(analyze_native_loops([disabled, enabled, enabled], True)['passed'])
+        self.assertTrue(analyze_native_loops([enabled, enabled, enabled], False)['passed'])
+        for logs in ([], [disabled, enabled, disabled], [disabled, 'signature mismatch'],
+                     [enabled, enabled], [disabled, enabled.replace('scene=1', 'scene=0')]):
+            self.assertFalse(analyze_native_loops(logs, True)['passed'])
+
+    def test_direct_rematch_requires_real_load_and_no_character_select(self):
+        initial = '[StageAsset] selected=55 loaded=55 expanded=1 file=stage55.dat\n'
+        direct = '[StageRematch] DIRECT stage=12 mode=5\n'
+        load = '[TransitionDraw] mode=8 intro=0 skip=1 replay=0 qpc=100\n'
+        intro = '[TransitionDraw] mode=1 intro=2 skip=0 replay=0 qpc=200\n'
+        asset = '[StageAsset] selected=12 loaded=12 expanded=1 file=stage12.dat\n'
+        good = initial + direct + load + intro + asset
+        self.assertTrue(analyze_direct_rematch(good)['passed'])
+        for bad in ('', good.replace(load, ''), good.replace(intro, ''), good.replace(asset, ''),
+                    good.replace(load, load + load.replace('mode=8', 'mode=20')),
+                    good.replace(asset, initial),
+                    good.replace('loaded=12', 'loaded=55'), good.replace('expanded=1', 'expanded=0'),
+                    good.replace('file=stage12.dat', 'file='), good.replace(direct, direct * 2)):
+            self.assertFalse(analyze_direct_rematch(bad)['passed'])
     def test_injection_must_reach_both_rounds_and_stop_after_first_match(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -80,10 +105,11 @@ class StageRematchAnalysis(unittest.TestCase):
     def test_spectator_hides_only_random_once_reselection(self):
         row = lambda mode, skip: f'[TransitionDraw] mode={mode} intro=2 skip={skip} replay=0 qpc=100\n'
         normal = '[Spectator] PACE fast=1 draw=1\n' + row(20, 0) + row(8, 0) + row(1, 0)
-        hidden = '[Spectator] RETRY target=2\n[Spectator] PACE fast=1 draw=0\n' + row(20, 1) + row(8, 1)
+        hidden = '[Spectator] RETRY target=2\n[Spectator] PACE fast=1 draw=0\n' + row(8, 1)
         restored = row(1, 0)
         good = normal + hidden + restored
         self.assertTrue(analyze_spectator_drawing(good, True)['passed'])
+        self.assertFalse(analyze_spectator_drawing(normal + hidden + row(20, 1) + restored, True)['passed'])
         self.assertFalse(analyze_spectator_drawing(good, False)['passed'])
         self.assertFalse(analyze_spectator_drawing(normal, True)['passed'])
         self.assertFalse(analyze_spectator_drawing(normal + hidden.replace('skip=1', 'skip=0') + restored, True)['passed'])
@@ -107,8 +133,8 @@ class StageRematchAnalysis(unittest.TestCase):
             self.assertFalse(analyze_intro_wait(bad)['passed'])
 
     def test_assembly_scope_and_restore_before_intro(self):
-        on = '[StageRematchAsm] enabled=1 patches=7\n'
-        off = '[StageRematchAsm] enabled=0 patches=7\n'
+        on = '[StageRematchAsm] enabled=1 patches=1\n'
+        off = '[StageRematchAsm] enabled=0 patches=1\n'
         intro = '[TransitionDraw] mode=1 intro=1 skip=0 replay=0 qpc=500\n'
         good = on + off + intro
         self.assertTrue(analyze_assembly_text(good * 2, True)['passed'])
@@ -116,7 +142,7 @@ class StageRematchAnalysis(unittest.TestCase):
         for bad in (on + intro + off, on, off, on + on + off, ''):
             self.assertFalse(analyze_assembly_text(bad, True)['passed'])
         self.assertFalse(analyze_assembly_text(good, False)['passed'])
-        self.assertFalse(analyze_assembly_text(good.replace('patches=7', 'patches=4'), True)['passed'])
+        self.assertFalse(analyze_assembly_text(good.replace('patches=1', 'patches=7'), True)['passed'])
 
     def check_logs(self, scenario, second_stage=12, second_color=35, ack=1):
         with tempfile.TemporaryDirectory() as directory:

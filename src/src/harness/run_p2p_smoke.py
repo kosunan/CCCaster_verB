@@ -20,6 +20,11 @@ def run_real(args, output):
         raise RuntimeError('PowerShell 7 (pwsh)が必要です')
     env = clean_environment()
     env['CCCASTER_NTFY_SERVER'] = args.server
+    if args.monitor_timing:
+        env.update(CCCASTER_MONITOR_PRESENT_TRACE='1', CCCASTER_FRAME_TIMING_TRACE='1',
+                   CCCASTER_UPDATE_CADENCE='1')
+    if args.monitor_hz:
+        env['CCCASTER_TEST_MONITOR_HZ'] = str(args.monitor_hz)
     config = dict(spectator=args.standby_spectator and not args.no_spectators)
     config_path = output / 'checkpoint_config.json'
     config_path.write_text(json.dumps(config), encoding='utf-8')
@@ -65,6 +70,9 @@ def main():
     parser.add_argument("--no-spectators", action="store_true", help="観戦拒否と実ゲームのTCP待受停止を確認")
     parser.add_argument('--seconds', type=int, default=40, help='試験上限秒。条件達成で早期終了')
     parser.add_argument('--fixed-duration', action='store_true', help='指定秒まで継続する比較・耐久用')
+    parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
+    parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
+                        help='検証専用の表示要求Hz。実モニター設定は変更しない')
     parser.add_argument('--test-root', type=pathlib.Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')
     args = parser.parse_args()
     if args.seconds < 1:

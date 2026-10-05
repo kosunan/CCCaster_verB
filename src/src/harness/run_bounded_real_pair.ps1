@@ -1,4 +1,4 @@
-param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python')
+param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct1='05C4054C', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct2='09CC054C')
 $taskDebugStarted=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
@@ -23,6 +23,7 @@ foreach($taskSide in $taskVerifySides) {
     if(@(Get-CimInstance Win32_Process -Filter "Name='MBAA.exe'" | Where-Object {$_.ExecutablePath -eq $taskGamePath}).Count){throw 'テスト対象ゲームが既に起動中。既存プロセスは停止しない。'}
 }
 $taskOldSceneMerge=$env:CCCASTER_DISABLE_SCENE_MERGE
+$taskOldNativeLoops=$env:CCCASTER_DISABLE_NATIVE_LOOPS
 $taskOldCpuGuard=$env:CCCASTER_DISABLE_GAME_CPU_GUARD
 $taskOldSoundPrewarm=$env:CCCASTER_DISABLE_SOUND_PREWARM
 $taskOldCpuPin=$env:CCCASTER_GAME_CPU_PIN
@@ -54,7 +55,7 @@ try {
     if($Network){$env:CCCASTER_TEST_NETWORK=$Network}else{Remove-Item Env:CCCASTER_TEST_NETWORK -ErrorAction SilentlyContinue}
     foreach($taskSide in 1,2) {
         $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
-        if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){'05C4054C'}else{'09CC054C'}}
+        if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){$VirtualProduct1}else{$VirtualProduct2}}
         $taskHostMode=if($UseConnectionCode){'--host'}else{'--legacy-host'}
         $taskArgs=if($taskSide -eq 1){"--headless $taskHostMode --port $Port"}else{"--headless --ip $ConnectIp --port $Port"}
         if($taskSide -eq 1 -and $NoSpectators){$taskArgs+=' --no-spectators'}
@@ -70,6 +71,7 @@ try {
             }
             if(!$taskCode){throw '接続コードが30秒以内に発行されなかった'}
             if($StandbySpectator) {
+                if($env:CCCASTER_TEST_BASELINE_HOST_NATIVE_LOOPS){Remove-Item Env:CCCASTER_DISABLE_NATIVE_LOOPS -ErrorAction SilentlyContinue}
                 $taskWatchDir=Join-Path $taskTest 'MBAACC_3/cccaster_B'
                 $taskWatch=Start-Process (Join-Path $taskWatchDir 'CCCaster_B.exe') -WindowStyle Hidden -PassThru -WorkingDirectory $taskWatchDir -ArgumentList "spectate $taskCode" -RedirectStandardOutput (Join-Path $taskOut 'launcher_3.log') -RedirectStandardError (Join-Path $taskOut 'launcher_3.err')
                 $taskLaunchers+=$taskWatch; $taskStartedSides+=3
@@ -78,6 +80,7 @@ try {
                 do {
                     Start-Sleep -Milliseconds 100
                     $taskWatchOutput=Get-Content -LiteralPath (Join-Path $taskOut 'launcher_3.log') -Raw -ErrorAction SilentlyContinue
+                    $taskWatchOutput=[string]::Concat('', $taskWatchOutput)
                     if($taskWatch.HasExited -and !([string]$taskWatchOutput).Contains($taskExpectedWatch)){throw '期待する観戦状態へ到達せずランチャーが終了した'}
                 } while(!([string]$taskWatchOutput).Contains($taskExpectedWatch) -and [DateTime]::UtcNow -lt $taskWatchDeadline)
                 if(!([string]$taskWatchOutput).Contains($taskExpectedWatch)){throw '期待する観戦状態へ到達しなかった'}
@@ -92,6 +95,9 @@ try {
         if($DebugSpikes){$taskArgs+=' --debug-spikes'}
         if($env:CCCASTER_TEST_BASELINE_HOST_SCENE_PAIRS) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_SCENE_MERGE='1'}else{Remove-Item Env:CCCASTER_DISABLE_SCENE_MERGE -ErrorAction SilentlyContinue}
+        }
+        if($env:CCCASTER_TEST_BASELINE_HOST_NATIVE_LOOPS) {
+            if($taskSide -eq 1){$env:CCCASTER_DISABLE_NATIVE_LOOPS='1'}else{Remove-Item Env:CCCASTER_DISABLE_NATIVE_LOOPS -ErrorAction SilentlyContinue}
         }
         if($env:CCCASTER_TEST_BASELINE_HOST_CPU_GUARD) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_GAME_CPU_GUARD='1'}else{Remove-Item Env:CCCASTER_DISABLE_GAME_CPU_GUARD -ErrorAction SilentlyContinue}
@@ -185,6 +191,7 @@ try {
     if($null -eq $taskOldSoundPrewarm){Remove-Item Env:CCCASTER_DISABLE_SOUND_PREWARM -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_SOUND_PREWARM=$taskOldSoundPrewarm}
     if($null -eq $taskOldCpuGuard){Remove-Item Env:CCCASTER_DISABLE_GAME_CPU_GUARD -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_GAME_CPU_GUARD=$taskOldCpuGuard}
     if($null -eq $taskOldSceneMerge){Remove-Item Env:CCCASTER_DISABLE_SCENE_MERGE -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_SCENE_MERGE=$taskOldSceneMerge}
+    if($null -eq $taskOldNativeLoops){Remove-Item Env:CCCASTER_DISABLE_NATIVE_LOOPS -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_NATIVE_LOOPS=$taskOldNativeLoops}
     foreach($taskGame in $taskGames){Stop-Process -Id $taskGame -Force -ErrorAction SilentlyContinue}
     foreach($taskLauncher in $taskLaunchers){
         if($DebugSpikes -and !$taskLauncher.HasExited){$null=$taskLauncher.WaitForExit(2000)}

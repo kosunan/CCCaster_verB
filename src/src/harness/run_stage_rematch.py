@@ -29,7 +29,7 @@ def analyze_assembly_text(text, expected):
         event = re.search(r'\[StageRematchAsm\] enabled=([01]) patches=(\d+)', line)
         if event:
             enable, count = map(int, event.groups())
-            if bool(enable) == active or count != 7:
+            if bool(enable) == active or count != 1:
                 failures.append(line)
             active = bool(enable)
             changes.append(enable)
@@ -39,6 +39,47 @@ def analyze_assembly_text(text, expected):
             failures.append(line)
     passed = not failures and not active and (bool(changes) == expected)
     return dict(changes=changes, failures=failures, passed=passed)
+
+
+def analyze_direct_rematch(text):
+    transitions, failures, assets = [], [], []
+    current = None
+    for line in text.splitlines():
+        direct = re.search(r'\[StageRematch\] DIRECT stage=(\d+) mode=(\d+)', line)
+        if direct:
+            if current is not None:
+                failures.append('前の直接再戦が完了していない')
+            stage, mode = map(int, direct.groups())
+            if mode != 5 or stage not in VALID_RANDOM:
+                failures.append('再戦画面以外または不正なステージで確定した')
+            current = dict(stage=stage, loading=False, intro=False, asset=False)
+            transitions.append(current)
+        draw = re.search(r'\[TransitionDraw\] mode=(\d+) ', line)
+        if draw and current is not None:
+            mode = int(draw[1])
+            if mode == 20:
+                failures.append('直接再戦でキャラ選択を通過した')
+            if mode == 8:
+                current['loading'] = True
+            if mode == 1:
+                if not current['loading']:
+                    failures.append('ロードを通らず対戦へ入った')
+                current['intro'] = True
+                current = None
+        asset = re.search(r'\[StageAsset\] selected=(\d+) loaded=(\d+) expanded=(\d+) file=(.*)', line)
+        if asset:
+            selected, loaded, expanded = map(int, asset.groups()[:3])
+            assets.append(loaded)
+            if selected != loaded or expanded != 1 or not asset[4].strip():
+                failures.append('選択番号と実ロード資産が不一致')
+            if transitions:
+                transitions[-1]['asset'] = selected == loaded == transitions[-1]['stage']
+                if not transitions[-1]['asset']:
+                    failures.append('再抽選結果とロード後の背景が不一致')
+    complete = bool(transitions and all(t['loading'] and t['intro'] and t['asset'] for t in transitions))
+    # 初回と再戦後の資産を確認。ラウンド開始でも同じ資産が記録される。
+    return dict(transitions=transitions, assets=assets, failures=failures,
+                passed=bool(complete and len(assets) >= 2 and not failures))
 
 
 def analyze_intro_text(text):
@@ -151,7 +192,7 @@ def analyze_spectator_drawing(text, random_rematch=False):
     # 描画を戻しても待機省略の高速モードは維持する。
     fast_visible = '[Spectator] PACE fast=1 draw=1' in text
     fast_hidden = '[Spectator] PACE fast=1 draw=0' in text
-    scope_ok = bool(rematches and hidden_selection and hidden_loading and fast_hidden) if random_rematch else not rematches
+    scope_ok = bool(rematches and not hidden_selection and hidden_loading and fast_hidden) if random_rematch else not rematches
     return dict(selection_frames=selected, loading_frames=loading, intro_frames=intros,
                 hidden_selection_frames=hidden_selection, hidden_loading_frames=hidden_loading,
                 random_rematches=rematches, fast_visible=fast_visible, fast_hidden=fast_hidden, failures=failures,
@@ -304,6 +345,11 @@ def evaluate_behavior(out, config):
         result['loading'] = analyze_loading(out, config['loading_input'])
         checks.append(result['loading']['passed'])
     if full_intro:
+        if scenario == 'random':
+            result['direct_rematch'] = [analyze_direct_rematch(
+                (out / f'game_{side}.log').read_text(encoding='utf-8'))
+                for side in ((1, 2, 3) if spectator else (1, 2))]
+            checks.extend(side['passed'] for side in result['direct_rematch'])
         result['intro'] = [analyze_intro_text((out / f'game_{side}.log').read_text(encoding='utf-8'))
                            for side in ((1, 2, 3) if spectator else (1, 2))]
         checks.extend(side['passed'] for side in result['intro'])
@@ -319,6 +365,16 @@ def evaluate_behavior(out, config):
     return result
 
 
+def analyze_native_loops(logs, comparison):
+    sides = []
+    for side, text in enumerate(logs, 1):
+        baseline = comparison and side == 1
+        expected = '[NativeLoops] disabled=1' if baseline else '[NativeLoops] enabled=1 scene=1'
+        sides.append(dict(side=side, baseline=baseline,
+                          passed=expected in text and '[NativeLoops] signature mismatch' not in text))
+    return dict(sides=sides, passed=bool(sides) and all(s['passed'] for s in sides))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('scenario', choices=('random', 'fixed', 'character'))
@@ -329,7 +385,12 @@ def main():
     parser.add_argument('--network', default='15,25,5', help='片道遅延min,maxミリ秒,損失率（既定15,25,5）')
     parser.add_argument('--spectator', action='store_true')
     parser.add_argument('--full-intro', action='store_true', help='登場演出を自然終了させ、描画・周期を記録する')
+    parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
+    parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
+                        help='検証専用の表示要求Hz。実モニター設定は変更しない')
     parser.add_argument('--baseline', action='store_true', help='再抽選のアセンブリ待機短縮だけを無効にして比較する')
+    parser.add_argument('--native-loop-comparison', action='store_true', help='ホストだけ新しいメインループ最適化を無効にし、相手・観戦との同期を比較する')
+    parser.add_argument('--native-loop-trace', action='store_true', help='メインループ最適化の診断用通過回数を採取する（速度比較には使わない）')
     parser.add_argument('--loading-input', choices=('none', 'host', 'client', 'both'),
                         help='ロード画面の押下端末を指定し、先着・イントロ待機を検証する（spectator/full-intro必須）')
     args = parser.parse_args()
@@ -354,6 +415,15 @@ def main():
                CCCASTER_TEST_RETRY_QUICK='1', CCCASTER_TEST_NATIVE_RETRY='1',
                CCCASTER_TEST_REMATCH='2' if args.scenario == 'character' else '0')
     env['CCCASTER_TEST_ROUND_END_FRAME'] = str(args.round_frames)
+    if args.native_loop_comparison:
+        env['CCCASTER_TEST_BASELINE_HOST_NATIVE_LOOPS'] = '1'
+    if args.native_loop_trace:
+        env['CCCASTER_NATIVE_LOOP_TRACE'] = '1'
+    if args.monitor_timing:
+        env.update(CCCASTER_MONITOR_PRESENT_TRACE='1', CCCASTER_FRAME_TIMING_TRACE='1',
+                   CCCASTER_UPDATE_CADENCE='1')
+    if args.monitor_hz:
+        env['CCCASTER_TEST_MONITOR_HZ'] = str(args.monitor_hz)
     # 現行の初回選択=世代1、初回対戦の2ラウンド=世代2/3。
     # 最初の再戦境界だけを短縮し、以後は通常進行で同期標本と終了の余裕を取る。
     if not args.fixed_duration:
@@ -387,6 +457,11 @@ def main():
             run = subprocess.run(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
         result['exit_code'] = run.returncode
         result.update(evaluate(out, config))
+        if args.native_loop_comparison or args.native_loop_trace:
+            result['native_loops'] = analyze_native_loops(
+                [(out / f'game_{side}.log').read_text(encoding='utf-8', errors='replace')
+                 for side in range(1, 4 if args.spectator else 3)], args.native_loop_comparison)
+            result['passed'] &= result['native_loops']['passed']
         result['passed'] &= run.returncode == 0
     except Exception as exc:
         result.update(passed=False, error=str(exc))

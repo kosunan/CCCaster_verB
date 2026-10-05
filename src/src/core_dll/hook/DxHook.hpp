@@ -72,6 +72,8 @@ class DxHook {
 
     static HRESULT APIENTRY Hooked_EndScene(LPDIRECT3DDEVICE9 pDevice);
     static HRESULT APIENTRY Hooked_BeginScene(LPDIRECT3DDEVICE9 pDevice);
+    // 照合済みの連続End/Beginを一度の入口で処理。描画命令・描画順は維持する。
+    static HRESULT AdjacentScenePair(LPDIRECT3DDEVICE9 pDevice);
     static HRESULT APIENTRY Hooked_Present(LPDIRECT3DDEVICE9 pDevice, const RECT *pSourceRect,
                                            const RECT *pDestRect, HWND hDestWindowOverride,
                                            const RGNDATA *pDirtyRegion);

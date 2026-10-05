@@ -12,6 +12,7 @@
 #include "core_dll/common/Platform.hpp"
 #include <algorithm>
 #include "core_dll/timing/OfflinePacing.hpp"
+#include "core_dll/timing/IdlePresentation.hpp"
 
 namespace cccaster {
 namespace core {
@@ -60,6 +61,8 @@ void Metronome::SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinG
     timer::OfflinePacing::sleepRemaining = 0;
     while (true) {
         int64_t remain = targetTicks - timer::WasapiClock::GetTimeTicks();
+        timer::IdlePresentation::Pump(remain / 60);
+        remain = targetTicks - timer::WasapiClock::GetTimeTicks();
         if (remain <= 0)
             break;
         if (remain > spinGuardUs * 60) {
@@ -71,7 +74,7 @@ void Metronome::SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinG
             // キャラセレだけは短いスピン余裕まで高分解能タイマーで眠る。
             if (preciseSleep)
                 cccaster::platform::PreciseWaitUs(spinGuardUs == 2000 ? 1000 :
-                    std::max<int64_t>(1, (remain - spinGuardUs * 60) / 60));
+                    std::min<int64_t>(500, std::max<int64_t>(1, (remain - spinGuardUs * 60) / 60)));
             else cccaster::platform::RealSleepMs(1);
             timer::OfflinePacing::AfterSleep();
         } else {

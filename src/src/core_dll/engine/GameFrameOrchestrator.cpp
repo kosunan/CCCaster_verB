@@ -11,15 +11,17 @@
 // GameFrameOrchestrator.cpp — DxHookコールバック統合（実装）
 //
 // 【3つの処理】
-//   1. DLLロジック実行   — OnPresent()
-//   2. ImGui描画          — OnEndScene()
-//   3. 高速スキップ       — OnEndScene()/OnPresentSkip()
+//   1. 次更新の入力準備   — OnAfterPresent()
+//   2. ImGui準備・描画    — OnPresent()（ゲームの最終合成後）
+//   3. 高速スキップ       — OnPresentSkip()
 // ============================================================================
 
 #include <windows.h>
 #include "core_dll/engine/GameFrameOrchestrator.hpp"
 #include "core_dll/engine/SceneRunner.hpp"
 #include "core_dll/hook/DxHook.hpp"
+#include "core_dll/hook/MonitorPresent.hpp"
+#include "core_dll/mbaa_mem/NativeLoopOptimization.hpp"
 #include "core_dll/hook/WndProcHook.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
 #include "core_dll/ui/UIManager.hpp"
@@ -30,6 +32,7 @@
 #include "core_dll/timing/SpeedFlags.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/IGameMemory.hpp"
+#include "core_dll/mbaa_mem/StateSweep.hpp"
 #include <imgui.h>
 #include <imgui_impl_dx9.h>
 #include <imgui_impl_win32.h>
@@ -43,11 +46,20 @@ using namespace cccaster::domain::session;
 // ─── ImGui 状態管理 ─────────────────────────────────
 static bool s_imguiInitialized = false;
 
-// ─── フレーム単位描画ガード ─────────────────────────
-// MBAAは1Fに多数のEndSceneを呼ぶ（2026-09-11実測中央値113回、HUDを除く）。
-// 最初のEndSceneでImGuiを描画しても後続のゲーム描画で上書きされるため、
-// EndSceneではデータ準備のみ行い、OnPresentで最終描画する。
-static bool s_imguiFrameReady = false;
+// ゲーム側のEndSceneは内部テクスチャへの描画区切りであり、完成画像ではない。
+// HUDの準備と描画はPresent入口にまとめ、描画先のCOM照会も表示1回につき1回にする。
+namespace {
+bool OverlayTraceEnabled() {
+    static const bool enabled = std::getenv("CCCASTER_RENDER_PROBE") != nullptr ||
+                                std::getenv("CCCASTER_TRANSITION_DRAW_TRACE") != nullptr;
+    return enabled;
+}
+struct OverlayFrame {
+    unsigned endScenes = 0, targetChecks = 0, prepared = 0, drawn = 0;
+    HRESULT begin = D3D_OK, end = D3D_OK;
+};
+OverlayFrame overlayFrame;
+}
 
 // ============================================================================
 // Register — DxHook にコールバックを登録
@@ -87,6 +99,8 @@ void GameFrameOrchestrator::Shutdown() {
 //   1. SceneRunner::Step() — ゲームセッションロジック
 //   2. DirectInputHook::Poll() — ジョイスティック状態取得
 void GameFrameOrchestrator::OnAfterPresent(LPDIRECT3DDEVICE9 pDevice) {
+    cccaster::game_memory::native_loops::Install();
+    cccaster::game_memory::native_loops::Trace();
     (void)pDevice;
     cccaster::core::timer::FrameTiming::releaseDueTicks = 0;
     cccaster::core::timer::FrameTiming::releaseFrame = 0;
@@ -108,6 +122,7 @@ void GameFrameOrchestrator::OnAfterPresent(LPDIRECT3DDEVICE9 pDevice) {
 
     // SceneRunner: ゲームスレッド上で1F分のロジック処理
     if (SceneRunner::IsReady()) {
+        if (cccaster::testing::state_sweep::Step(SceneRunner::AppMode(), pDevice)) return;
         const auto before = cccaster::core::netplay::NetplaySession::GetState().appliedFrame.load();
         SceneRunner::Step();
         using Probe = cccaster::diagnostics::SpinProbe;
@@ -153,19 +168,27 @@ void GameFrameOrchestrator::OnPresent(LPDIRECT3DDEVICE9 pDevice) {
     if (simulationTrace && simulationReport && !cccaster::diagnostics::SpinProbe::Enabled())
         DebugLog("[SimulationTiming] lastUs=%lld minUs=%lld maxUs=%lld fps=%.3f workUs=%lld",
                  actual.last, actual.minimum, actual.maximum, actual.gameFps, Timing::workUs);
-    // ── ImGui 最終描画（全ゲーム描画の後、Present直前） ──
-    // EndScene で準備したImGuiドローデータを、バックバッファの最上位レイヤーとして描画。
-    // これによりゲームの後続描画パスに上書きされない。
-    if (s_imguiFrameReady && !cccaster::core::SpeedFlags::RenderSkip().load()) {
-        pDevice->BeginScene();
-        ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-        pDevice->EndScene();
-        s_imguiFrameReady = false;
+    // ゲーム計算・内部画像・最終合成が揃った時点の状態でHUDを準備する。
+    RenderOverlay(pDevice);
+    if (OverlayTraceEnabled()) {
+        DebugLog("[OverlayFrame] f=%u mode=%u skip=%u endScenes=%u targetChecks=%u prepared=%u drawn=%u begin=%08X end=%08X",
+            cccaster::core::netplay::NetplaySession::GetState().appliedFrame.load(),
+            cccaster::game_interface::GameMem().GameMode(),
+            unsigned(cccaster::core::SpeedFlags::RenderSkip().load()),
+            overlayFrame.endScenes, overlayFrame.targetChecks, overlayFrame.prepared, overlayFrame.drawn,
+            unsigned(overlayFrame.begin), unsigned(overlayFrame.end));
     }
+    overlayFrame = {};
     // HUD合成もWORKへ含め、元Presentを呼ぶ直前の境界で表示要求間隔を測る。
     if (Timing::releaseUs) {
         Timing::workUs = cccaster::platform::RealMonotonicUs() - Timing::releaseUs;
         Timing::releaseUs = 0;
+    }
+    // モニター周期の表示はDxHookの実Presentで計測する。ゲームごとのHUD準備と
+    // 旧60Hz表示待機を追加表示へ重ねず、次のゲーム更新締切はそのまま残す。
+    if (cccaster::game_interface::monitor_present::Active()) {
+        Timing::presentDueTicks = 0;
+        return;
     }
     auto &timing = Timing::Get();
     auto &mem = cccaster::game_interface::GameMem();
@@ -247,17 +270,12 @@ bool GameFrameOrchestrator::OnPresentSkip(LPDIRECT3DDEVICE9 pDevice) {
 }
 
 // ============================================================================
-// OnEndScene — ImGui描画（バックバッファ時のみ）+ 高速スキップ
+// OnEndScene — 初期化と、最初のイントロ描画に必要な遷移準備
 // ============================================================================
 //
-// 【高速モード】
-//   RenderSkip=true → ImGui描画をスキップして即リターン
-//
-// 【通常モード】
-//   1. ImGui 遅延初期化（初回のみ）
-//   2. バックバッファ判定（オフスクリーンへの多数の描画と区別）
-//   3. バックバッファ一致時のみ ImGui 描画
+// 表示省略中も入力/WndProcを初期化する。HUD準備や描画先照会は行わない。
 void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
+    if (OverlayTraceEnabled()) ++overlayFrame.endScenes;
     // イントロ最初のHUD準備にも間に合わせる。OnPresentでも最終確認する。
     SceneRunner::PrepareDrawing();
     // ── ImGui 遅延初期化（初回のみ）──
@@ -292,12 +310,10 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
         HookLog("[GameFrameOrchestrator] ImGui + InputHook initialized.");
     }
 
-    // 描画スキップは入力/WndProc初期化を妨げない。
-    if (cccaster::core::SpeedFlags::RenderSkip().load(std::memory_order_acquire))
-        return;
+}
 
-    // 準備済みなら以後の描画先にかかわらず何もしない。COM照会・AddRef/Releaseも省く。
-    if (s_imguiFrameReady)
+void GameFrameOrchestrator::RenderOverlay(LPDIRECT3DDEVICE9 pDevice) {
+    if (!s_imguiInitialized || cccaster::core::SpeedFlags::RenderSkip().load(std::memory_order_acquire))
         return;
 
     // ── バックバッファ判定 → ImGui 描画 ──
@@ -305,6 +321,7 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
     LPDIRECT3DSURFACE9 pBackBuffer = nullptr;
 
     bool isBackBuffer = false;
+    ++overlayFrame.targetChecks;
     if (SUCCEEDED(pDevice->GetRenderTarget(0, &pRenderTarget))) {
         if (SUCCEEDED(pDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pBackBuffer))) {
             if (pRenderTarget == pBackBuffer) {
@@ -318,10 +335,14 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
     }
 
     if (isBackBuffer) {
-        // 1Fに1回だけデータ準備（MBAAは1Fに多数のEndSceneを呼ぶため）
-        ImGui_ImplDX9_NewFrame();
+        // Presentごとに作り直す。表示省略やResetを跨いだ古いHUDは保持しない。
         ImGui_ImplWin32_NewFrame();
         cccaster::hud::Prepare(pDevice);
+        static bool firstAtlas = true;
+        if (firstAtlas) cccaster::diagnostics::startup::Mark("font_atlas_begin");
+        ImGui_ImplDX9_NewFrame();
+        if (firstAtlas) cccaster::diagnostics::startup::Mark("font_atlas_end");
+        firstAtlas = false;
         ImGui::NewFrame();
         cccaster::hud::FinishInput();
 
@@ -378,8 +399,13 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
 
         ImGui::EndFrame();
         ImGui::Render();
-        // RenderDrawData は OnPresent で実行（全ゲーム描画の後に最上位レイヤーとして描画）
-        s_imguiFrameReady = true;
+        ++overlayFrame.prepared;
+        overlayFrame.begin = pDevice->BeginScene();
+        if (SUCCEEDED(overlayFrame.begin)) {
+            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+            overlayFrame.end = pDevice->EndScene();
+            overlayFrame.drawn = SUCCEEDED(overlayFrame.end);
+        }
     }
 }
 
@@ -389,7 +415,7 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
 void GameFrameOrchestrator::OnPreReset(LPDIRECT3DDEVICE9 pDevice) {
     cccaster::hud::Release();
     (void)pDevice;
-    s_imguiFrameReady = false;
+    overlayFrame = {};
     cccaster::core::timer::FrameTiming::Get().Reset();
     cccaster::core::timer::FrameTiming::Simulation().Reset();
     cccaster::core::timer::FrameTiming::presentDueTicks = 0;

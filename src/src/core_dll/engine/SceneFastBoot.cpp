@@ -18,6 +18,8 @@
 #include "core_dll/mbaa_mem/MbaaPatcher.hpp"
 #include "core_dll/mbaa_mem/StartupSystemInfo.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
+#include "core_dll/mbaa_mem/StartupFileRead.hpp"
+#include "core_dll/mbaa_mem/StartupDirectEntry.hpp"
 #include "core_dll/hook/TimeHooks.hpp"
 
 #include <cstring>
@@ -110,6 +112,15 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
         }
     }
 
+    // メニュー生成前に正規初期化へ接続。対戦は起動側、観戦は既存のP1起動を維持。
+    const bool directEntry = s_targetMode == cccaster::public_api::IpcGameMode::Training
+        ? cccaster::game_memory::startup_direct_entry::TryTraining(gameMode)
+        : s_targetMode == cccaster::public_api::IpcGameMode::Versus &&
+          cccaster::game_memory::startup_direct_entry::TryVersus(gameMode, isHost);
+    if (directEntry) {
+        GC::WriteInput({}, {});
+        return false;
+    }
     // キャラセレ到達判定
     const bool replay = s_targetMode == cccaster::public_api::IpcGameMode::Replay;
     if (gameMode == CC_GAME_MODE_CHARA_SELECT || (replay && gameMode == CC_GAME_MODE_REPLAY)) {
@@ -119,6 +130,7 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
             ExitProcess(ERROR_INVALID_FUNCTION);
         if (replay && !cccaster::game_memory::startup::SetReplayEntry(false)) ExitProcess(ERROR_WRITE_FAULT);
         cccaster::game_memory::startup_assets::Restore(true);
+        cccaster::game_memory::startup_file_read::Restore();
         if (!cccaster::game_memory::startup::SetBootFade(false))
             ExitProcess(ERROR_WRITE_FAULT);
         if (cccaster::diagnostics::startup::Enabled())

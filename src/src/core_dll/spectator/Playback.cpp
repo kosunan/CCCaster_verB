@@ -4,6 +4,7 @@
 #include "core_dll/mbaa_mem/IGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include "core_dll/common/Platform.hpp"
+#include "core_dll/timing/IdlePresentation.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "shared_contracts/IpcData.hpp"
 #ifdef _WIN32
@@ -126,7 +127,11 @@ bool Playback::Step(Phase phase) {
 #endif
         // 観戦の受信待ちには対戦者の精密な締切は不要。スピンせずCPUを返す。
         // 毎回必ず休止し、窓への大量投稿があっても受信確認で回り続けない。
-        platform::RealSleepMs(10);
+        // 待機中も完成画像だけを提示する。ゲーム状態・入力は進めない。
+        for (unsigned i = 0; i != 20; ++i) {
+            core::timer::IdlePresentation::Pump(10000);
+            platform::PreciseWaitUs(500);
+        }
     }
     if (!have_) {
         if (phase == Phase::CharaSelect && selectionPrepared_) return Select(false);
@@ -134,7 +139,7 @@ bool Playback::Step(Phase phase) {
     }
     for (unsigned events = 0; events < 8; ++events) {
         if (pending_.kind == Selecting) {
-            if (phase != Phase::CharaSelect) {
+            if (phase != Phase::CharaSelect && !(stageRematch_ && phase == Phase::Rematch)) {
                 Control::WriteInput({}, {}); Pace(stageRematch_); return true;
             }
             match = pending_.Get<StartData>(); score = match.score;
@@ -143,6 +148,15 @@ bool Playback::Step(Phase phase) {
                 pending_.frame, match.p1.confirmed, match.p2.confirmed, match.p1.stageConfirmed, platform::RealMonotonicUs());
         } else if (pending_.kind == Start || pending_.kind == Selection) {
             const auto incoming = pending_.Get<StartData>();
+            if (stageRematch_ && phase == Phase::Rematch && pending_.kind == Selection) {
+                match = incoming; score = match.score;
+                // ONCEでは初回に適用したルールを保持する。設定書込みはキャラ選択専用。
+                if (mem.SpectatorRules() != std::array<uint32_t, 3>{match.roundsToWin, match.damageLevel, match.timerSpeed} ||
+                    !mem.CommitStageRematch(match.p1.stage)) return false;
+                retrying_ = true; nav_ = 0;
+                // Selectionはイントロ到達まで保持し、従来どおりStart待機へ渡す。
+                Control::WriteInput({}, {}); Pace(true); return true;
+            }
             if (phase == Phase::CharaSelect) {
                 match = incoming;
                 score = match.score;
@@ -181,7 +195,9 @@ bool Playback::Step(Phase phase) {
             }
             stageRematch_ = pending_.payload[0] == 2;
             if (!mem.SetStageRematchFastPath(stageRematch_)) return false;
-            mem.SetRetryTarget(stageRematch_ ? 1 : int(pending_.payload[0])); retrying_ = true; nav_ = 0;
+            if (!stageRematch_) mem.SetRetryTarget(int(pending_.payload[0]));
+            // RANDOM ONCEは選択確定通知を待ってから通常ONCEを解放する。
+            retrying_ = !stageRematch_; nav_ = 0;
             domain::session::DebugLog("[Spectator] RETRY target=%u", pending_.payload[0]);
             have_ = false; Control::WriteInput({}, {}); Pace(stageRematch_); return true;
         } else if (pending_.kind == Input) {

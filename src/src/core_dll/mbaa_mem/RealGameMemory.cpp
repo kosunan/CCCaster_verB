@@ -194,6 +194,11 @@ static cccaster::sync::PointerSnapshot &SnapshotDumper() {
         nodes.push_back({-1, 0x55DF24, 0, 4});
         nodes.push_back({-1, reinterpret_cast<uintptr_t>(cccaster::sync::IntroSoundClock::until.data()),
                          0, sizeof(cccaster::sync::IntroSoundClock::until)});
+        // 0x42397Aで進み、0x473400/0x4751D6で結果計算に使うシミュレーションF。
+        nodes.push_back({-1, 0x55D1CC, 0, 4});
+        // 状態初期化の0x45EF90等が積み、0x4DE200が再生後に消去する未処理要求。
+        // 初期化直後の保存でも、再計算側に同じ要求と音声開始Fを渡す。
+        nodes.push_back({-1, 0x76E008, 0, 1500});
         return dumper.Configure(nodes);
     }();
     (void)configured;
@@ -542,6 +547,12 @@ bool RealGameMemory::PrepareBattleAudio() {
         const auto p2 = reinterpret_cast<const uint32_t *>(0x74D868);
         DebugLog("[Select] LOADED p1=%u/%u/%u p2=%u/%u/%u stage=%u",
                  p1[1], p1[4], p1[0], p2[1], p2[4], p2[0], *CC_STAGE_SELECTOR_ADDR);
+        // 0x4B6BF0がロード成功後に残すステージ番号とファイル名。selectorだけの確認にしない。
+        // 0x4B6B50で一時バッファは解放される。展開後のフラグを検査する。
+        DebugLog("[StageAsset] selected=%u loaded=%u expanded=%u file=%.259s",
+            *CC_STAGE_SELECTOR_ADDR, *reinterpret_cast<const uint32_t *>(0x54CE90),
+            *reinterpret_cast<const uint32_t *>(0x76E7B4),
+            reinterpret_cast<const char *>(0x74FDA0));
     }
     if (std::getenv("CCCASTER_DISABLE_SOUND_PREWARM")) {
         DebugLog("[SoundPrewarm] disabled=1");

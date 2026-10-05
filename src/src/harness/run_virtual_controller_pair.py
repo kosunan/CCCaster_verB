@@ -6,12 +6,16 @@ import json
 import os
 from pathlib import Path
 import re
+import random
 import socket
 import subprocess
 import sys
 import time
+import threading
+from real_game_checkpoint import clean_environment, protected_hashes
+from test_p2p_service import Service
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def main():
@@ -24,7 +28,7 @@ def main():
                         help='選択前の無操作秒数。ランチャーの旧15秒終了の回帰確認')
     parser.add_argument('--hotplug-delay', type=float, default=0,
                         help='ゲーム起動後、この秒数待ってから仮想パッドを接続する')
-    parser.add_argument('--test-root', default='_TEST_MBAACC',
+    parser.add_argument('--test-root', default=str(ROOT / 'test/runtime'),
                         help='2つのMBAACCテストコピーを含むディレクトリ')
     args = parser.parse_args()
     if args.seconds < 70:
@@ -49,17 +53,20 @@ def main():
             vc.vigem_target_set_pid(target, self.product)
             return target
 
-    out = ROOT / 'build_logs' / time.strftime('virtual_pad_%Y%m%d_%H%M%S')
+    out = ROOT / 'test/logs' / time.strftime('virtual_pad_%Y%m%d_%H%M%S')
     out.mkdir(parents=True)
     test_root = (ROOT / args.test_root).resolve()
-    ini_before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in test_root.rglob('*.ini')}
+    protected_before = protected_hashes(test_root)
+    ini_before = {p: h for p, h in protected_before.items() if p.lower().endswith('.ini')}
     result = dict(scenario=args.scenario, input_source='ViGEm DS4 -> DirectInput -> InputTimeline',
                   scripted_input=False, probes=[], errors=[])
     result['network'] = args.network
     result['seconds'] = args.seconds
     result['binaries'] = {name: hashlib.sha256((ROOT / 'build/bin' / name).read_bytes()).hexdigest()
-                          for name in ('CCCaster_B.exe', 'libcccaster_hook.dll')}
-    pads, process = [], None
+                          for name in ('CCCaster_B.exe', 'CCCaster_B_GUI.exe', 'libcccaster_hook.dll')}
+    pads, process, service = [], None, None
+    # 他作業の仮想DS4と一致させず、同じPCでも試験個体を識別する。
+    products = random.SystemRandom().sample(range(0x8000, 0xFFFF), 2)
     files = [test_root / f'MBAACC_{s}/cccaster_B/cccaster_hook_log.txt' for s in (1, 2)]
     offsets, pending = [0, 0], [b'', b'']
     phases, phase_since, values, seen = [0, 0], [0., 0.], [None, None], [[], []]
@@ -131,7 +138,7 @@ def main():
 
     def connect_pads():
         nonlocal pads_connected_at
-        for product in (0x05C4, 0x09CC):
+        for product in products:
             pads.append(TestPad(product))
         pads_connected_at = time.monotonic()
         result['devices'] = [dict(vid=p.get_vid(), pid=p.get_pid(), bus_index=p.get_index()) for p in pads]
@@ -140,15 +147,16 @@ def main():
         if args.hotplug_delay == 0:
             connect_pads()
             time.sleep(2)
-        env = os.environ.copy()
-        for key in list(env):
-            if key.startswith('CCCASTER_TEST_') or key == 'CCCASTER_SCRIPT_INPUT':
-                del env[key]
+        env = clean_environment()
+        service = Service()
+        threading.Thread(target=service.serve_forever, daemon=True).start()
+        env['CCCASTER_NTFY_SERVER'] = f'http://127.0.0.1:{service.server_port}'
         env.update(CCCASTER_SCRIPT_INPUT='0', CCCASTER_INPUT_TRACE='1', CCCASTER_TEST_RETRY_QUICK='1')
         command = ['pwsh.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                   str(ROOT / 'src/harness/run_bounded_real_pair.ps1'), '-Seconds', str(args.seconds),
-                   '-Port', str(args.port), '-VirtualController', '-OutputDirectory', str(out),
-                   '-TestRoot', str(test_root)]
+                   str(ROOT / 'src/src/harness/run_bounded_real_pair.ps1'), '-Seconds', str(args.seconds),
+                   '-Port', str(args.port), '-VirtualController', '-UseConnectionCode', '-CloseSide', '1', '-OutputDirectory', str(out),
+                   '-TestRoot', str(test_root),
+                   '-VirtualProduct1', f'{products[0]:04X}054C', '-VirtualProduct2', f'{products[1]:04X}054C']
         if args.network:
             command += ['-Network', args.network]
         with (out / 'runner.log').open('w', encoding='utf-8') as runner_log:
@@ -221,11 +229,19 @@ def main():
         if 'pad' in locals():
             del pad
         gc.collect()
-        result['ini_unchanged'] = all(Path(p).exists() and hashlib.sha256(Path(p).read_bytes()).hexdigest() == h
-                                      for p, h in ini_before.items())
+        protected_after = protected_hashes(test_root)
+        result['ini_unchanged'] = ini_before == {p: h for p, h in protected_after.items() if p.lower().endswith('.ini')}
+        result['protected_unchanged'] = protected_before == protected_after
+        (out / 'protected_before.json').write_text(json.dumps(protected_before, indent=2), encoding='utf-8')
+        if service:
+            service.running = False
+            with service.cv:
+                service.cv.notify_all()
+            service.shutdown()
+            service.server_close()
         (out / 'ini_before.json').write_text(json.dumps(ini_before, indent=2), encoding='utf-8')
     for script, extra in [('compare_rollback_pair.py', []), ('verify_native_retry_pair.py', [str(args.scenario)])]:
-        completed = subprocess.run([sys.executable, str(ROOT / 'src/harness' / script), str(out), *extra],
+        completed = subprocess.run([sys.executable, str(ROOT / 'src/src/harness' / script), str(out), *extra],
                                    capture_output=True, text=True, encoding='utf-8', errors='replace')
         (out / (script + '.txt')).write_text(completed.stdout + completed.stderr, encoding='utf-8')
         result[script] = completed.returncode == 0
@@ -237,7 +253,7 @@ def main():
     result['random_stages'] = list(map(int, re.findall(r'\[Select\] RANDOM resolved=(\d+)', logs[0])))
     result['random_stage_exercised'] = bool(result['random_stages'] and all(result['random_stages']))
     result['passed'] = bool(not result['errors'] and len(result['probes']) == 26 and
-                            all(p['passed'] for p in result['probes']) and result['ini_unchanged'] and
+                            all(p['passed'] for p in result['probes']) and result['protected_unchanged'] and
                             result.get('runner_exit') == 0 and result['compare_rollback_pair.py'] and
                             result['verify_native_retry_pair.py'] and result['same_loaded_selection'] and
                             result['random_stage_exercised'])

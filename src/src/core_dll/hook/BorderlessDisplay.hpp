@@ -15,5 +15,5 @@ RECT FitAspect(LONG width, LONG height, LONG sourceWidth, LONG sourceHeight);
 RECT FitContent(LONG width, LONG height);
 void ReleaseResources();
 // trueならresultが今回の提示結果。falseなら元のPresentを使用する。
-bool Present(IDirect3DDevice9* device, HRESULT& result);
+bool Present(IDirect3DDevice9* device, HRESULT& result, DWORD flags = 0);
 }

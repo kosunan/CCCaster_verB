@@ -4,6 +4,7 @@
 // ============================================================================
 
 #include "core_dll/ui/UIManager.hpp"
+#include "core_dll/ui/TrainingCharacterView.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include "core_dll/ui/State_Ui_View.hpp"
@@ -35,6 +36,7 @@ void UIManager::Render(UiPhase phase) {
         ControllerUiLogic::Suspend();
     }
     if (StateUiLogic::IsMappingWindowOpen()) { ControllerUiView::Draw(); return; }
+    if (training && phase == UiPhase::InGame && training_character_view::Draw()) return;
     if (cccaster::domain::session::SceneRunner::AppMode() == 4 && phase != UiPhase::InGame) return;
     switch (phase) {
     case UiPhase::CharaSelect:

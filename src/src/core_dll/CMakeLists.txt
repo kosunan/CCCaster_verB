@@ -14,19 +14,25 @@ add_library(cccaster_hook SHARED
     # === mbaa_mem/ — MBAA メモリ操作・検出 ===
     mbaa_mem/dllmain.cpp
     mbaa_mem/MbaaPatcher.cpp
+    mbaa_mem/NativeLoopOptimization.cpp
     mbaa_mem/PhaseMonitor.cpp
     mbaa_mem/GameMemory.cpp
     mbaa_mem/MbaaMemTrace.cpp
     mbaa_mem/RealGameMemory.cpp
     mbaa_mem/TrainingMetrics.cpp
+    mbaa_mem/StateSweep.cpp
+    mbaa_mem/TrainingCharacterMenu.cpp
     mbaa_mem/CombatStress.cpp
     mbaa_mem/NetplayMenu.cpp
     mbaa_mem/ReplaySave.cpp
     mbaa_mem/StartupAssets.cpp
+    mbaa_mem/StartupFileRead.cpp
+    mbaa_mem/StartupDirectEntry.cpp
 
     # === hook/ — 外部 API フック ===
     hook/DxHook.cpp
     hook/BorderlessDisplay.cpp
+    hook/MonitorPresent.cpp
     hook/TimeHooks.cpp
     hook/DirectInputHook.cpp
     hook/WndProcHook.cpp
@@ -57,6 +63,8 @@ add_library(cccaster_hook SHARED
     # === ui/ — 表示 ===
     ui/OverlayRenderer.cpp
     ui/HudResources.cpp
+    ui/StartupFontCache.cpp
+    ui/TrainingCharacterView.cpp
     ui/State_Ui_Logic.cpp
     ui/ScoreBroadcast.cpp
     ui/LearningOverlay.cpp

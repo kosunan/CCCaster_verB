@@ -1,0 +1,282 @@
+#include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
+#include "core_dll/mbaa_mem/RealGameMemory.hpp"
+#include "core_dll/mbaa_mem/MbaaAddresses.hpp"
+#include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
+#include "core_dll/mbaa_mem/GameBuildGuard.hpp"
+#include "core_dll/common/DebugLog.hpp"
+#include "core_dll/common/Platform.hpp"
+#include <windows.h>
+#include <MinHook.h>
+#include <algorithm>
+#include <cstring>
+#include <cstdio>
+
+// ABIは test/logs/mbaa_ghidra_20261006/assembly/ の同名アドレスと照合。
+// Ghidraが省略するレジスタ引数をC++の推定シグネチャで呼ばない。
+extern "C" {
+__attribute__((naked)) void cc_training_append(void* vector, void* item) {
+    __asm__ __volatile__("pushl %esi; pushl %ebx; movl 12(%esp),%esi; leal 16(%esp),%ebx;"
+                         "movl $0x42BA50,%eax; call *%eax; popl %ebx; popl %esi; ret");
+}
+__attribute__((naked)) void cc_training_describe(void* description, void* loading) {
+    __asm__ __volatile__("pushl %edi; movl 8(%esp),%eax; movl 12(%esp),%edi;"
+                         "movl $0x449030,%ecx; call *%ecx; popl %edi; ret");
+}
+__attribute__((naked)) void cc_training_free_slot(unsigned slot) {
+    __asm__ __volatile__("movl 4(%esp),%eax; movl $0x41C2E0,%ecx; jmp *%ecx");
+}
+__attribute__((naked)) uint32_t cc_training_file_size(void* file) {
+    __asm__ __volatile__("pushl %esi; movl 8(%esp),%esi; movl $0x413DB0,%eax;"
+                         "call *%eax; popl %esi; ret");
+}
+__attribute__((naked)) bool cc_training_file_exists(const char* path) {
+    // 0x4DB9B0: ESI=アーカイブ一覧、スタックにパス、ret 4。
+    __asm__ __volatile__("pushl %esi; movl $0x76E9C4,%esi; pushl 8(%esp);"
+                         "movl $0x4DB9B0,%eax; call *%eax; popl %esi; ret");
+}
+}
+
+namespace cccaster::game_interface { bool ConfigureMenuObserver(); }
+namespace cccaster::training_character {
+namespace {
+using domain::session::DebugLog;
+Selection selection;
+bool installed = false, pending = false, restartDispatched = false, changed = false, suppressUntilRelease = false;
+uint32_t* mainMenu = nullptr;
+uint32_t* menuSet = nullptr;
+uint32_t previousButtons = 0;
+uint16_t previousDirection = 0;
+int64_t repeatAt = 0;
+const char* error = "";
+using Constructor = uint32_t* (__thiscall*)(uint32_t*);
+using Reset = void (__stdcall*)(void*);
+Constructor originalConstructor = nullptr;
+Reset originalReset = nullptr;
+
+uint32_t* Descriptor(uint32_t character) {
+    auto* table = *reinterpret_cast<uint32_t**>(0x55DF18);
+    if (!table || character >= table[3]) return nullptr;
+    return reinterpret_cast<uint32_t*>(table[0] == 0 ? table[1] + table[2] * character
+                                                     : reinterpret_cast<uint32_t*>(table[1])[character]);
+}
+const char* NativeString(uint32_t* base) {
+    return base[6] < 16 ? reinterpret_cast<const char*>(base + 1)
+                        : reinterpret_cast<const char*>(base[1]);
+}
+bool Exists(const char* path) {
+    const auto attributes = GetFileAttributesA(path);
+    return (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) ||
+           cc_training_file_exists(path);
+}
+bool Available(Choice choice) {
+    auto* info = Descriptor(choice.character);
+    if (!info || choice.moon != MoonValue(choice.character,MoonSlot(choice.moon))) return false;
+    const auto* first = reinterpret_cast<const char*>(info) + 0x34;
+    const auto* partner = first + 0x20;
+    char path[128]{};
+    std::snprintf(path, sizeof(path), ".\\data\\%.31s_%u.txt", first, choice.moon);
+    if (!Exists(path)) return false;
+    if (*partner && *partner != '0') {
+        std::snprintf(path, sizeof(path), ".\\data\\%.31s_%u.txt", partner, choice.moon);
+        if (!Exists(path)) return false;
+    }
+    return true;
+}
+uint32_t FindItem(uint32_t* set, const char* key) {
+    auto** begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
+    auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+    if (!begin || end < begin || end - begin > 64) return UINT32_MAX;
+    for (auto** item = begin; item != end; ++item)
+        if (*item && std::strcmp(NativeString(*item + 0x3c/4), key) == 0) return uint32_t(item-begin);
+    return UINT32_MAX;
+}
+__attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t* self, void*) {
+    auto* result = originalConstructor(self);
+    mainMenu = result;
+    menuSet = nullptr;
+    selection.open = false;
+    if (!result || !result[4] || result[5] <= result[4]) return result;
+    auto* set = *reinterpret_cast<uint32_t**>(result[4]);
+    if (!set || set[0] != 0x53873C) return result;
+    auto* item = static_cast<uint32_t*>(reinterpret_cast<void* (__cdecl*)(size_t)>(0x4E0177)(0x58));
+    if (!item) return result;
+    reinterpret_cast<void* (__stdcall*)(void*, const char*, const char*, int)>(0x429140)(
+        item, "CHARACTER", "CC_CHARACTER", 0);
+    item[0] = 0x53604C; item[1] = item[3] = 1;
+    cc_training_append(set + 0x48/4, item);
+    auto** begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
+    auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+    std::rotate(begin, end - 1, end);
+    set[0x40/4] = set[0x44/4] = 0;
+    menuSet = set;
+    error = "";
+    // 起動済みのアーカイブ索引で確認。描画中や毎フレームの探索は行わない。
+    for (unsigned i = 0; i < Characters.size(); ++i) {
+        selection.available[i] = 0;
+        for (unsigned moon = 0; moon < MoonCount; ++moon)
+            if (Available({Characters[i],MoonValue(Characters[i],moon)})) selection.available[i] |= 1u << moon;
+    }
+    static bool loggedCatalogue = false;
+    if (!loggedCatalogue) {
+        for (unsigned i = 0; i < Characters.size(); ++i)
+            DebugLog("[TrainingCharacter] OPTION char=%u styles=%u",Characters[i],selection.available[i]);
+        loggedCatalogue = true;
+    }
+    DebugLog("[TrainingCharacter] MENU added count=%u", unsigned(end-begin));
+    return result;
+}
+__attribute__((force_align_arg_pointer)) void __stdcall RoundReset(void* battle) {
+    if (pending && *CC_GAME_MODE_ADDR == CC_GAME_MODE_IN_GAME &&
+        *reinterpret_cast<uint32_t*>(0x562A74) == 0x1010) {
+        pending = false;
+        const auto side = selection.player;
+        const auto choice = selection.choice;
+        auto* final = reinterpret_cast<uint32_t*>(0x74D838) + side * 11;
+        auto* cursor = side ? CC_P2_SELECTOR_MODE_ADDR : CC_P1_SELECTOR_MODE_ADDR;
+        const auto started = platform::RealMonotonicUs();
+        DebugLog("[TrainingCharacter] LOAD begin side=%u char=%u moon=%u old=%u/%u stage=%u",
+                 side, choice.character, choice.moon, final[2], final[5], *CC_STAGE_SELECTOR_ADDR);
+        final[2] = choice.character; final[5] = choice.moon;
+        // 特殊キャラの選択時フラグを次のキャラへ持ち越さない。
+        final[9] = final[10] = 0;
+        // 通常キャラ選択へ戻るカーソルには、隠しID・スタイルを渡さない。
+        const auto cursorCharacter = CursorCharacter(choice.character);
+        cursor[3] = core::sync::SelectionState::CharacterCell(cursorCharacter);
+        cursor[4] = cursorCharacter; cursor[5] = choice.moon < 3 ? choice.moon : 0;
+        uint32_t description[0xB8/4]{}, loading[3]{};
+        cc_training_describe(description, loading);
+        for (unsigned slot = 0; slot < 4; ++slot) cc_training_free_slot(slot);
+        // 通常ロード0x448FB0のうちキャラ資産だけ。背景読込み0x4B6BF0は不要。
+        reinterpret_cast<int (__fastcall*)(void*, void*)>(0x4489E0)(description, nullptr);
+        changed = true;
+        DebugLog("[TrainingCharacter] LOAD end side=%u char=%u moon=%u elapsedUs=%lld stage=%u",
+                 side, choice.character, choice.moon, platform::RealMonotonicUs()-started, *CC_STAGE_SELECTOR_ADDR);
+    }
+    originalReset(battle);
+}
+bool Hook(uintptr_t address, const unsigned char* bytes, size_t length, void* replacement, void** original) {
+    if (std::memcmp(reinterpret_cast<void*>(address), bytes, length)) return false;
+    return MH_CreateHook(reinterpret_cast<void*>(address), replacement, original) == MH_OK &&
+           MH_EnableHook(reinterpret_cast<void*>(address)) == MH_OK;
+}
+}
+const Selection& Current() { return selection; }
+bool Busy() { return selection.open || pending; }
+const char* Error() { return error; }
+int PortraitIndex(uint32_t character) {
+    if (!installed || character >= 101) return -1;
+    const auto* icons = reinterpret_cast<int*>(0x5519F8);
+    // ボス差分に専用顔がない場合は元キャラの顔を使い、欄にBOSSを添える。
+    return icons[character] >= 0 ? icons[character] : icons[CursorCharacter(character)];
+}
+int MoonPortraitIndex(uint32_t moon) {
+    if (moon == 8 || moon == 9) return 3;
+    if (installed) for (int i = 0; i < 3; ++i)
+        if (reinterpret_cast<uint32_t*>(0x54D3CC)[i] == moon) return i;
+    return 0;
+}
+std::string CharacterName(uint32_t character) {
+    auto* data = Descriptor(character);
+    if (!data) return "?";
+    const auto* name = reinterpret_cast<const char*>(data + 1);
+    return std::string(name, strnlen(name, 32));
+}
+bool ReadImage(const char* path, std::vector<uint8_t>& bytes) {
+    if (!installed) return false;
+    uint32_t* file = nullptr;
+    if (!reinterpret_cast<int (__cdecl*)(const char*, void*, unsigned, unsigned)>(0x4C8B10)(path,&file,0,0) || !file)
+        return false;
+    ++file[0x48/4];
+    auto* data = reinterpret_cast<uint8_t*>(file[0x30/4]);
+    const auto size = cc_training_file_size(file);
+    const bool valid = data && size >= 128 && size <= 16*1024*1024;
+    if (valid) bytes.assign(data, data + size);
+    if (data) reinterpret_cast<void (__cdecl*)(void*)>(0x4E00D0)(data);
+    reinterpret_cast<void (__thiscall*)(void*)>(0x414000)(file);
+    reinterpret_cast<void (__cdecl*)(void*)>(0x4E02F3)(file);
+    return valid;
+}
+void ObserveMenu(uint32_t* menu, uint32_t* command) {
+    if (!installed || *CC_GAME_MODE_ADDR != CC_GAME_MODE_IN_GAME || menu != menuSet ||
+        mainMenu != *reinterpret_cast<uint32_t**>(0x74D7FC)) return;
+    if (pending) {
+        if (restartDispatched) { *command = 0; return; }
+        const auto restart = FindItem(menu, "RESTART");
+        if (restart != UINT32_MAX) {
+            menu[0x40/4] = restart; *command = 1; restartDispatched = true;
+        }
+        return;
+    }
+    if (selection.open) { *command = 0; return; }
+    if (*command == 1 && menu[0x40/4] == 0) {
+        selection.Open({Choice{*reinterpret_cast<uint32_t*>(0x74D840), *reinterpret_cast<uint32_t*>(0x74D84C)},
+                        Choice{*reinterpret_cast<uint32_t*>(0x74D86C), *reinterpret_cast<uint32_t*>(0x74D878)}},
+                       *reinterpret_cast<uint8_t*>(0x55DF0F));
+        suppressUntilRelease = true;
+        error = "";
+        *command = 0;
+        DebugLog("[TrainingCharacter] OPEN side=%u char=%u moon=%u", selection.player, selection.choice.character, selection.choice.moon);
+    }
+}
+}
+
+namespace cccaster::game_interface {
+bool RealGameMemory::ConfigureTrainingMenu() {
+    using namespace training_character;
+    if (installed) return true;
+    if (!game_build::RuntimeValidated() || !ConfigureMenuObserver()) return false;
+    const unsigned char constructor[]{0x6a,0xff,0x68,0x67,0x75,0x51,0x00};
+    const unsigned char reset[]{0x83,0xec,0x10,0xa1,0x58,0xb4,0x54,0x00};
+    if (!Hook(0x47D3A0, constructor, sizeof(constructor), reinterpret_cast<void*>(Construct),
+              reinterpret_cast<void**>(&originalConstructor)) ||
+        !Hook(0x423380, reset, sizeof(reset), reinterpret_cast<void*>(RoundReset),
+              reinterpret_cast<void**>(&originalReset))) return false;
+    installed = true;
+    return true;
+}
+bool RealGameMemory::StepTrainingMenu(GameInput& p1, GameInput& p2, bool configuring) {
+    using namespace training_character;
+    const bool didChange = changed;
+    changed = false;
+    if (GameMode() != CC_GAME_MODE_IN_GAME) {
+        selection.open = pending = false; mainMenu = menuSet = nullptr;
+        suppressUntilRelease = false; previousButtons = previousDirection = 0;
+        return didChange;
+    }
+    const auto buttons = p1.buttons | p2.buttons;
+    const auto direction = p1.direction ? p1.direction : p2.direction;
+    if (configuring && selection.open) { selection.open = false; suppressUntilRelease = true; }
+    if (selection.open && !configuring && !suppressUntilRelease) {
+        Action action = Action::None;
+        const auto edge = buttons & ~previousButtons;
+        if (edge & (CC_BUTTON_B | CC_BUTTON_CANCEL | CC_BUTTON_START)) action = Action::Cancel;
+        else if (edge & (CC_BUTTON_A | CC_BUTTON_CONFIRM)) action = Action::Accept;
+        else if (direction && (direction != previousDirection || platform::RealMonotonicUs() >= repeatAt)) {
+            action = direction == 8 ? Action::Up : direction == 2 ? Action::Down :
+                     direction == 4 ? Action::Left : direction == 6 ? Action::Right : Action::None;
+            repeatAt = platform::RealMonotonicUs() + (direction == previousDirection ? 90000 : 350000);
+        }
+        const auto result = selection.Step(action);
+        if (action != Action::None) error = "";
+        if (result == Result::Apply) {
+            if (!Available(selection.choice)) {
+                selection.open = true; selection.field = Field::Moon;
+                error = "This style is not available for this character.";
+            } else if (selection.choice.character == selection.original[selection.player].character &&
+                       selection.choice.moon == selection.original[selection.player].moon) {
+                suppressUntilRelease = true;
+            } else {
+                pending = true; restartDispatched = false; suppressUntilRelease = true;
+                DebugLog("[TrainingCharacter] COMMIT side=%u char=%u moon=%u", selection.player, selection.choice.character, selection.choice.moon);
+            }
+        } else if (result == Result::Cancelled) {
+            suppressUntilRelease = true;
+            DebugLog("[TrainingCharacter] CANCEL");
+        }
+    }
+    previousButtons = buttons; previousDirection = direction;
+    if (selection.open || pending || suppressUntilRelease || didChange) p1 = p2 = {};
+    if (!buttons && !direction) suppressUntilRelease = false;
+    return didChange;
+}
+}

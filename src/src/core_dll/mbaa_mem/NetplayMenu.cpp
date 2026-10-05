@@ -9,6 +9,7 @@
 #include "core_dll/common/ScriptedInput.hpp"
 #include "core_dll/mbaa_mem/RandomStage.hpp"
 #include "core_dll/mbaa_mem/StageRematchPatch.hpp"
+#include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
 namespace {
 int target = -1;
 bool retryActive = false;
@@ -85,6 +86,7 @@ __attribute__((naked)) void cccaster_stage_hook() {
 }
 void *cccaster_menu_original = nullptr;
 __attribute__((force_align_arg_pointer)) void __cdecl cccaster_menu_observe(uint32_t *menu, uint32_t *command) {
+    cccaster::training_character::ObserveMenu(menu, command);
     if (*CC_GAME_MODE_ADDR != CC_GAME_MODE_RETRY)
         return;
     if (!retryActive) return;
@@ -146,18 +148,13 @@ bool RealGameMemory::SetSpectatorRules(const std::array<uint32_t, 3> &rules) {
     *CC_TIMER_SPEED_ADDR = rules[2];
     return true;
 }
-bool RealGameMemory::ConfigureNetplayMenu() {
+bool ConfigureMenuObserver() {
     static bool installed = false;
-    *CC_AUTO_REPLAY_SAVE_ADDR = 0;
     if (installed)
         return true;
     void *address = reinterpret_cast<void *>(0x4299CB);
     const unsigned char expected[] = {0x85, 0xc9, 0x8b, 0x7e, 0x40};
     if (std::memcmp(address, expected, sizeof(expected)))
-        return false;
-    void *openAddress = reinterpret_cast<void *>(0x43A730);
-    const unsigned char openExpected[] = {0x85, 0xc0, 0x74, 0x0a, 0x8b, 0xc6};
-    if (std::memcmp(openAddress, openExpected, sizeof(openExpected)))
         return false;
     auto status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED)
@@ -167,6 +164,17 @@ bool RealGameMemory::ConfigureNetplayMenu() {
         return false;
     if (MH_EnableHook(address) != MH_OK)
         return false;
+    installed = true;
+    return true;
+}
+bool RealGameMemory::ConfigureNetplayMenu() {
+    static bool installed = false;
+    *CC_AUTO_REPLAY_SAVE_ADDR = 0;
+    if (installed) return true;
+    if (!ConfigureMenuObserver()) return false;
+    void *openAddress = reinterpret_cast<void *>(0x43A730);
+    const unsigned char openExpected[] = {0x85, 0xc0, 0x74, 0x0a, 0x8b, 0xc6};
+    if (std::memcmp(openAddress, openExpected, sizeof(openExpected))) return false;
     if (MH_CreateHook(openAddress, reinterpret_cast<void *>(cccaster_retry_open_hook),
                       &cccaster_retry_open_original) != MH_OK || MH_EnableHook(openAddress) != MH_OK)
         return false;
@@ -182,6 +190,21 @@ bool RealGameMemory::SetStageRematchFastPath(bool enable) {
     if (enable && testing::IsScriptedInputEnabled() && std::getenv("CCCASTER_TEST_REMATCH_BASELINE"))
         return true;
     return game_memory::stage_rematch::Set(enable);
+}
+bool RealGameMemory::CommitStageRematch(uint32_t stage) {
+    if (!retryActive || *CC_GAME_MODE_ADDR != CC_GAME_MODE_RETRY || stage == 0 || stage >= 60 ||
+        !game_memory::stages::RandomAllowed(stage) || !reinterpret_cast<const uint32_t *>(0x74FC08)[stage])
+        return false;
+    // 通常ONCEも0x43B190からmode=8へ進み、0x438D70で資産を読み直す。
+    // キャラの確定済み設定は保持し、ACK済みステージだけをロード前に変更する。
+    // ゲームモードやロード完了フラグ、派生入力へ直接書き込まない。
+    *CC_STAGE_SELECTOR_ADDR = stage;
+    SetRetryTarget(0);
+    domain::session::DebugLog("[StageRematch] DIRECT stage=%u mode=%u", stage, *CC_GAME_MODE_ADDR);
+    domain::session::DebugLog("[Select] COMMIT p1=%u/%u/%u p2=%u/%u/%u stage=%u",
+        *CC_P1_CHARACTER_ADDR, *CC_P1_MOON_SELECTOR_ADDR, *CC_P1_COLOR_SELECTOR_ADDR,
+        *CC_P2_CHARACTER_ADDR, *CC_P2_MOON_SELECTOR_ADDR, *CC_P2_COLOR_SELECTOR_ADDR, stage);
+    return true;
 }
 void RealGameMemory::BeginIndependentRetry() {
     retryActive = true;

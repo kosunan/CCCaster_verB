@@ -56,6 +56,8 @@ class IGameMemory {
     virtual bool IsTrainingDummy() const { return false; }
     virtual bool IsTrainingRecording() const { return false; }
     virtual bool RestartTrainingRecording() { return false; }
+    virtual bool ConfigureTrainingMenu() { return true; }
+    virtual bool StepTrainingMenu(GameInput&, GameInput&, bool) { return false; }
 
     // ── 書き込み ──
     virtual void WriteInput(GameInput p1, GameInput p2) = 0;
@@ -69,6 +71,7 @@ class IGameMemory {
     virtual uint32_t DrawRandomStage() { return 0; }
     virtual void SetRetryTarget(int) {}
     virtual bool SetStageRematchFastPath(bool) { return true; }
+    virtual bool CommitStageRematch(uint32_t) { return false; }
     virtual bool HasIndependentRetry() const { return false; }
     virtual void BeginIndependentRetry() {}
     virtual int ReadRetryChoice() const { return -1; }

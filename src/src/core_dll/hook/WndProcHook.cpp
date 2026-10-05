@@ -1,5 +1,6 @@
 #include "core_dll/hook/WndProcHook.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
+#include "core_dll/hook/MonitorPresent.hpp"
 #include "core_dll/ui/UIManager.hpp"
 #include "shared_contracts/IpcData.hpp"
 #include "core_dll/common/Platform.hpp"
@@ -140,6 +141,7 @@ void WndProcHook::Shutdown() {
 }
 
 LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_DISPLAYCHANGE) monitor_present::InvalidateDisplay();
     using namespace cccaster::public_api;
     if (borderless::HandleMessage(hWnd, uMsg, wParam, lParam)) {
         FinishDrag(hWnd, "display-toggle");

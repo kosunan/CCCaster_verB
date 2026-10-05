@@ -186,7 +186,7 @@ void ReleaseResources() {
     chain = nullptr;
     chainWidth = chainHeight = 0;
 }
-bool Present(IDirect3DDevice9* device, HRESULT& result) {
+bool Present(IDirect3DDevice9* device, HRESULT& result, DWORD flags) {
     if (!active) return false;
     RECT client{};
     if (IsIconic(window) || !GetClientRect(window, &client) || client.right <= 0 || client.bottom <= 0) {
@@ -232,8 +232,9 @@ bool Present(IDirect3DDevice9* device, HRESULT& result) {
     }
     if (destination) destination->Release();
     if (source) source->Release();
-    if (SUCCEEDED(result)) result = chain->Present(nullptr, nullptr, window, nullptr, 0);
-    if (FAILED(result) && result != D3DERR_DEVICELOST && result != D3DERR_DEVICENOTRESET) {
+    if (SUCCEEDED(result)) result = chain->Present(nullptr, nullptr, window, nullptr, flags);
+    if (FAILED(result) && result != D3DERR_DEVICELOST && result != D3DERR_DEVICENOTRESET &&
+        result != D3DERR_WASSTILLDRAWING) {
         char text[128];
         std::snprintf(text, sizeof(text), "[Borderless] presentation failed hr=0x%08lX; restoring window", (unsigned long)result);
         HookLog(text);

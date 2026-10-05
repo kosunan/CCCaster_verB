@@ -24,6 +24,8 @@ class RealGameMemory final : public IGameMemory {
     bool IsTrainingDummy() const override;
     bool IsTrainingRecording() const override;
     bool RestartTrainingRecording() override;
+    bool ConfigureTrainingMenu() override;
+    bool StepTrainingMenu(GameInput&, GameInput&, bool) override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
     void PlaceTrainingCorner(int direction, int player) override;
@@ -34,6 +36,7 @@ class RealGameMemory final : public IGameMemory {
     bool SaveReplay(const char *p1, const char *p2, int winner) override;
     void SetRetryTarget(int) override;
     bool SetStageRematchFastPath(bool) override;
+    bool CommitStageRematch(uint32_t) override;
     bool HasIndependentRetry() const override { return true; }
     void BeginIndependentRetry() override;
     int ReadRetryChoice() const override;

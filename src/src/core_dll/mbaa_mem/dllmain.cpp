@@ -44,6 +44,7 @@
 #include "core_dll/mbaa_mem/StartupPatch.hpp"
 #include "core_dll/mbaa_mem/StartupProfile.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
+#include "core_dll/mbaa_mem/StartupFileRead.hpp"
 #include "core_dll/mbaa_mem/StartupSystemInfo.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 
@@ -344,6 +345,7 @@ static DWORD InitializeCore(boot::Status &report) {
     const uint8_t startupMode = ctx.appMode == 2 ? uint8_t(0) : ctx.appMode;
     cccaster::game_memory::startup_system_info::Initialize(startupMode);
     cccaster::game_memory::startup_assets::Initialize(startupMode);
+    cccaster::game_memory::startup_file_read::Initialize(startupMode);
     cccaster::game_memory::startup_profile::Initialize();
     if (!cccaster::public_api::IpcManager::UpdateOrReadState(
             [](cccaster::public_api::SharedState &s) { s.dllInitialized = true; }))

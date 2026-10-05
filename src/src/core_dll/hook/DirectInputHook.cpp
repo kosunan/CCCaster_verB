@@ -3,6 +3,7 @@
 #include "core_dll/hook/DirectInputHook.hpp"
 #include "core_dll/hook/TimeHooks.hpp"
 #include "core_dll/hook/ControllerProfile.hpp"
+#include "core_dll/hook/CompiledInputBindings.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include "core_dll/common/DataPaths.hpp"
 #include "core_dll/common/DebugLog.hpp"
@@ -628,52 +629,43 @@ static void CacheKeyboardKeys() {
 }
 
 static cccaster::domain::ui::HudShortcutLatch hudShortcut;
-static bool CheckInputBind(int joyId, const std::string &bindStr) {
-    if (bindStr.empty())
-        return false;
+using cccaster::input::BindingKind;
+using cccaster::input::CompiledBinding;
+using cccaster::input::CompiledInputBindings;
 
+static int ResolveKeyboardKey(const std::string &name) {
+    const auto key = g_keyboardKeys.find(name);
+    return key == g_keyboardKeys.end() ? 0 : key->second;
+}
+
+static bool CheckInputBind(int joyId, const CompiledBinding &bind) {
+    if (bind.kind == BindingKind::None) return false;
     if (joyId == -2) {
-        // 設定ショートカットは非同期キーボード採取からもゲームへ漏らさない。
+        if (bind.kind != BindingKind::Key) return false;
+        // 設定ショートカット・フォーカスはキャッシュせず、従来と同じ採取点で確認する。
         if (*CC_GAME_MODE_ADDR == CC_GAME_MODE_CHARA_SELECT &&
             ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU)) & 0x8000))
             return false;
-        const auto key = g_keyboardKeys.find(bindStr);
-        if (key != g_keyboardKeys.end() && key->second == VK_F1)
+        if (bind.index == VK_F1) return false;
+        if ((hudShortcut.f3 && bind.index == VK_F3) ||
+            (hudShortcut.control && (bind.index == VK_CONTROL || bind.index == VK_LCONTROL ||
+                                     bind.index == VK_RCONTROL)))
             return false;
-        if (key != g_keyboardKeys.end() &&
-            ((hudShortcut.f3 && key->second == VK_F3) ||
-             (hudShortcut.control && (key->second == VK_CONTROL || key->second == VK_LCONTROL ||
-                                  key->second == VK_RCONTROL))))
-            return false;
-        return GetForegroundWindow() == g_hwnd && key != g_keyboardKeys.end() &&
-               (GetAsyncKeyState(key->second) & 0x8000) != 0;
+        return GetForegroundWindow() == g_hwnd && (GetAsyncKeyState(bind.index) & 0x8000) != 0;
     }
-
-    if (joyId < 0 || joyId >= (int)g_Controllers.size())
-        return false;
-
-    try {
-        // Binding strings example: "B0", "A0+", "H0_6"
-        char type = bindStr[0];
-        if (type == 'B') {
-            int btn = std::stoi(bindStr.substr(1));
-            return IsJoyButtonPressed(g_Controllers[joyId].state, btn);
-        } else if (type == 'A') {
-            int axis = std::stoi(bindStr.substr(1, bindStr.length() - 2));
-            int sign = bindStr.back() == '+' ? 1 : -1;
-            return IsJoyAxisPressed(g_Controllers[joyId].state, axis, sign);
-        } else if (type == 'H') {
-            size_t underscore = bindStr.find('_');
-            if (underscore != std::string::npos) {
-                int hat = std::stoi(bindStr.substr(1, underscore - 1));
-                int dir = std::stoi(bindStr.substr(underscore + 1));
-                return IsJoyHatPressed(g_Controllers[joyId].state, hat, dir);
-            }
-        }
-    } catch (...) {
-        // 不正なバインド文字列 — クラッシュ防止
+    if (joyId < 0 || joyId >= static_cast<int>(g_Controllers.size())) return false;
+    const auto &state = g_Controllers[joyId].state;
+    switch (bind.kind) {
+    case BindingKind::Button: return IsJoyButtonPressed(state, bind.index);
+    case BindingKind::Axis: return IsJoyAxisPressed(state, bind.index, bind.direction);
+    case BindingKind::Hat: return IsJoyHatPressed(state, bind.index, bind.direction);
+    default: return false;
     }
-    return false;
+}
+
+static bool CheckInputBind(int joyId, const std::string &text) {
+    // F4等が任意の文字列を問い合わせる経路。通常の入力採取は解析済みの表を使う。
+    return CheckInputBind(joyId, cccaster::input::CompileBinding(text, joyId == -2, ResolveKeyboardKey));
 }
 
 static std::string GetDeviceFileName(int joyId) {
@@ -712,6 +704,13 @@ static std::string s_p1DeviceGuid, s_p2DeviceGuid;
 static int s_p1Resolved = -1, s_p2Resolved = -1;
 static cccaster::main_app::Config s_p1Config;
 static cccaster::main_app::Config s_p2Config;
+static CompiledInputBindings s_p1Bindings, s_p2Bindings;
+
+static void CompileDeviceConfig(CompiledInputBindings &bindings, const Config &config, int joyId) {
+    bindings.Reload(joyId == -2, [&](const char *key, const char *fallback) {
+        return config.GetString("Mapping", key, fallback);
+    }, ResolveKeyboardKey);
+}
 
 static int GetJoyIdFromDeviceName(const std::string &sanitizedDeviceName, const std::string &instanceGuid = "");
 
@@ -743,6 +742,8 @@ void DirectInputHook::ReloadConfigs() {
     s_p2Config.Clear();
     if (p2Idx != -1)
         LoadDeviceConfig(s_p2Config, p2Idx);
+    CompileDeviceConfig(s_p1Bindings, s_p1Config, p1Idx);
+    CompileDeviceConfig(s_p2Bindings, s_p2Config, p2Idx);
     if (cccaster::diagnostics::input::Enabled()) {
         using cccaster::domain::session::DebugLog;
         DebugLog("[InputConfig] P1 device=%s resolved=%d guid=%s", s_p1Device.c_str(), p1Idx, s_p1DeviceGuid.c_str());
@@ -755,7 +756,7 @@ void DirectInputHook::ReloadConfigs() {
     }
 }
 
-static uint32_t BuildPlayerInput(int joyId, const cccaster::main_app::Config &deviceConfig) {
+static uint32_t BuildPlayerInput(int joyId, const CompiledInputBindings &bindings) {
     if (joyId == -1)
         return 0; // デバイス未接続 → ニュートラル
     // g_inputMutex 内。各バインドではなくキーボード採取ごとに1回確認する。
@@ -767,34 +768,34 @@ static uint32_t BuildPlayerInput(int joyId, const cccaster::main_app::Config &de
     uint16_t buttons = 0;
 
     // Evaluate buttons
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "A", "B0")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::A]))
         buttons |= (CC_BUTTON_A | CC_BUTTON_CONFIRM);
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "B", "B1")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::B]))
         buttons |= (CC_BUTTON_B | CC_BUTTON_CANCEL);
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "C", "B2")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::C]))
         buttons |= CC_BUTTON_C;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "D", "B3")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::D]))
         buttons |= CC_BUTTON_D;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "E", "B4")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::E]))
         buttons |= CC_BUTTON_E;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Start", "B7")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::Start]))
         buttons |= CC_BUTTON_START;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "FN1", "B8")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::FN1]))
         buttons |= CC_BUTTON_FN1;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "FN2", "B9")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::FN2]))
         buttons |= CC_BUTTON_FN2;
-    if (CheckInputBind(joyId, deviceConfig.GetString("Mapping", "A+B", "")))
+    if (CheckInputBind(joyId, bindings[CompiledInputBindings::AB]))
         buttons |= CC_BUTTON_AB;
 
     // Evaluate directions
-    bool up = CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Up", "H0_8")) ||
-              CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Up_Alt", "A1+"));
-    bool down = CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Down", "H0_2")) ||
-                CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Down_Alt", "A1-"));
-    bool left = CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Left", "H0_4")) ||
-                CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Left_Alt", "A0-"));
-    bool right = CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Right", "H0_6")) ||
-                 CheckInputBind(joyId, deviceConfig.GetString("Mapping", "Right_Alt", "A0+"));
+    bool up = CheckInputBind(joyId, bindings[CompiledInputBindings::Up]) ||
+              CheckInputBind(joyId, bindings[CompiledInputBindings::UpAlt]);
+    bool down = CheckInputBind(joyId, bindings[CompiledInputBindings::Down]) ||
+                CheckInputBind(joyId, bindings[CompiledInputBindings::DownAlt]);
+    bool left = CheckInputBind(joyId, bindings[CompiledInputBindings::Left]) ||
+                CheckInputBind(joyId, bindings[CompiledInputBindings::LeftAlt]);
+    bool right = CheckInputBind(joyId, bindings[CompiledInputBindings::Right]) ||
+                 CheckInputBind(joyId, bindings[CompiledInputBindings::RightAlt]);
 
     // Pre-clean SOCD
     if (up && down) {
@@ -869,7 +870,7 @@ uint32_t DirectInputHook::GetPlayer1Input() {
         return GetLocalPlayerInput(true, false); // オフライン試験も同じ実DirectInput経路を使う。
     if (g_testModeEnabled)
         return g_testInputP1;
-    const auto value = BuildPlayerInput(s_p1Resolved, s_p1Config);
+    const auto value = BuildPlayerInput(s_p1Resolved, s_p1Bindings);
     if (cccaster::diagnostics::input::Enabled()) {
         static cccaster::diagnostics::input::Sampler samples;
         const auto foreground = GetForegroundWindow();
@@ -885,7 +886,7 @@ uint32_t DirectInputHook::GetPlayer2Input() {
     std::lock_guard<std::recursive_mutex> lock(g_inputMutex);
     if (g_testModeEnabled)
         return g_testInputP2;
-    return BuildPlayerInput(s_p2Resolved, s_p2Config);
+    return BuildPlayerInput(s_p2Resolved, s_p2Bindings);
 }
 
 bool DirectInputHook::IsBindingPressed(int joyId, const std::string &bind) {
@@ -922,16 +923,18 @@ uint32_t DirectInputHook::GetLocalPlayerInput(bool isHost, bool soloLocal) {
         int selected = -1, count = 0;
         for (size_t i = 0; i < g_Controllers.size(); ++i)
             if (g_Controllers[i].product == product) { selected = int(i); ++count; }
+        static CompiledInputBindings compiledMapping;
         static Config mapping;
         static const bool configured = [] {
             const char *keys[] = {"Up", "Down", "Left", "Right", "Up_Alt", "Down_Alt", "Left_Alt", "Right_Alt", "A", "B", "C", "D", "E", "Start"};
             const char *binds[] = {"H0_8", "H0_2", "H0_4", "H0_6", "A1+", "A1-", "A0-", "A0+", "B0", "B1", "B2", "B3", "B4", "B9"};
             for (size_t i = 0; i < sizeof(keys)/sizeof(*keys); ++i)
                 mapping.SetString("Mapping", keys[i], binds[i]);
+            CompileDeviceConfig(compiledMapping, mapping, 0);
             return true;
         }();
         (void)configured;
-        const auto value = count == 1 ? BuildPlayerInput(selected, mapping) : 0u;
+        const auto value = count == 1 ? BuildPlayerInput(selected, compiledMapping) : 0u;
         static uint32_t last = ~0u;
         static int lastCount = -1;
         if (value != last || count != lastCount) {
@@ -946,27 +949,21 @@ uint32_t DirectInputHook::GetLocalPlayerInput(bool isHost, bool soloLocal) {
     const char *primaryKey = isHost ? "P1Device" : "P2Device";
     const char *otherKey = isHost ? "P2Device" : "P1Device";
 
-    std::string devName = isHost ? s_p1Device : s_p2Device;
-    std::string devGuid = isHost ? s_p1DeviceGuid : s_p2DeviceGuid;
-    const cccaster::main_app::Config *cfg = isHost ? &s_p1Config : &s_p2Config;
-
-    if (devName.empty() && soloLocal) {
-        const auto &alt = isHost ? s_p2Device : s_p1Device;
-        if (!alt.empty()) {
-            static bool s_warned = false;
-            if (!s_warned) {
-                s_warned = true;
-                cccaster::domain::session::DebugLog("[DirectInputHook] %s が空のため %s のデバイス '%s' を"
-                                                    "ローカル入力として使う（ネットプレイのローカルは1人）",
-                                                    primaryKey, otherKey, alt.c_str());
-            }
-            devName = alt;
-            devGuid = isHost ? s_p2DeviceGuid : s_p1DeviceGuid;
-            cfg = isHost ? &s_p2Config : &s_p1Config;
+    // 設定・機器一覧の公開時に解決した同じ表を使う。切断した個体はPollで中立化する。
+    const bool usePrimary = !(isHost ? s_p1Device : s_p2Device).empty() || !soloLocal;
+    const bool useP1 = usePrimary ? isHost : !isHost;
+    const auto &devName = useP1 ? s_p1Device : s_p2Device;
+    const auto &bindings = useP1 ? s_p1Bindings : s_p2Bindings;
+    const int joyId = useP1 ? s_p1Resolved : s_p2Resolved;
+    if (!usePrimary && !devName.empty()) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            cccaster::domain::session::DebugLog("[DirectInputHook] %s が空のため %s のデバイス '%s' を"
+                                                "ローカル入力として使う（ネットプレイのローカルは1人）",
+                                                primaryKey, otherKey, devName.c_str());
         }
     }
-
-    const int joyId = GetJoyIdFromDeviceName(devName, devGuid);
 
     // 解決に失敗した状態は「入力が一切効かない」と等価だが、これまで
     // ログにも UI にも出ていなかった。同じ状態が続く間は1回だけ出す。
@@ -979,7 +976,7 @@ uint32_t DirectInputHook::GetLocalPlayerInput(bool isHost, bool soloLocal) {
     }
     s_lastReportedJoyId = joyId;
 
-    return BuildPlayerInput(joyId, *cfg);
+    return BuildPlayerInput(joyId, bindings);
 }
 
 std::vector<JoyDeviceInfo> DirectInputHook::GetConnectedDevices() {

@@ -11,14 +11,13 @@
 //      - SceneRunner::Step()
 //      - DirectInputHook::Poll()
 //
-//   2. ImGui 描画        (EndScene コールバック)
-//      - ImGui 遅延初期化（初回のみ）
-//      - バックバッファ判定 → 一致時のみ ImGui 描画
+//   2. ImGui 描画        (Present コールバック、ゲームの最終合成後)
+//      - ImGui 遅延初期化はEndScene（初回のみ）
+//      - 表示ごとに1回のバックバッファ判定 → HUD準備・描画
 //      - GameMode → UiPhase 変換 → UIManager::Render()
 //
-//   3. 高速スキップ      (EndScene コールバック / Present スキップ)
-//      - RenderSkip=true → EndScene 内の ImGui 描画をスキップ
-//      - SkipMode=true   → Present の元関数をスキップ
+//   3. 高速スキップ      (Present コールバック / Present スキップ)
+//      - RenderSkip=true → HUD準備・描画とPresentの元関数をスキップ
 //
 // 【設計上の位置づけ】
 //   domain_session 層に属する。DxHook(infra) からコールバック経由で
@@ -44,10 +43,10 @@ class GameFrameOrchestrator {
 
     // ── DxHook コールバック ──
 
-    /// EndScene コールバック: ImGui描画（高速モード時はスキップ）
+    /// EndScene コールバック: 初期化と描画前の遷移準備
     static void OnEndScene(LPDIRECT3DDEVICE9 pDevice);
 
-    /// Present コールバック: DLLロジック実行
+    /// Present コールバック: 完成画像にHUDを合成し、表示締切へ合わせる
     static void OnPresent(LPDIRECT3DDEVICE9 pDevice);
     static void OnAfterPresent(LPDIRECT3DDEVICE9 pDevice);
 
@@ -59,6 +58,9 @@ class GameFrameOrchestrator {
 
     /// Reset 後コールバック: ImGui リソース再生成
     static void OnPostReset(LPDIRECT3DDEVICE9 pDevice);
+
+  private:
+    static void RenderOverlay(LPDIRECT3DDEVICE9 pDevice);
 };
 
 } // namespace cccaster::domain::session
