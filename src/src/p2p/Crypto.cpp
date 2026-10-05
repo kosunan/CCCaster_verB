@@ -224,6 +224,12 @@ Keys::Keys(const std::string &code) {
 }
 std::string Keys::Answer(const std::string &session) const { return Topic(master, "ans" + session); }
 std::string Keys::Seal(const std::string &topic, const std::string &plain) const {
+    return SealMessage(enc, topic, plain);
+}
+bool Keys::Open(const std::string &topic, const std::string &sealed, std::string &plain) const {
+    return OpenMessage(enc, topic, sealed, plain);
+}
+std::string SealMessage(const Key &enc, const std::string &topic, const std::string &plain) {
     if (plain.size() > 3000)
         throw std::invalid_argument("P2P message too large");
     Algorithm alg(BCRYPT_AES_ALGORITHM);
@@ -246,8 +252,10 @@ std::string Keys::Seal(const std::string &topic, const std::string &plain) const
                         ULONG(plain.size()), &n, 0));
     return Base64(out);
 }
-bool Keys::Open(const std::string &topic, const std::string &sealed, std::string &plain) const {
+bool OpenMessage(const Key &enc, const std::string &topic, const std::string &sealed, std::string &plain) {
     plain.clear();
+    if (sealed.size() > 4096)
+        return false;
     auto in = Unbase64(sealed);
     if (in.size() < 28)
         return false;

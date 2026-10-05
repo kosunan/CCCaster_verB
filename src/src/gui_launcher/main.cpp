@@ -3,6 +3,7 @@
 #include "RmlHost.hpp"
 #include "ProductVersion.hpp"
 #include "shared_contracts/NativePath.hpp"
+#include "p2p/MatchingCleanup.hpp"
 #include <shellapi.h>
 #include <deque>
 
@@ -67,9 +68,15 @@ LRESULT CALLBACK WindowProc(HWND window,UINT message,WPARAM w,LPARAM l) {
 int WINAPI WinMain(HINSTANCE instance,HINSTANCE,LPSTR,int) {
     using cccaster::main_app::ConfigManager;
     wchar_t path[32768]{};GetModuleFileNameW(nullptr,path,32768);exePath=path;
+    int argc=0;auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);
+    if (argv && (argc==4 || argc==5) && wcscmp(argv[1],L"--matching-cleanup")==0) {
+        int result=1;
+        try { result=cccaster::matching::RunCleanupWorker(std::stoull(argv[2]),std::stoull(argv[3]),argc==5?std::stoull(argv[4]):0); }
+        catch (const std::exception&) {}
+        LocalFree(argv);return result;
+    }
     const auto config=cccaster::ConfigPath(exePath.parent_path());
     if(std::filesystem::exists(config))ConfigManager::Load(cccaster::PathUtf8(config));
-    int argc=0;auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);
     if(argv && argc>1 && wcscmp(argv[1],L"--worker")==0)return RunWorker(argc,argv);
     bool software=ConfigManager::GetInt("GUI","SoftwareRendering",0)!=0;
     std::filesystem::path testDirectory;

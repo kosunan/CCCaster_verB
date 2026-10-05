@@ -816,11 +816,14 @@ reconcileBoundary:
             const auto controls = output1.buttons | output2.buttons;
             const uint8_t trainingButtons = ((controls & CC_BUTTON_FN1) ? 1 : 0) |
                                             ((controls & CC_BUTTON_FN2) ? 2 : 0);
+            const int resetPlayer = (output1.buttons & CC_BUTTON_FN2) ? 0 : 1;
             const auto event = runtime.trainingState.Step(ctx.appMode, phase == GamePhase::InGame,
                 configuring, trainingButtons, sample,
-                mem, cccaster::platform::RealMonotonicUs());
+                mem, cccaster::platform::RealMonotonicUs(),
+                resetPlayer == 0 ? output1.direction : output2.direction, resetPlayer);
             const bool trainingRestarted = event == TrainingStateEvent::Loaded ||
-                                           event == TrainingStateEvent::RecordingRestarted;
+                                           event == TrainingStateEvent::RecordingRestarted ||
+                                           event == TrainingStateEvent::CornerReset;
             if (trainingRestarted) {
                 runtime.advantage.Reset();
                 runtime.frameBar.Reset();
@@ -837,6 +840,8 @@ reconcileBoundary:
                 if (!runtime.trainingState.AllowResetInput()) {
                     output1.buttons &= ~CC_BUTTON_FN2; output2.buttons &= ~CC_BUTTON_FN2;
                 }
+                // 配置指定の方向を歩行・ダッシュ入力としてリセット後へ持ち越さない。
+                if (runtime.trainingState.CornerResetActive()) output1.direction = output2.direction = 0;
                 if (runtime.trainingState.Holding() || trainingRestarted) output1 = output2 = {};
             }
             mem.SetTrainingHold(runtime.trainingState.Holding());

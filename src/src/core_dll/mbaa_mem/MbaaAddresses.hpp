@@ -240,7 +240,7 @@
 #define CC_P1_X_ACCELERATION_ADDR ((int16_t *)0x555254)
 #define CC_P1_Y_ACCELERATION_ADDR ((int16_t *)0x555256)
 #define CC_P1_SPRITE_ANGLE_ADDR ((uint32_t *)0x555430)
-#define CC_P1_FACING_FLAG_ADDR ((uint8_t *)0x555444)     // 0 facing left, 1 facing right
+#define CC_P1_FACING_FLAG_ADDR ((uint8_t *)0x555444)     // 0 facing right, 1 facing left
 #define CC_P1_COMBO_OFFSET_ADDR ((uint8_t *)0x557E59)    // Index into combo structure array
 #define CC_P1_COMBO_HIT_BASE_ADDR ((uint32_t *)0x557E5C) // Base for combo strucure array
 

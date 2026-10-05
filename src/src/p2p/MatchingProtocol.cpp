@@ -36,11 +36,30 @@ bool Timestamp(const Json& value, const char* key) {
     return time.is_number_integer() && time > 0 &&
         (!time.is_number_unsigned() || time.get<uint64_t>() <= uint64_t(std::numeric_limits<int64_t>::max()));
 }
+const p2p::Bytes& DirectorySeed() {
+    // 全端末で共有する公開値。閲覧者を制限せず、投稿本文を平文で残さないために使う。
+    static const auto seed = p2p::Unhex("56c09078776bef7acb15f32c43beae56a3dabfbae231cfb21f8629b774da6642");
+    return seed;
+}
+const p2p::Key& DirectoryKey() {
+    static const auto key = p2p::Hkdf(DirectorySeed(), "directory-encryption-v1");
+    return key;
+}
 }
 const std::string& DirectoryTopic() {
-    // 全端末で共有する固定値。秘密鍵ではなく、公開トピック名の直書きを避けるためのもの。
-    static const auto topic = p2p::Hex(Digest("56c09078776bef7acb15f32c43beae56a3dabfbae231cfb21f8629b774da6642")).substr(0, 32);
+    // 旧平文の履歴と混在させず、暗号化版同士の一覧として扱う。
+    static const auto topic = p2p::Hex(p2p::Hkdf(DirectorySeed(), "directory-topic-encrypted-v1")).substr(0, 32);
     return topic;
+}
+std::string SealDirectory(const std::string& topic, const Json& record) {
+    return p2p::SealMessage(DirectoryKey(), topic, record.dump());
+}
+bool OpenDirectory(const std::string& topic, const std::string& body, Json& record) {
+    record = Json();
+    std::string plain;
+    if (!p2p::OpenMessage(DirectoryKey(), topic, body, plain)) return false;
+    record = Json::parse(plain, nullptr, false);
+    return record.is_object(); // 掲載・掃除の反映時にDirectory::Applyが署名を検証する。
 }
 Identity::Identity() {
     Algorithm algorithm(BCRYPT_ECDSA_P256_ALGORITHM);

@@ -1,20 +1,40 @@
 """公開／非公開と手動承諾を実Clientプロセス＋ローカルntfy互換サービスで検証。"""
+import base64
 import json
 import subprocess
+import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.request
-from test_p2p_service import ROOT, Service
+from pathlib import Path
+import psutil
+from test_p2p_service import ROOT, Service, Handler
 
 PROBE = ROOT / "build/bin/matching_probe.exe"
 DIRECTORY = (subprocess.run([str(PROBE), "--directory-topic"], check=True, capture_output=True,
                            text=True, encoding="utf-8", timeout=5).stdout.strip() if PROBE.exists() else "")
 
 
+def directory_records(events):
+    result = subprocess.run([str(PROBE), "--open-directory"],
+                            input="".join(e["message"] + "\n" for e in events),
+                            check=True, capture_output=True, text=True, encoding="utf-8", timeout=5)
+    return [json.loads(line) for line in result.stdout.splitlines()]
+
+
+def seal_directory(record):
+    return subprocess.run([str(PROBE), "--seal-directory"], input=json.dumps(record) + "\n",
+                          check=True, capture_output=True, text=True, encoding="utf-8", timeout=5).stdout.strip()
+
+
 class Peer:
-    def __init__(self, server, seconds=60):
-        self.process = subprocess.Popen([str(PROBE), server, str(seconds)], stdin=subprocess.PIPE,
+    def __init__(self, server, seconds=60, cleanup_directory=None):
+        args = [str(PROBE), server, str(seconds)]
+        if cleanup_directory is not None:
+            args.append(str(cleanup_directory))
+        self.process = subprocess.Popen(args, stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         text=True, encoding="utf-8", bufsize=1)
         self.cv = threading.Condition()
@@ -88,8 +108,8 @@ class MatchingServiceTest(unittest.TestCase):
         self.service.shutdown()
         self.service.server_close()
 
-    def peer(self, name, public=False, seconds=60, spectators=True):
-        peer = Peer(self.server, seconds)
+    def peer(self, name, public=False, seconds=60, spectators=True, cleanup_directory=None):
+        peer = Peer(self.server, seconds, cleanup_directory)
         self.peers.append(peer)
         peer.send("start", name=name, comment="test", public=public, spectators=spectators)
         peer.wait(lambda s: s.get("registered") and s.get("public") == public)
@@ -97,6 +117,208 @@ class MatchingServiceTest(unittest.TestCase):
 
     def public_posts(self):
         return sum(kind == "POST" and topic == DIRECTORY for kind, topic in self.service.requests)
+
+    def recovery_folder(self):
+        temporary = tempfile.TemporaryDirectory(prefix='cccaster-cancellation-')
+        self.addCleanup(temporary.cleanup)
+        return Path(temporary.name)
+
+    def recovery_peer(self, folder, server=None):
+        peer = Peer(server or self.server, cleanup_directory=folder)
+        self.peers.append(peer)
+        return peer
+
+    def crash_all(self, peer):
+        children = psutil.Process(peer.process.pid).children()
+        helpers = [p for p in children if Path(p.exe()).resolve() == PROBE.resolve()
+                   and '--matching-cleanup' in p.cmdline()]
+        self.assertEqual(len(helpers), 1)
+        # この試験が起動した取消用の子だけ先に止め、終了通知の送信を不能にする。
+        helpers[0].kill();helpers[0].wait(timeout=5)
+        peer.process.kill();peer.process.wait(timeout=5)
+
+    def test_recovery_preserves_live_registration_and_protects_saved_data(self):
+        folder = self.recovery_folder()
+        owner = self.peer('DURABLE OWNER', True, cleanup_directory=folder)
+        files = list(folder.glob('*.pending'))
+        self.assertEqual(len(files), 1)
+        for value in ('DURABLE OWNER', owner.state['code'], self.server, 'records', DIRECTORY):
+            self.assertNotIn(value.encode(), files[0].read_bytes())
+        posts = self.public_posts()
+        another = self.recovery_peer(folder)
+        another.wait(lambda s: s.get('service') == 'online')
+        another.send('cleanup')
+        time.sleep(.25)
+        self.assertEqual(self.public_posts(), posts, '動作中の別ウィンドウの募集は取り消さない')
+        self.assertTrue(files[0].exists())
+        owner.send('stop');owner.wait(lambda s: not s['registered'])
+        self.assertFalse(list(folder.glob('*.pending')), '通常取消成功時は保存データも削除')
+
+    def test_recovery_after_parent_and_helper_crash_cancels_once(self):
+        folder = self.recovery_folder()
+        observer = self.peer('OBSERVER')
+        owner = self.peer('LOST OWNER', True, cleanup_directory=folder)
+        observer.wait(lambda s: len(s['people']) == 1)
+        code = owner.state['code'];posts = self.public_posts()
+        self.crash_all(owner)
+        recovered = self.recovery_peer(folder)
+        recovered.wait(lambda s: s.get('notice') == 'cleanup_finished')
+        observer.wait(lambda s: not s['people'])
+        self.assertEqual(self.public_posts(), posts + 1)
+        self.assertFalse(list(folder.glob('*.pending')))
+        observer.send('invite', code=code)
+        observer.wait(lambda s: s.get('notice') == 'closed')
+        recovered.send('cleanup');time.sleep(.25)
+        self.assertEqual(self.public_posts(), posts + 1, '取消成功後の再操作では重複投稿しない')
+        late = self.recovery_peer(folder)
+        late.wait(lambda s: s.get('service') == 'online')
+        self.assertFalse(late.state['people'], '履歴を再取得しても募集が復活しない')
+
+    def test_recovery_failed_startup_can_retry_manually(self):
+        folder = self.recovery_folder()
+        owner = self.peer('RETRY LOST OWNER', True, cleanup_directory=folder)
+        self.crash_all(owner)
+        original = Handler.do_POST
+        def unavailable(handler):
+            if handler.server is self.service:
+                handler.rfile.read(int(handler.headers['Content-Length']))
+                handler.send_response(503);handler.send_header('Content-Length', '0');handler.end_headers()
+            else:
+                original(handler)
+        with mock.patch.object(Handler, 'do_POST', unavailable):
+            recovered = self.recovery_peer(folder)
+            recovered.wait(lambda s: s.get('cleanupPending') == 1 and s.get('error') == 'cleanup_pending')
+            self.assertEqual(len(list(folder.glob('*.pending'))), 1)
+        recovered.send('cleanup')
+        recovered.wait(lambda s: s.get('cleanupPending') == 0 and s.get('notice') == 'cleanup_finished')
+        self.assertFalse(list(folder.glob('*.pending')))
+
+    def test_recovery_does_not_send_to_another_server_or_discard_corrupt_data(self):
+        folder = self.recovery_folder()
+        owner = self.peer('SERVER OWNER', True, cleanup_directory=folder)
+        self.crash_all(owner)
+        original_file = next(folder.glob('*.pending'))
+        other = Service();threading.Thread(target=other.serve_forever, daemon=True).start()
+        try:
+            client = self.recovery_peer(folder, f'http://127.0.0.1:{other.server_port}')
+            client.wait(lambda s: s.get('service') == 'online')
+            self.assertFalse(any(kind == 'POST' for kind, _ in other.requests))
+            self.assertTrue(original_file.exists())
+            client.close();self.peers.remove(client)
+        finally:
+            other.running = False
+            with other.cv: other.cv.notify_all()
+            other.shutdown();other.server_close()
+        corrupt = folder / ('f'*32 + '.pending');corrupt.write_bytes(b'broken cancellation')
+        recovered = self.recovery_peer(folder)
+        recovered.wait(lambda s: s.get('cleanupPending') == 1 and not s['people'])
+        self.assertFalse(original_file.exists())
+        self.assertEqual(corrupt.read_bytes(), b'broken cancellation')
+
+    def test_recovery_rate_limit_survives_restart(self):
+        folder = self.recovery_folder()
+        owner = self.peer('RATE LIMITED OWNER', True, cleanup_directory=folder)
+        self.crash_all(owner)
+        original = Handler.do_POST;attempts = []
+        def limited(handler):
+            if handler.server is self.service:
+                handler.rfile.read(int(handler.headers['Content-Length']));attempts.append(time.monotonic())
+                handler.send_response(429);handler.send_header('Retry-After', '90')
+                handler.send_header('Content-Length', '0');handler.end_headers()
+            else:
+                original(handler)
+        with mock.patch.object(Handler, 'do_POST', limited):
+            first = self.recovery_peer(folder)
+            first.wait(lambda s: s.get('cleanupPending') == 1 and s.get('error') == 'rate_limited')
+            first.close();self.peers.remove(first)
+            second = self.recovery_peer(folder)
+            second.wait(lambda s: s.get('cleanupPending') == 1 and s.get('error') == 'rate_limited')
+            second.send('cleanup');time.sleep(.25)
+        self.assertEqual(len(attempts), 1, '再起動と手動再操作でもRetry-Afterを無視しない')
+        self.assertEqual(len(list(folder.glob('*.pending'))), 1)
+
+    def test_registration_requires_durable_cancellation_storage(self):
+        folder = self.recovery_folder();blocked = folder / 'not-a-directory';blocked.write_text('preserve')
+        owner = self.recovery_peer(blocked)
+        owner.send('start', name='UNSAVED OWNER', public=True)
+        owner.wait(lambda s: s.get('error') == 'cleanup_unavailable' and not s['registered'])
+        self.assertFalse(any(kind == 'POST' for kind, _ in self.service.requests))
+        self.assertEqual(blocked.read_text(), 'preserve')
+
+    def test_process_exit_cancels_without_explicit_stop(self):
+        observer = self.peer("OBSERVER")
+        owner = self.peer("EXIT OWNER", True)
+        observer.wait(lambda s: len(s["people"]) == 1)
+        posts = self.public_posts()
+        owner.close()
+        self.peers.remove(owner)
+        observer.wait(lambda s: not s["people"])
+        self.assertEqual(self.public_posts(), posts + 1, "通常終了の取消を監視側から重複送信しない")
+        observer.send("invite", code=owner.state["code"])
+        observer.wait(lambda s: s.get("notice") == "closed")
+
+    def test_abnormal_exit_cancels_latest_public_listing(self):
+        observer = self.peer("OBSERVER")
+        owner = self.peer("CRASH OWNER", True)
+        observer.wait(lambda s: len(s["people"]) == 1)
+        owner.send("visibility", public=False)
+        observer.wait(lambda s: not s["people"])
+        owner.wait(lambda s: not s["public"])
+        owner.send("visibility", public=True)
+        owner.wait(lambda s: s["public"])
+        observer.wait(lambda s: len(s["people"]) == 1)
+        posts = self.public_posts()
+        owner.process.kill()  # デストラクタを通らないプロセス単体の強制終了。
+        owner.process.wait(timeout=5)
+        observer.wait(lambda s: not s["people"])
+        self.assertEqual(self.public_posts(), posts + 1)
+        records = directory_records(self.service.messages[DIRECTORY])
+        self.assertEqual(records[-1]["action"], "remove")
+        self.assertGreater(records[-1]["revision"], records[-2]["revision"])
+        observer.send("invite", code=owner.state["code"])
+        observer.wait(lambda s: s.get("notice") == "closed")
+        late = self.peer("AFTER CRASH")
+        self.assertFalse(late.state["people"], "後から履歴を読んでも終了済みの募集が復活しない")
+
+    def test_abnormal_private_exit_does_not_post_public_cancellation(self):
+        observer = self.peer("OBSERVER")
+        owner = self.peer("PRIVATE CRASH")
+        posts = self.public_posts()
+        before = sum(len(events) for events in self.service.messages.values())
+        owner.process.kill()
+        owner.process.wait(timeout=5)
+        deadline = time.monotonic() + 10
+        with self.service.cv:
+            while sum(len(events) for events in self.service.messages.values()) == before and time.monotonic() < deadline:
+                self.service.cv.wait(.1)
+        observer.send("invite", code=owner.state["code"])
+        observer.wait(lambda s: s.get("notice") == "closed")
+        self.assertEqual(self.public_posts(), posts)
+
+    def test_exit_cancellation_retries_after_temporary_service_failure(self):
+        observer = self.peer("OBSERVER")
+        owner = self.peer("RETRY OWNER", True)
+        observer.wait(lambda s: len(s["people"]) == 1)
+        original = Handler.do_POST
+        failed = []
+        def flaky(handler):
+            if handler.server is self.service and handler.path.strip('/') == DIRECTORY and len(failed) < 2:
+                handler.rfile.read(int(handler.headers['Content-Length']))
+                failed.append(time.monotonic())
+                handler.send_response(503)
+                handler.send_header('Content-Length', '0')
+                handler.end_headers()
+            else:
+                original(handler)
+        posts = self.public_posts()
+        with mock.patch.object(Handler, 'do_POST', flaky):
+            owner.close()
+            self.peers.remove(owner)
+            observer.wait(lambda s: not s["people"])
+        self.assertEqual(len(failed), 2, "通常終了と補助プロセスの最初の取消を失敗させる")
+        self.assertEqual(self.public_posts(), posts + 1)
+        observer.send("invite", code=owner.state["code"])
+        observer.wait(lambda s: s.get("notice") == "closed")
 
     def test_manual_approval_decline_cancel_and_reuse(self):
         a, b = self.peer("PUBLIC", True), self.peer("PRIVATE")
@@ -142,6 +364,15 @@ class MatchingServiceTest(unittest.TestCase):
         self.assertRegex(DIRECTORY, r"^[0-9a-f]{32}$")
         for _, topic in self.service.requests:
             self.assertRegex(topic, r"^[0-9a-f]{32}$", "全通信先にツール名・用途を含めない")
+        for events in self.service.messages.values():
+            for event in events:
+                body = event["message"]
+                self.assertLessEqual(len(body), 4096)
+                self.assertGreaterEqual(len(base64.b64decode(body, validate=True)), 28)
+                self.assertNotIn('"name"', body)
+                self.assertNotIn('"action"', body)
+                with self.assertRaises(json.JSONDecodeError):
+                    json.loads(body)
 
     def test_mutual_request_busy_and_both_spectator_permissions(self):
         a, b, c = self.peer("A", True), self.peer("B", True, spectators=False), self.peer("C")
@@ -206,7 +437,7 @@ class MatchingServiceTest(unittest.TestCase):
         initial = b.wait(lambda s: len(s["people"]) == 3)
         self.assertEqual({p["name"] for p in initial["people"]}, {"PUBLIC", "FRESH", "RELISTED"},
                          "開始時の掃除境界より古い投稿は後から届いても復活しない")
-        records = [json.loads(e["message"]) for e in self.service.messages[DIRECTORY]]
+        records = directory_records(self.service.messages[DIRECTORY])
         published = next(r for r in records if r["name"] == "PUBLIC")
         self.assertGreaterEqual(published["listed_at"], published["created"])
         posts = self.public_posts()
@@ -215,7 +446,7 @@ class MatchingServiceTest(unittest.TestCase):
         remaining = b.wait(lambda s: len(s["people"]) == 2)
         self.assertEqual({p["name"] for p in remaining["people"]}, {"FRESH", "RELISTED"})
         self.assertEqual(self.public_posts(), posts + 1, "取消と掃除は同じ1投稿")
-        cancellation = json.loads(self.service.messages[DIRECTORY][-1]["message"])
+        cancellation = directory_records(self.service.messages[DIRECTORY][-1:])[0]
         self.assertEqual(cancellation["action"], "remove")
         self.assertLessEqual(abs(cancellation["cleanup_before"] - (int(time.time()) - 6*60*60)), 5)
         self.assertTrue(b.state["registered"])
@@ -236,7 +467,7 @@ class MatchingServiceTest(unittest.TestCase):
         remaining = observer.wait(lambda s: len(s["people"]) == 3)
         self.assertEqual({p["name"] for p in remaining["people"]}, {"FRESH", "RELISTED", "NEW PUBLIC"})
         self.assertEqual(self.public_posts(), posts + 1, "開始と掃除は同じ1投稿")
-        record = json.loads(self.service.messages[DIRECTORY][-1]["message"])
+        record = directory_records(self.service.messages[DIRECTORY][-1:])[0]
         self.assertEqual(record["action"], "register")
         self.assertEqual(record["cleanup_before"], record["listed_at"] - 6*60*60)
         code = newcomer.state["code"]
@@ -245,7 +476,9 @@ class MatchingServiceTest(unittest.TestCase):
 
         # 不正な本文や他人の署名を改変した投稿に、正規掲載の削除・上書きを許さない。
         forged = dict(record, name="FORGED", cleanup_before=int(time.time()))
-        for body in ("garbage", "[]", json.dumps(forged)):
+        corrupted = bytearray(base64.b64decode(self.service.messages[DIRECTORY][-1]["message"]))
+        corrupted[-1] ^= 1
+        for body in ("garbage", "[]", json.dumps(record), seal_directory(forged), base64.b64encode(corrupted).decode()):
             request = urllib.request.Request(self.server + "/" + DIRECTORY, data=body.encode(), method="POST")
             with urllib.request.urlopen(request, timeout=5) as response:
                 self.assertEqual(response.status, 200)

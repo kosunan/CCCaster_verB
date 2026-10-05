@@ -1,5 +1,6 @@
 #include "p2p/Matching.hpp"
 #include "p2p/Ntfy.hpp"
+#include "p2p/MatchingCleanup.hpp"
 #include <algorithm>
 #include <condition_variable>
 #include <deque>
@@ -30,11 +31,12 @@ struct Client::Impl {
     std::unique_ptr<Identity> identity;
     std::unique_ptr<p2p::Keys> keys;
     std::unique_ptr<p2p::Subscription> listing, control;
+    std::unique_ptr<CleanupGuard> cleanup;
     std::map<std::string, std::shared_ptr<p2p::Keys>> peerKeys;
     Json registration;
     uint64_t revision = 0;
     int64_t listedAt = 0;
-    bool allowSpectators = true, away = false;
+    bool allowSpectators = true, away = false, listingMayExist = false;
     std::string match, transportCode;
     Request selected;
     bool host = false, matchSpectators = true, launched = false;
@@ -70,6 +72,7 @@ struct Client::Impl {
         const auto result = ntfy.Post(topic, body);
         if (result.status == 429) {
             nextPost = Now() + std::max(60U, result.retryAfter);
+            if (cleanup) cleanup->Defer(nextPost);
             state.error = "rate_limited";
         } else if (result.status != 200) state.error = "service_unavailable";
         return result.status == 200;
@@ -125,14 +128,44 @@ struct Client::Impl {
             result["cleanup_before"] = now - PublicListingLifetimeSeconds;
         return identity->Sign(std::move(result));
     }
+    bool ArmCleanup(bool listed) {
+        if (!cleanup) cleanup=std::make_unique<CleanupGuard>(options.cleanupDirectory);
+        Json records=Json::array();
+        if (listed) records.push_back({{"topic",options.directoryTopic},
+            {"body",SealDirectory(options.directoryTopic,Record("remove"))}});
+        records.push_back({{"topic",keys->status},{"body",keys->Seal(keys->status,Record("closed").dump())}});
+        if (cleanup->Arm({{"server",options.server},{"records",records},{"not_before",nextPost}})) return true;
+        state.error="cleanup_unavailable";return false;
+    }
+    void RecoverOrphans() {
+        const auto recovered=RecoverCleanup(options.cleanupDirectory,options.server,[this](const auto& topic,const auto& body) {
+            if (stop || !Post(topic,body)) return false;
+            if (topic==options.directoryTopic) {
+                Json record;
+                if (OpenDirectory(topic,body,record)) directory.Apply(record);
+            }
+            return true;
+        },nextPost);
+        state.cleanupPending=recovered.pending;
+        if (recovered.pending) state.error=Now()<nextPost?"rate_limited":"cleanup_pending";
+        else if (recovered.completed) { state.error.clear();state.notice="cleanup_finished"; }
+    }
     bool Visibility(bool value) {
-        if (state.publicVisible == value) return true;
+        if (state.publicVisible == value && (value || !listingMayExist)) return true;
         auto record = Record(value ? "register" : "remove");
-        if (!Post(options.directoryTopic, record.dump())) return false;
+        // 投稿が届いた直後に親が落ちても、より新しいrevisionの取消を残す。
+        if (value) {
+            if (!ArmCleanup(true)) return false;
+            listingMayExist=true;
+        }
+        if (!Post(options.directoryTopic, SealDirectory(options.directoryTopic, record))) return false;
         state.publicVisible = value; directory.Apply(record);
         if (value) {
             listedAt = record["listed_at"];
             if (state.notice == "listing_expired") state.notice.clear();
+        } else {
+            listingMayExist=false;
+            ArmCleanup(false);
         }
         return true;
     }
@@ -167,12 +200,13 @@ struct Client::Impl {
             {"name", name}, {"comment", comment}, {"spectators", allowSpectators},
             {"action", "register"}, {"revision", revision}, {"created", Now()}});
         if (!Registration(registration)) { state.error="invalid_profile"; state.state="idle"; return; }
+        cleanup.reset();listingMayExist=false;
         control = std::make_unique<p2p::Subscription>(ntfy, ControlTopic(*keys),
             [this](const auto& text) { Queue("control", text); },
             [this](const auto& text) { Queue("service", text); }, "60s");
         const auto ready = std::chrono::steady_clock::now() + 8s;
         while (!stop && !control->Ready() && std::chrono::steady_clock::now() < ready) std::this_thread::sleep_for(20ms);
-        if (stop || !control->Ready() || !Post(keys->status, keys->Seal(keys->status, registration.dump()))) {
+        if (stop || !control->Ready() || !ArmCleanup(false) || !Post(keys->status, keys->Seal(keys->status, registration.dump()))) {
             control.reset(); state.state="idle"; if(state.error.empty())state.error="service_unavailable"; return;
         }
         // 公開サービスのキャッシュ反映を待ってから利用者にコードを渡す。
@@ -198,6 +232,7 @@ struct Client::Impl {
         if (!Visibility(false)) return;
         auto closed = Record("closed");
         if (!Post(keys->status, keys->Seal(keys->status, closed.dump()))) return;
+        if (cleanup) { cleanup->Disarm();cleanup.reset(); }
         for (const auto& request : state.incoming) Send(request.peer, "reply", request.id, {{"result", "closed"}});
         state.incoming.clear();
         if (!state.outgoing.id.empty()) Send(state.outgoing.peer, "cancel", state.outgoing.id);
@@ -248,6 +283,7 @@ struct Client::Impl {
         state.error.clear();
         if (type == "start") Start(command);
         else if (type == "stop") StopRegistration();
+        else if (type == "cleanup" && match.empty() && state.outgoing.id.empty()) RecoverOrphans();
         else if (type == "visibility" && state.registered) Visibility(command.at("public"));
         else if (type == "pause") { state.paused = command.at("paused"); if (state.paused) SuspendRequests(); }
         else if (type == "activity") { away = command.at("busy"); if (away) SuspendRequests(); }
@@ -363,6 +399,7 @@ struct Client::Impl {
             listing = std::make_unique<p2p::Subscription>(ntfy, options.directoryTopic,
                 [this](const auto& text) { Queue("directory", text); },
                 [this](const auto& text) { Queue("service", text); }, "all");
+            RecoverOrphans();
             while (!stop) {
                 std::deque<Json> work;
                 std::deque<std::pair<std::string, std::string>> messages;
@@ -373,7 +410,10 @@ struct Client::Impl {
                 }
                 // 到着済みの取消を先に反映し、古い画面の承諾を無効にする。
                 for (const auto& [type, body] : messages) try {
-                    if (type == "directory") directory.Apply(Json::parse(body, nullptr, false));
+                    if (type == "directory") {
+                        Json record;
+                        if (OpenDirectory(options.directoryTopic, body, record)) directory.Apply(record);
+                    }
                     else if (type == "control") Receive(body);
                     else if (type == "overflow") directory.incomplete = true;
                     else state.service = body;
@@ -389,8 +429,8 @@ struct Client::Impl {
                 if (listing->Ready() && (!control || control->Ready())) state.service = "online";
                 Publish();
             }
-            StopRegistration();
         } catch (const std::exception&) { state.error="service_unavailable"; Publish(); }
+        try { StopRegistration(); } catch (const std::exception&) { /* 未送信分は別プロセスから試みる。 */ }
         control.reset(); listing.reset();
     }
 };

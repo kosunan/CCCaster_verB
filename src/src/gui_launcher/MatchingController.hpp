@@ -28,11 +28,14 @@ struct MatchingController {
         if(value=="finished") return Text("Session ended; ready for another opponent", "対戦終了。同じコードで次の相手を待てます");
         if(value=="no_response") return Text("No response. You can try another opponent.", "返答がありません。別の相手へ申し込めます");
         if(value=="unavailable") return Text("Could not find this matching registration. Check the code and the opponent's standby state.", "マッチングの登録を確認できません。コードと相手の待機状態を確認してください");
+        if(value=="cleanup_unavailable") return Text("Could not prepare automatic listing cancellation. Restart the launcher and try again.", "終了時の募集取消を準備できませんでした。ランチャーを再起動してお試しください");
+        if(value=="cleanup_pending") return Text("Could not cancel an earlier listing. Check the connection, then retry below.", "以前の募集を取り消せませんでした。接続を確認し、待機欄から再試行してください");
+        if(value=="cleanup_finished") return Text("Earlier listings were cancelled.", "残っていた自分の募集を取り消しました");
         if(value=="invalid_code") return Text("Check the six-character opponent code", "相手の6文字コードを確認してください");
         if(value=="rate_limited") return Text("Service posting limit reached. Wait before retrying.", "通知サービスの投稿制限です。時間を置いて再試行してください");
         if(value=="connection_failed") return Text("Connection failed. Your registration is kept.", "接続できませんでした。登録とコードはそのまま使えます");
-        if(value=="invalid_profile") return Text("Check your name and comment", "名前とコメントを確認してください");
-        if(value=="online") return Text("Connected", "接続済み");
+        if(value=="invalid_profile") return Text("Check your player name in Profile & settings.", "プロフィール・設定でプレイヤー名を確認してください");
+        if(value=="online") return Text("Listing service connected", "一覧に接続済み");
         if(value=="reconnecting") return Text("Reconnecting to service...", "通知サービスへ再接続中...");
         if(value.empty()) return Text("Listed / status not checked", "掲載中・状態未確認");
         return Text("Could not complete the operation. Please retry.", "処理を完了できませんでした。再試行してください");
@@ -42,6 +45,7 @@ struct MatchingController {
         cccaster::matching::Options options;
         options.server=ConfigManager::GetString("Connection","NtfyServer","https://ntfy.sh");
         if (const char* server=std::getenv("CCCASTER_NTFY_SERVER")) options.server=server;
+        options.cleanupDirectory=exePath.parent_path()/L"matching-cleanup";
         client=std::make_unique<cccaster::matching::Client>(options);
         port=std::clamp(ConfigManager::GetInt("Matching","Port",7500),1,65535);
     }

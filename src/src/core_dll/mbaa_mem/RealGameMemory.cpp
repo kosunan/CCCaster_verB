@@ -75,6 +75,28 @@ void RealGameMemory::SetTrainingHold(bool hold) {
     trainingHold_ = hold;
 }
 
+void RealGameMemory::PlaceTrainingCorner(int direction, int player) {
+    // 標準リセットが戦闘状態を初期化した後、配置だけを変更する。
+    // 子キャラは各陣営の親との相対位置を維持する。
+    const int32_t positions[2] = {direction * (player == 0 ? 45056 : 61440),
+                                  direction * (player == 1 ? 45056 : 61440)};
+    for (int side = 0; side < 2; ++side) {
+        const auto offset = side * CC_PLR_STRUCT_SIZE;
+        const auto delta = positions[side] - *reinterpret_cast<int32_t *>(
+            reinterpret_cast<char *>(CC_P1_X_POSITION_ADDR) + offset);
+        for (int actor : {side, side + 2}) {
+            const auto stride = actor * CC_PLR_STRUCT_SIZE;
+            *reinterpret_cast<int32_t *>(reinterpret_cast<char *>(CC_P1_X_POSITION_ADDR) + stride) += delta;
+            *reinterpret_cast<int32_t *>(reinterpret_cast<char *>(CC_P1_X_PREV_POS_ADDR) + stride) += delta;
+            *reinterpret_cast<uint8_t *>(reinterpret_cast<char *>(CC_P1_FACING_FLAG_ADDR) + stride) =
+                (side == player) == (direction < 0);
+        }
+    }
+    *CC_CAMERA_X_ADDR = direction * 26624;
+    DebugLog("[TrainingCorner] player=%d direction=%d p1x=%d p2x=%d camera=%d", player + 1,
+             direction, *CC_P1_X_POSITION_ADDR, *CC_P2_X_POSITION_ADDR, *CC_CAMERA_X_ADDR);
+}
+
 uint32_t RealGameMemory::WorldTimer() const {
     return *CC_WORLD_TIMER_ADDR;
 }

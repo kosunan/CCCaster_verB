@@ -26,6 +26,7 @@ class RealGameMemory final : public IGameMemory {
     bool RestartTrainingRecording() override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
+    void PlaceTrainingCorner(int direction, int player) override;
     bool ConfigureNetplayMenu() override;
     bool ConfigureRandomStages() override;
     uint32_t DrawRandomStage() override;

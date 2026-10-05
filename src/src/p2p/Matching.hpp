@@ -6,10 +6,14 @@
 #include <atomic>
 #include <map>
 #include <functional>
+#include <filesystem>
 
 namespace cccaster::matching {
 using p2p::Json;
 const std::string& DirectoryTopic();
+// 公開一覧の共通鍵は秘匿用の認証情報ではない。復号後にも登録署名を検証する。
+std::string SealDirectory(const std::string& topic, const Json& record);
+bool OpenDirectory(const std::string& topic, const std::string& body, Json& record);
 inline constexpr size_t PageSize = 20;
 inline constexpr int64_t PublicListingLifetimeSeconds = 6 * 60 * 60;
 
@@ -59,6 +63,7 @@ struct Snapshot {
     std::vector<Request> incoming;
     Request outgoing;
     uint64_t notifications = 0;
+    unsigned cleanupPending = 0;
 };
 struct Event {
     std::string type, match, code;
@@ -67,6 +72,7 @@ struct Event {
 struct Options {
     std::string server = "https://ntfy.sh", directoryTopic = DirectoryTopic();
     unsigned responseSeconds = 60, connectionSeconds = 45;
+    std::filesystem::path cleanupDirectory;
 };
 // 通信と状態変更は一つの専用スレッドで直列化。描画スレッドをHTTPで止めない。
 class Client {

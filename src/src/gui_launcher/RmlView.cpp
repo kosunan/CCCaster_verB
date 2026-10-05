@@ -1,5 +1,6 @@
 #include "RmlView.hpp"
 #include "EmblemCatalog.hpp"
+#include "MatchingPresentation.hpp"
 #include <RmlUi/Core/Elements/ElementFormControl.h>
 #include <chrono>
 #include <charconv>
@@ -109,10 +110,12 @@ void RmlView::Registration() {
     const auto& m=state_["matching"];
     const bool registered=m["registered"],ja=language_=="ja";
     auto t=[&](const char* jp,const char* en){return std::string(ja?jp:en);};
-    Text("standby-title",t("公開で対戦を待つ","Open your listing"));
+    Text("standby-title",registered?t("あなたの待機","Your standby"):t("公開で対戦を待つ","Open your listing"));
     Text("start-matching",t("公開マッチング待機開始","Start public standby"));
     const bool actualPublic=registered?m["public"].get<bool>():true;
-    Text("visibility-help",actualPublic?t("あなたの名前を一覧に公開します。","Your player name appears in the public list."):t("公開一覧には掲載しません。コードを相手に共有してください。","Your code is unlisted. Share it with your opponent."));
+    Text("visibility-help",actualPublic?t("名前とコードは公開されます。接続相手にIPアドレスが伝わります。","Your name and code are public. Opponents can see your IP address."):t("コードを相手に共有してください。","Share this code with your opponent."));
+    Show("visibility-help",!registered||!actualPublic);
+    Show("matching-status",registered||m["state"]!="idle");
     Text("registration-visibility",m["public"].get<bool>()?t("公開一覧に掲載中","Public listing"):t("公開一覧には未掲載","Not listed publicly"));
     Text("switch-visibility",t("このコードで公開待機","List this code publicly"));
     Show("switch-visibility",registered&&!m["public"].get<bool>());
@@ -151,6 +154,7 @@ void RmlView::ProcessEvent(Rml::Event& event) {
         else if(id=="start-matching")send_({{"type","matching_start"},{"public",true},{"port",Number(Value("matching-port"))},{"comment",""}});
         else if(id=="switch-visibility")send_({{"type","matching_visibility"},{"public",true}});
         else if(id=="stop-matching")command("matching_stop");
+        else if(id=="retry-cleanup")command("matching_cleanup");
         else if(id=="cancel-request")command("matching_cancel");
         else if(id=="cancel-pairing")command("matching_cancel_pairing");
         else if(id=="start-direct") {
@@ -158,7 +162,7 @@ void RmlView::ProcessEvent(Rml::Event& event) {
             send_({{"type","launch"},{"mode","auto"},{"port",Number(Value("direct-port"))},{"code",code}});
         }
         else if(id=="invite-selected"||id=="watch-selected") {
-            if(const auto* person=SelectedPerson()) {
+            if(const auto* person=SelectedPerson();person && !person->value("self",false)) {
                 if(id=="invite-selected")send_({{"type","matching_invite"},{"code",(*person)["code"]}});
                 else send_({{"type","launch"},{"mode","spectate"},{"code",(*person)["code"]}});
             }
@@ -213,16 +217,23 @@ void RmlView::People() {
     const bool running=state_["session"]["running"];
     const auto* selected=SelectedPerson();if(!selected)selectedPerson_.clear();
     const bool ja=language_=="ja";
-    Text("selected-player",selected?selected->at("name").get<std::string>():(ja?"プレイヤーを選択してください":"Select a player"));
-    Disable("invite-selected",!selected||locked);Disable("watch-selected",!selected||running);
+    const bool self=selected && selected->value("self",false);
+    Text("selected-player",selected?selected->at("name").get<std::string>()+(self?(ja?"（自分の募集）":" (your listing)"):""):(ja?"プレイヤーを選択してください":"Select a player"));
+    Disable("invite-selected",!selected||locked||self);Disable("watch-selected",!selected||running||self);
     const auto result=selected?selected->at("result").get<std::string>():std::string{};
     Text("selected-result",result);Show("selected-result",!result.empty()&&result!="掲載中・状態未確認"&&result!="Listed / status not checked");
-    const auto signature=Json{people,listPage_,language_,selectedPerson_}.dump();if(signature==peopleSignature_)return;peopleSignature_=signature;
+    const auto now=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    std::vector<std::string> ages;
+    for(size_t i=listPage_*20;i<people.size()&&i<size_t((listPage_+1)*20);++i)
+        ages.push_back(PublicListingAge(people[i].value("listedAt",int64_t(0)),now));
+    const auto signature=Json{people,listPage_,language_,selectedPerson_,ages}.dump();if(signature==peopleSignature_)return;peopleSignature_=signature;
     std::string rml;
-    if(people.empty())rml="<div class='empty'><strong>"+std::string(ja?"公開中のプレイヤーはまだ届いていません":"No public players received yet")+"</strong><p>"+(ja?"一覧は自動で更新されます。自分から公開待機を始めることもできます。":"The list updates automatically. You can also start public standby.")+"</p></div>";
+    if(people.empty())rml="<div class='empty'><strong>"+std::string(ja?"表示できる募集はありません":"No listings to display")+"</strong><p>"+(ja?"自分から公開待機を始められます。":"You can start your own public standby.")+"</p></div>";
     for(size_t i=listPage_*20;i<people.size()&&i<size_t((listPage_+1)*20);++i) {
         const auto& p=people[i];const bool active=p["id"]==selectedPerson_;
-        rml+="<button id='player-"+std::to_string(i)+"' class='player-row"+(active?std::string(" selected"):std::string{})+"' aria-pressed='"+(active?"true":"false")+"' data-command='select-person' data-value='"+Escape(p["id"])+"'>"+Escape(p["name"])+"</button>";
+        const auto index=std::to_string(i);
+        const bool own=p.value("self",false);
+        rml+="<button id='player-"+index+"' class='player-row"+(active?std::string(" selected"):std::string{})+(own?" own":"")+"' aria-pressed='"+(active?"true":"false")+"' data-command='select-person' data-value='"+Escape(p["id"])+"'><span id='player-name-"+index+"' class='player-name'>"+Escape(p["name"])+"</span>"+(own?std::string("<span class='player-meta'><span class='player-self'>")+(ja?"自分":"You")+"</span>":std::string{})+"<span id='player-age-"+index+"' class='player-age'>"+ages[i-listPage_*20]+"</span>"+(own?"</span>":"")+"</button>";
     }
     Find("people")->SetInnerRML(rml);
 }
@@ -249,6 +260,7 @@ void RmlView::Requests() {
 void RmlView::State(const Json& value) {
     if(value.value("protocol",0)!=1)return;
     updating_=true;state_=value;
+    SortPublicPlayers(state_["matching"]["people"]);
     if(language_!=value["language"].get<std::string>())Translate(value["language"]);
     auto t=[&](const char* ja,const char* en){return std::string(language_=="ja"?ja:en);};
     const auto& m=value["matching"];const auto& s=value["session"];const auto& c=value["settings"];const auto& p=value["profile"];
@@ -257,6 +269,7 @@ void RmlView::State(const Json& value) {
     Text("matching-status",m["status"]);Text("matching-notice",m["notice"]);Text("matching-error",m["error"]);Text("service-status",m["service"]);
     Show("matching-notice",!m["notice"].get<std::string>().empty());Show("matching-error",!m["error"].get<std::string>().empty());
     Show("other-mode",m["otherMode"]);Show("registration-active",registered);Show("registration-start",!registered);Text("matching-code",m["code"]);
+    Show("retry-cleanup",m.value("cleanupPending",0U)>0);Disable("retry-cleanup",busy||outgoing);
     Registration();
     auto check=[&](const char* id,bool enabled){auto* e=Find(id);if(enabled)e->SetAttribute("checked","");else e->RemoveAttribute("checked");};
     check("pause-matching",m["paused"]);Disable("matching-port",registered||busy);Disable("start-matching",busy);
@@ -269,12 +282,17 @@ void RmlView::State(const Json& value) {
     if(registered) {SetValue("direct-port",std::to_string(m["port"].get<int>()),true);SetValue("matching-port",std::to_string(m["port"].get<int>()),true);}
     for(const char* id:{"watch","training","replay"})Disable(id,running||value.value("connectionLookup",false));
     Disable("profile-fields",running||registered);SetValue("player-name",p["name"]);Show("profile-error",p["error"]);Disable("emblem-remove",running||registered||p["emblemId"].get<uint64_t>()==0);
-    auto* emblem=Find("emblem");const auto source="emblem:"+std::to_string(p["emblemId"].get<uint64_t>());
-    if(emblem->GetAttribute<std::string>("src","")!=source)emblem->SetAttribute("src",source);
+    Show("profile-locked",running||registered);
+    const auto imageId=p["emblemId"].get<uint64_t>();const auto source="emblem:"+std::to_string(imageId);
+    for(const char* id:{"emblem","matching-emblem"}) {
+        auto* emblem=Find(id);
+        if(emblem->GetAttribute<std::string>("src","")!=source)emblem->SetAttribute("src",source);
+    }
+    Show("matching-emblem",imageId!=0);Show("matching-emblem-placeholder",imageId==0);
     for(auto [id,key]:std::vector<std::pair<const char*,const char*>>{{"sound","Sound"},{"flash","FlashTaskbar"},{"popup","DesktopPopup"},{"allow-spectators","AllowSpectators"},{"software-rendering","SoftwareRendering"}})check(id,c[key]);
     SetValue("connection-preference",std::to_string(c["ConnectionPreference"].get<int>()));SetValue("ntfy-server",c["NtfyServer"]);
     Disable("allow-spectators",busy||outgoing||!m["incoming"].empty());Disable("save-server",busy||registered);
-    Text("renderer-status",value["display"]["software"].get<bool>()?t("CPU描画（WARP）","CPU rendering (WARP)"):t("GPU描画","GPU rendering"));
+    Text("renderer-status",value["display"]["software"].get<bool>()?t("CPU描画","CPU rendering"):t("GPU描画","GPU rendering"));
     Show("session-card",running||s["failed"].get<bool>()||!s["log"].get<std::string>().empty()||s["status"]!=t("開始できます。","Ready when you are."));
     Find("session-card")->SetClass("failed",s["failed"]);Text("session-status",s["status"]);
     Text("session-badge",running?(game?t("ゲーム実行中","Game running"):t("接続・待機中","Connecting / waiting")):t("待機","Idle"));
@@ -283,7 +301,6 @@ void RmlView::State(const Json& value) {
     Show("manual",running&&!game&&!s["manualCode"].get<std::string>().empty());SetValue("manual-code",s["manualCode"]);Show("manual-host",!s["code"].get<std::string>().empty());Show("manual-start",s["code"].get<std::string>().empty());
     Show("cancel-session",running&&!game);Disable("cancel-session",s["cancelling"]);
     if(Find("log-details")->IsClassSet("open"))Text("session-log",s["log"]);
-    Text("netplay-settings","D"+std::to_string(c["delay"].get<int>())+" / R"+std::to_string(c["rollback"].get<int>()));
     updating_=false;
 }
 Json RmlView::Save() const {

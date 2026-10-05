@@ -160,7 +160,7 @@ if(WIN32)
     target_link_libraries(cccaster_p2p_protocol PUBLIC nlohmann_json::nlohmann_json bcrypt crypt32 ws2_32)
     target_link_libraries(cccaster_transport PUBLIC cccaster_p2p_protocol)
     add_library(cccaster_p2p STATIC src/p2p/Ntfy.cpp src/p2p/Session.cpp src/p2p/Watch.cpp
-        src/p2p/Matching.cpp src/p2p/MatchingProtocol.cpp)
+        src/p2p/Matching.cpp src/p2p/MatchingProtocol.cpp src/p2p/MatchingCleanup.cpp)
     target_include_directories(cccaster_p2p PRIVATE ${asio_SOURCE_DIR}/asio/include)
     target_link_libraries(cccaster_p2p PUBLIC cccaster_transport winhttp iphlpapi)
     if(MSVC)

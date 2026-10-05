@@ -33,6 +33,11 @@ class Gui:
     def click(self, element):
         return self.call('click', id=element)
 
+    def settings(self):
+        self.click('nav-matching')
+        self.click('matching-tab')
+        return self.click('profile-settings')
+
     def value(self, element, value):
         return self.call('value', id=element, value=str(value))
 
@@ -76,7 +81,7 @@ def check_emblems(guis, targets, report):
     a, b, _ = guis
     for gui in [a, b]:
         gui.wait(lambda d: (d.get('state') or {}).get('protocol') == 1)
-        gui.click('nav-settings');gui.click('emblem-preset-toggle')
+        gui.settings();gui.click('emblem-preset-toggle')
     buttons = [key for key in a.call()['elements'] if key.startswith('emblem-preset-') and key != 'emblem-preset-toggle' and key != 'emblem-preset-details']
     assert len(buttons) == 24
     for button in buttons:
@@ -104,8 +109,98 @@ def check_emblems(guis, targets, report):
         report.setdefault('emblems', []).append({'code':code,'id':state['emblemId']})
         gui.call('renderer', software=True)
         assert gui.call()['state']['profile'] == state
-        gui.click('nav-matching')
+        gui.click('settings-back')
+        check_matching_profile(gui, report)
     report['checks'].append('描画再構築後も選択画像を維持')
+
+
+def check_matching_profile(gui, report):
+    gui.settings()
+    assert gui.call()['elements']['settings-back']['visible']
+    gui.click('settings-back')
+    data = gui.call();elements = data['elements']
+    assert data['page'] == 'matching' and elements['matching-panel']['visible']
+    image_id = data['state']['profile']['emblemId']
+    assert elements['matching-emblem']['visible'] == bool(image_id)
+    assert elements['matching-emblem-placeholder']['visible'] == (not image_id)
+    assert f'src="emblem:{image_id}"' in elements['matching-profile-image']['text']
+    if image_id:
+        image = elements['matching-emblem']['rect'];name = elements['matching-name']['rect']
+        assert image[2] > 0 and abs(image[2]/image[3]-2) < .01
+        assert image[0]+image[2] < name[0]
+    report['checks'].append('設定からマッチングへ戻る・名前の左に登録画像／未登録時の代替表示')
+
+
+def check_public_layout(gui, report):
+    gui.click('nav-matching');gui.click('matching-tab')
+    for scale in [1.0, 1.5]:
+        gui.call('dpi', value=scale)
+        data = gui.call();elements = data['elements']
+        cells = [elements['player-'+str(i)]['rect'] for i in range(20)]
+        panel = elements['people-window']['rect']
+        assert len({round(r[0], 1) for r in cells}) == 5 and len({round(r[1], 1) for r in cells}) == 4
+        assert all(r[2] > 0 and abs(r[3]-32*scale) <= 1 and r[0] >= panel[0] and r[1] >= panel[1] and
+                   r[0]+r[2] <= panel[0]+panel[2]+1 and r[1]+r[3] <= panel[1]+panel[3]+1 for r in cells)
+        name = elements['matching-name']['rect'];button = elements['profile-settings']['rect']
+        assert name[0]+name[2] <= button[0]+1 and button[1] < name[1]+name[3]
+        assert 'nav-settings' not in elements
+        for i in range(20):
+            name = elements[f'player-name-{i}']['rect'];age = elements[f'player-age-{i}']['rect']
+            assert name[2] > 0 and age[0] >= name[0]+name[2]-1
+            assert age[0]+age[2] <= cells[i][0]+cells[i][2]+1
+        content = elements['content']
+        assert content['scrollWidth'] <= content['clientWidth']+1
+        directory = elements['public-directory']['rect'];own = elements['registration-card']['rect']
+        if scale == 1.0:
+            assert directory[0]+directory[2] <= own[0]+1 and abs(directory[1]-own[1]) <= 1
+        report.setdefault('layouts', []).append({'scale':scale,'directory':directory,'own':own,'cells':cells})
+        report['checks'].append(f'DPI {scale} コンパクトな5列20名・経過時間・名前右の設定ボタン・横幅')
+        gui.click('profile-settings')
+        assert gui.call()['page'] == 'settings'
+        gui.click('settings-back')
+        assert gui.call()['page'] == 'matching'
+    gui.call('dpi', value=1.0)
+    report['checks'].append('左の一覧・右の待機欄とプロフィールからの設定画面遷移')
+
+
+def check_public_listing_times(gui, report):
+    base = gui.call()['state']
+    fixture = json.loads(json.dumps(base))
+    people = fixture['matching']['people'];now = int(time.time())
+    for i, person in enumerate(people):
+        person['listedAt'] = now - 7200 - 60*i
+    people[0]['listedAt'] = now-5105
+    people[0]['name'] = 'LONG_PLAYER_NAME_123456789012345'
+    people[1]['listedAt'] = now-65
+    people[2]['listedAt'] = now+60
+    people[-1].pop('listedAt', None)
+    selected = people[0]
+    try:
+        gui.call('fixture', state=fixture)
+        data = gui.call()
+        expected = sorted(people, key=lambda p: (-p.get('listedAt', 0), p['id']))
+        assert [p['id'] for p in data['state']['matching']['people']] == [p['id'] for p in expected]
+        assert [data['elements'][f'player-age-{i}']['text'] for i in range(3)] == ['0:00', '0:01', '1:25']
+        gui.click('player-name-2')
+        assert gui.call()['elements']['selected-player']['text'] == selected['name']
+        selected['listedAt'] = now+120
+        gui.call('fixture', state=fixture)
+        assert gui.call()['state']['matching']['people'][0]['id'] == selected['id']
+        gui.click('invite-selected')
+        assert gui.commands[-1] == {'type':'matching_invite', 'code':selected['code']}
+        gui.click('next')
+        assert gui.call()['elements'][f'player-age-{len(people)-1}']['text'] == '--:--'
+        gui.click('prev')
+        # 新しい受信データがなくても、募集時刻から1分に達した表示だけが進む。
+        for person in people:
+            person['listedAt'] = int(time.time())-3600
+        selected['listedAt'] = int(time.time())-58
+        gui.call('fixture', state=fixture)
+        assert gui.call()['elements']['player-age-0']['text'] == '0:00'
+        gui.wait(lambda d: d['elements']['player-age-0']['text'] == '0:01', seconds=5)
+        report['checks'].append('新着順・再掲載順・時分表示・不明と未来時刻・経過時間の自動更新・選択相手の維持')
+    finally:
+        gui.call('fixture', state={})
 
 
 def before_game(guis, ports, report):
@@ -152,12 +247,12 @@ def before_game(guis, ports, report):
     check('直接募集の取消', a.call()['state']['session']['status'] == '接続をキャンセルしました。')
     a.click('matching-tab')
     for gui in guis:
-        gui.click('nav-settings');gui.value('connection-preference', 0)
+        gui.settings();gui.value('connection-preference', 0)
         gui.checked('allow-spectators', True);gui.click('nav-matching')
     for scale in [1.0, 1.5]:
         a.call('dpi', value=scale)
         for page in ['matching', 'settings', 'guide', 'spectate', 'training', 'replay']:
-            a.click('nav-'+page)
+            a.settings() if page == 'settings' else a.click('nav-'+page)
             data = a.call();main = data['elements']['content']['rect']
             # 主要操作の幅とページ表示を、実際にレイアウトした座標で確認する。
             check(f'DPI {scale} {page} ページ表示', data['elements']['page-'+page]['visible'] and main[2] > 200)
@@ -171,7 +266,10 @@ def before_game(guis, ports, report):
     a.call('dpi', value=1.0);a.click('nav-matching')
     a.wait(lambda d: len(d['state']['matching']['people']) >= 23)
     check('一覧1ページ20名', a.call()['elements']['people']['text'].count('data-command="select-person"') == 20)
-    check('公開一覧は名前だけ', 'GUI pagination fixture' not in a.call()['elements']['people']['text'] and 'comment' not in a.call()['elements'])
+    check_public_layout(a, report)
+    check_public_listing_times(a, report)
+    check_matching_profile(a, report)
+    check('公開一覧は名前と経過時間', 'GUI pagination fixture' not in a.call()['elements']['people']['text'] and 'comment' not in a.call()['elements'])
     check('未選択では一覧操作を無効化', a.call()['elements']['invite-selected']['disabled'] and a.call()['elements']['watch-selected']['disabled'])
     a.click('player-0')
     check('名前選択で申し込み操作を有効化', not a.call()['elements']['invite-selected']['disabled'])
@@ -190,7 +288,7 @@ def before_game(guis, ports, report):
     a.call('fixture', state=fixture)
     check('選択相手の掲載終了で別人に移らない', a.call()['elements']['invite-selected']['disabled'])
     a.call('fixture', state={})
-    a.click('nav-settings');a.checked('sound', False);a.checked('software-rendering', True)
+    a.settings();a.checked('sound', False);a.checked('software-rendering', True)
     a.wait(lambda d: not d['state']['settings']['Sound'] and d['state']['settings']['SoftwareRendering'])
     check('設定を保存')
     a.click('nav-matching')
@@ -204,8 +302,14 @@ def before_game(guis, ports, report):
     a.wait(lambda d: bool(d['state']['error']) and not d['state']['matching']['registered'])
     check('公開待機の不正ポートを拒否')
     a.value('matching-port', ports[0]);a.click('start-matching')
-    host = a.wait(lambda d: d['state']['matching']['registered'])['state']['matching']['code']
+    host = a.wait(lambda d: d['state']['matching']['registered'] and d['state']['matching']['public'])['state']['matching']['code']
     check('公開待機開始で公開登録', a.call()['state']['matching']['public'])
+    a.wait(lambda d: any(p['code'] == host and p.get('self') for p in d['state']['matching']['people']))
+    a.select_player(host)
+    own = a.call()['elements']
+    check('自分の公開募集も一覧に表示', '自分' in own['people']['text'] and '自分の募集' in own['selected-player']['text'])
+    check('自分への申し込み・観戦は無効', own['invite-selected']['disabled'] and own['watch-selected']['disabled'])
+    check('公開掲載中は再掲載ボタンを表示しない', not a.call()['elements']['switch-visibility']['visible'])
     a.click('direct-tab')
     check('待機中のタブ切替では公開を維持', a.call()['state']['matching']['public'] and a.call()['elements']['direct-code']['visible'])
     a.call('renderer', software=False)
@@ -262,7 +366,7 @@ def before_direct_game(guis, ports, report):
         initial = gui.wait(lambda d: (d.get('state') or {}).get('protocol') == 1)
         if initial['state']['language'] != 'ja':
             gui.click('language');gui.wait(lambda d: d['state']['language'] == 'ja')
-        gui.click('nav-settings');gui.value('connection-preference', 0)
+        gui.settings();gui.value('connection-preference', 0)
         gui.checked('allow-spectators', True);gui.checked('sound', False)
         gui.click('nav-matching');gui.click('direct-tab')
     a.value('direct-port', ports[0]);a.value('direct-code', ' \t ');a.click('start-direct')

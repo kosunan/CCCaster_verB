@@ -222,6 +222,10 @@ void LauncherModel::Command(const Json& c) {
                 if (matching_.view.registered) matching_.client->Command({{"type","visibility"},{"public",value}});
             } else if (type == "matching_pause") matching_.client->Command({{"type","pause"},{"paused",Boolean(c,"paused")}});
             else if (type == "matching_stop") matching_.client->Command({{"type","stop"}});
+            else if (type == "matching_cleanup") {
+                if (Occupied() || !matching_.view.outgoing.id.empty()) throw std::invalid_argument("occupied");
+                matching_.client->Command({{"type","cleanup"}});
+            }
             else if (type == "matching_cancel") matching_.client->Command({{"type","cancel"}});
             else if (type == "matching_cancel_pairing") matching_.client->Command({{"type","cancel_match"}});
             else if (type == "matching_accept" || type == "matching_reject") {
@@ -237,10 +241,12 @@ void LauncherModel::Command(const Json& c) {
       catch (const std::exception& error) { error_ = error.what(); }
 }
 Json LauncherModel::State(bool includeLog) const {
-    auto person = [](const matching::Person& p) { return Json{{"id",p.id},{"name",p.name},{"code",p.code},{"comment",p.comment},{"result",MatchingController::Status(p.result)}}; };
+    auto person = [](const matching::Person& p) { return Json{{"id",p.id},{"name",p.name},{"code",p.code},{"comment",p.comment},{"listedAt",p.listedAt},{"result",MatchingController::Status(p.result)}}; };
     const auto& v = matching_.view;
     Json people = Json::array(), incoming = Json::array();
-    for (const auto& p : v.people) if (p.id != v.id) people.push_back(person(p));
+    for (const auto& p : v.people) {
+        auto item=person(p);item["self"]=p.id==v.id;people.push_back(std::move(item));
+    }
     for (const auto& r : v.incoming) incoming.push_back({{"id",r.id},{"peer",person(r.peer)},{"expires",r.expires}});
     Json settings;
     for (const char* key : {"Sound","FlashTaskbar","DesktopPopup"}) settings[key] = ConfigManager::GetInt("Notifications",key,1) != 0;
@@ -263,6 +269,6 @@ Json LauncherModel::State(bool includeLog) const {
           {"status",MatchingController::Status((v.paused||matching_.otherMode)&&v.state=="waiting"?"paused":v.state)},
           {"notice",v.notice.empty()?"":MatchingController::Status(v.notice)},{"error",v.error.empty()?"":MatchingController::Status(v.error)},
           {"service",MatchingController::Status(v.service)},{"incomplete",v.incomplete},{"busy",Occupied()},{"otherMode",matching_.otherMode},
-          {"people",people},{"incoming",incoming},{"outgoing",{{"id",v.outgoing.id},{"peer",person(v.outgoing.peer)}}}}}};
+          {"cleanupPending",v.cleanupPending},{"people",people},{"incoming",incoming},{"outgoing",{{"id",v.outgoing.id},{"peer",person(v.outgoing.peer)}}}}}};
 }
 }

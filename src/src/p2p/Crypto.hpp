@@ -19,6 +19,9 @@ Key Hkdf(std::span<const uint8_t> master, const std::string &info);
 bool Equal(std::span<const uint8_t> a, std::span<const uint8_t> b);
 std::string Base64(std::span<const uint8_t> bytes);
 Bytes Unbase64(const std::string &text);
+// nonce・暗号文・認証タグだけをBase64化し、送信先topicも認証する。
+std::string SealMessage(const Key &key, const std::string &topic, const std::string &plain);
+bool OpenMessage(const Key &key, const std::string &topic, const std::string &sealed, std::string &plain);
 struct Keys {
     Bytes master;
     Key enc{}, punch{};

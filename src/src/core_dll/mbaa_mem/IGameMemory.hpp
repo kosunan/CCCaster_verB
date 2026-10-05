@@ -61,6 +61,7 @@ class IGameMemory {
     virtual void WriteInput(GameInput p1, GameInput p2) = 0;
     // Training保存ボタンの押下中だけ。所有した停止は必ずfalseで解除する。
     virtual void SetTrainingHold(bool) {}
+    virtual void PlaceTrainingCorner(int direction, int player) {}
     virtual bool ConfigureNetplayMenu() {
         return true;
     }
