@@ -1,3 +1,4 @@
+#include "shared_contracts/NativePath.hpp"
 #include "cli_launcher/controller/MainController.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include "core_dll/network/NetworkSimulator.hpp"
@@ -5,6 +6,8 @@
 #include <fstream>
 #include <filesystem>
 #include "shared_contracts/ConfigPath.hpp"
+#include "gui_launcher/AppContext.hpp"
+#include <shellapi.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,18 +23,18 @@ int main(int argc, char *argv[]) {
 
     // ゲーム起動前にINI設定を読み込む（Rollback設定その他の自動引渡しに使用）
     // ファイルが存在しない場合（初回起動・テスト環境）は警告のみ表示して継続。
-    // GetInt() のデフォルト引数（DefaultDelay=2, MaxRollback=4）がフォールバック値として機能する。
+    // Dの既定は2。RはINIの旧値によらず、MainControllerで当面7固定にする。
     {
         // DLLと同じ設定を読む。起動時のカレントディレクトリに依存させない。
         std::filesystem::path configDir = std::filesystem::absolute(argv[0]).parent_path();
 #ifdef _WIN32
-        char executablePath[32768]{};
-        const DWORD length = GetModuleFileNameA(nullptr, executablePath, sizeof(executablePath));
-        if (length > 0 && length < sizeof(executablePath))
+        wchar_t executablePath[32768]{};
+        const DWORD length = GetModuleFileNameW(nullptr, executablePath, std::size(executablePath));
+        if (length > 0 && length < std::size(executablePath))
             configDir = std::filesystem::path(executablePath).parent_path();
 #endif
-        const std::string kConfigPath = cccaster::ConfigPath(configDir).string();
-        std::ifstream testFile(kConfigPath);
+        const std::string kConfigPath = cccaster::PathUtf8(cccaster::ConfigPath(configDir));
+        std::ifstream testFile(cccaster::Utf8Path(kConfigPath));
         if (testFile.is_open()) {
             testFile.close();
             cccaster::main_app::ConfigManager::Load(kConfigPath);
@@ -41,6 +44,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // GUIの起動・取消・ログ契約を共通ワーカーで処理する。通常CUIの引数は維持する。
+    if (argc > 1 && std::string(argv[1]) == "--gui-worker") {
+        int count = 0;
+        auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+        const auto result = cccaster::gui::RunWorker(count, arguments);
+        return result < 0 ? 2 : result;
+    }
     bool isHeadless = false;
     bool trainingMode = false;
     bool replayMode = false;
@@ -58,7 +68,16 @@ int main(int argc, char *argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--debug-spikes") {
+        if (arg == "host") { isHost=true; isHeadless=true;
+        } else if (arg == "join" && i+1<argc) { connectionHash=argv[++i]; isHeadless=true;
+        } else if (arg == "spectate" && i+1<argc) { connectionHash=argv[++i]; spectatorMode=true; isHeadless=true;
+        } else if (arg == "--no-spectators") { cccaster::main_app::ConfigManager::SetInt("Connection","AllowSpectators",0);
+        } else if (arg == "--allow-spectators") { cccaster::main_app::ConfigManager::SetInt("Connection","AllowSpectators",1);
+        } else if (arg == "--legacy-host") { isHost=true; SetEnvironmentVariableA("CCCASTER_LEGACY_HOST","1");
+        } else if (arg == "--offline-network") { SetEnvironmentVariableA("CCCASTER_P2P_OFFLINE","1");
+        } else if (arg == "--ntfy-server" && i+1<argc) { SetEnvironmentVariableA("CCCASTER_NTFY_SERVER",argv[++i]);
+        } else if (arg == "--peer-code-file" && i+1<argc) { SetEnvironmentVariableA("CCCASTER_P2P_PEER_FILE",argv[++i]);
+        } else if (arg == "--debug-spikes") {
             SetEnvironmentVariableA("CCCASTER_DEBUG_SPIKES", "1");
         } else if (arg == "--headless") {
             isHeadless = true;
@@ -78,7 +97,11 @@ int main(int argc, char *argv[]) {
         } else if (arg == "--ip" && i + 1 < argc) {
             targetIp = argv[++i];
         } else if (arg == "--port" && i + 1 < argc) {
-            port = static_cast<uint16_t>(std::stoi(argv[++i]));
+            const std::string text=argv[++i];
+            if(text.empty()||text.size()>5||text.find_first_not_of("0123456789")!=std::string::npos||std::stoul(text)<1||std::stoul(text)>65535) {
+                std::cerr << "ポート番号は1〜65535で指定してください。\n"; return 2;
+            }
+            port = static_cast<uint16_t>(std::stoul(text));
         } else if (arg == "--hash" && i + 1 < argc) {
             connectionHash = argv[++i];
         } else if (arg == "--sim-delay" && i + 1 < argc) {

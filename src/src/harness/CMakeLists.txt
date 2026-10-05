@@ -12,6 +12,7 @@
 set(CORE ${CMAKE_SOURCE_DIR}/src/core_dll)
 
 add_executable(harness
+    ../core_dll/common/DataPaths.cpp
     harness_main.cpp
     FakeGame.cpp
     harness_stubs.cpp

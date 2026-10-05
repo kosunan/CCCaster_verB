@@ -21,7 +21,7 @@ int wmain(int argc, wchar_t **argv) {
     std::vector<uint8_t> data(bytes);
     if (!ReadFile(file,data.data(),bytes,&read,nullptr) || read != bytes) return 5;
     CloseHandle(file);
-    if (cccaster::game_build::IdentifyFile(data) != cccaster::game_build::Edition::Carnival140) return 6;
+    if (!cccaster::game_build::SupportsRuntime(cccaster::game_build::IdentifyFile(data))) return 6;
     const size_t length = (wcslen(argv[2])+1)*sizeof(wchar_t);
     void *memory = VirtualAllocEx(process,nullptr,length,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     if (!memory || !WriteProcessMemory(process,memory,argv[2],length,nullptr)) return 7;

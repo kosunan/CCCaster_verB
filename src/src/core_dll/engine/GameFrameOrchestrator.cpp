@@ -23,6 +23,7 @@
 #include "core_dll/hook/WndProcHook.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
 #include "core_dll/ui/UIManager.hpp"
+#include "core_dll/ui/HudResources.hpp"
 #include "core_dll/ui/LearningOverlay.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include "core_dll/sync/NetplaySession.hpp"
@@ -68,6 +69,7 @@ void GameFrameOrchestrator::Shutdown() {
     cccaster::core::timer::FrameTiming::presentDueTicks = 0;
     cccaster::core::timer::FrameTiming::Simulation().Reset();
     if (s_imguiInitialized) {
+        cccaster::hud::Release();
         ImGui_ImplDX9_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
@@ -136,6 +138,7 @@ void GameFrameOrchestrator::OnAfterPresent(LPDIRECT3DDEVICE9 pDevice) {
 }
 
 void GameFrameOrchestrator::OnPresent(LPDIRECT3DDEVICE9 pDevice) {
+    SceneRunner::PrepareDrawing();
     // 通常更新の解放時刻は変えず、統計走査・除算・整形だけ次の待機前へ移す。
     // 再計算Presentでも一度だけ消費し、再計算そのものを標本に加えない。
     using Timing = cccaster::core::timer::FrameTiming;
@@ -231,7 +234,16 @@ void GameFrameOrchestrator::OnPresent(LPDIRECT3DDEVICE9 pDevice) {
 // ============================================================================
 bool GameFrameOrchestrator::OnPresentSkip(LPDIRECT3DDEVICE9 pDevice) {
     (void)pDevice;
-    return cccaster::core::SpeedFlags::RenderSkip().load(std::memory_order_acquire);
+    const bool skipped = cccaster::core::SpeedFlags::RenderSkip().load(std::memory_order_acquire);
+    static const bool trace = std::getenv("CCCASTER_TRANSITION_DRAW_TRACE") != nullptr;
+    if (trace) {
+        auto &mem = cccaster::game_interface::GameMem();
+        if (mem.IsAvailable())
+            DebugLog("[TransitionDraw] mode=%u intro=%u skip=%u replay=%u qpc=%lld",
+                mem.GameMode(), unsigned(mem.IntroState()), unsigned(skipped), unsigned(SceneRunner::IsReplaying()),
+                cccaster::platform::RealMonotonicUs());
+    }
+    return skipped;
 }
 
 // ============================================================================
@@ -246,6 +258,8 @@ bool GameFrameOrchestrator::OnPresentSkip(LPDIRECT3DDEVICE9 pDevice) {
 //   2. バックバッファ判定（オフスクリーンへの多数の描画と区別）
 //   3. バックバッファ一致時のみ ImGui 描画
 void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
+    // イントロ最初のHUD準備にも間に合わせる。OnPresentでも最終確認する。
+    SceneRunner::PrepareDrawing();
     // ── ImGui 遅延初期化（初回のみ）──
     if (!s_imguiInitialized) {
         cccaster::diagnostics::startup::Mark("ui_begin");
@@ -263,6 +277,7 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
         ImGuiIO &io = ImGui::GetIO();
         io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\tahoma.ttf", 14.0f);
         io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\tahoma.ttf", 24.0f);
+        cccaster::hud::AddFonts();
 
         ImGui_ImplWin32_Init(params.hFocusWindow);
         ImGui_ImplDX9_Init(pDevice);
@@ -306,7 +321,9 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
         // 1Fに1回だけデータ準備（MBAAは1Fに多数のEndSceneを呼ぶため）
         ImGui_ImplDX9_NewFrame();
         ImGui_ImplWin32_NewFrame();
+        cccaster::hud::Prepare(pDevice);
         ImGui::NewFrame();
+        cccaster::hud::FinishInput();
 
         // GameMode → UiPhase 変換 → UIManager::Render
         auto uiPhase = cccaster::domain::ui::UiPhase::None;
@@ -350,7 +367,8 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
 
         try {
             cccaster::domain::ui::UIManager::Render(uiPhase);
-            if (uiPhase == cccaster::domain::ui::UiPhase::InGame) {
+            if (uiPhase == cccaster::domain::ui::UiPhase::InGame &&
+                !cccaster::game_interface::GameMem().IsPauseMenuOpen()) {
                 cccaster::domain::ui::LearningOverlay::Draw(SceneRunner::AppMode(), SceneRunner::FrameAdvantage());
                 cccaster::domain::ui::LearningOverlay::DrawFrameBar(SceneRunner::AppMode(), SceneRunner::FrameBar());
             }
@@ -369,6 +387,7 @@ void GameFrameOrchestrator::OnEndScene(LPDIRECT3DDEVICE9 pDevice) {
 // OnPreReset — Reset 前コールバック: ImGui D3D9 リソース解放
 // ============================================================================
 void GameFrameOrchestrator::OnPreReset(LPDIRECT3DDEVICE9 pDevice) {
+    cccaster::hud::Release();
     (void)pDevice;
     s_imguiFrameReady = false;
     cccaster::core::timer::FrameTiming::Get().Reset();

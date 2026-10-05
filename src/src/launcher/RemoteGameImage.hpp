@@ -1,6 +1,7 @@
 #pragma once
 #include "shared_contracts/GameBuild.hpp"
 #include "shared_contracts/GameImageAddress.hpp"
+#include "shared_contracts/GameCompatibility.hpp"
 #include <array>
 #include <windows.h>
 
@@ -18,8 +19,16 @@ inline bool ReadSuspendedImage(HANDLE process, HANDLE thread, LoadedImage &image
                            &base, sizeof(base), &count) || count != sizeof(base) || !base) return false;
     std::array<uint8_t, 4096> headers{};
     if (!ReadProcessMemory(process, reinterpret_cast<void *>(uintptr_t(base)), headers.data(),
-                           headers.size(), &count) || count != headers.size() ||
-        !ReadHeaders(headers, identity) || identity.machine != 0x14c) return false;
+                           headers.size(), &count) || count != headers.size()) return false;
+    // 既存の解析ツールへは従来どおり完全な版情報を返す。
+    // セクション名を変更した派生EXEでも、起動入口を構造から解決する。
+    if (!ReadHeaders(headers,identity)) {
+        game_compat::Image layout;
+        if (!layout.Parse(headers,false)) return false;
+        identity.machine=0x14c; identity.imageBase=base;
+        identity.entryRva=layout.entry; identity.imageSize=layout.size;
+    }
+    if (identity.machine!=0x14c) return false;
     image = {base, identity.imageSize};
     return image.Resolve(identity.entryRva, 2) != 0;
 }

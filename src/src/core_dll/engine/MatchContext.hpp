@@ -31,7 +31,7 @@ struct MatchContext {
     int16_t delay = cccaster::public_api::NetplaySettings::
         DefaultDelay; // 共有ディレイ (default: 2F — CLI DefaultDelay と一致)
     int16_t maxRollback = cccaster::public_api::NetplaySettings::
-        DefaultRollback; // 最大ロールバック深度 (default: 4F — CLI MaxRollback と一致)
+        DefaultRollback; // 通常対戦の内部予測上限（当面7F）。実際の巻戻し深度は到着入力に従う。
 
     // ---- フレームカウンタ ----
     uint32_t framesInPhase = 0; // 各画面に入ってからの単純な経過フレーム

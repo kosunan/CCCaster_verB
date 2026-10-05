@@ -17,6 +17,7 @@ from analyze_update_cadence import analyze_text as analyze_cadence
 
 ROOT = Path(__file__).resolve().parents[3]
 HARNESS = ROOT / 'src/src/harness'
+RUNTIME = ROOT / 'test/runtime'
 
 
 def sha(path):
@@ -112,14 +113,13 @@ def main():
         files = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
         result['source'] = {p: sha(ROOT/p) for p in sorted(set(files)) if p and (ROOT/p).is_file()
                             and '__pycache__' not in Path(p).parts
-                            and (p.startswith(('src/', 'server/')) or p.endswith('CMakeLists.txt')
-                                 or p == 'InputInjector.hpp')}
+                            and (p.startswith('src/') or p in ('VERSION', 'build.bat'))}
         head = subprocess.run(['git', 'rev-parse', '--verify', 'HEAD'], cwd=ROOT, text=True, capture_output=True)
         result['head'] = head.stdout.strip() if head.returncode == 0 else None
         run('build', ['cmake', '--build', 'build', '-j8'])
         artifacts = out/'artifacts'
         artifacts.mkdir()
-        for name in ('CCCaster_B.exe', 'libcccaster_hook.dll', 'harness.exe'):
+        for name in ('CCCaster_B.exe', 'CCCaster_B_GUI.exe', 'libcccaster_hook.dll', 'harness.exe'):
             binary = ROOT/'build/bin'/name
             data = binary.read_bytes()
             pe = struct.unpack_from('<I', data, 0x3c)[0]
@@ -172,11 +172,13 @@ def main():
                     if args.spike_states:
                         (folder/'states').mkdir(parents=True)
                         extra['CCCASTER_SPIKE_STATE_DIR'] = str(folder/'states')
-                    ini = {p: sha(p) for p in (ROOT/'_TEST_MBAACC').rglob('*.ini')}
+                    ini = {p: sha(p) for p in RUNTIME.rglob('*.ini')}
+                    if not ini:
+                        raise RuntimeError(f'設定ファイルがない: {RUNTIME}')
                     run(name, ps('run_bounded_real_pair.ps1', '-Seconds', seconds, '-Port', available_port(),
                                  '-Network', network, '-OutputDirectory', folder), extra, timeout=seconds+90)
-                    after = {p: sha(p) for p in (ROOT/'_TEST_MBAACC').rglob('*.ini')}
-                    if not ini or ini != after:
+                    after = {p: sha(p) for p in RUNTIME.rglob('*.ini')}
+                    if ini != after:
                         raise RuntimeError(f'{name}: INIの追加・削除・変更を検出')
                     run(name+'_compare', [sys.executable, HARNESS/'compare_rollback_pair.py', folder]+
                         ([] if network else ['--allow-no-rollback']))

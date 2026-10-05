@@ -25,6 +25,8 @@ void InputTimeline::Reset() {
     sampled_ = 0;
     consumed_ = 0;
     gate_ = {};
+    pacing_.Reset();
+    periodTicks_ = timer::NetworkPacing::Normal;
     base_ = next_ = lastValue_ = 0;
     captureTimes_ = {};
 }
@@ -33,12 +35,17 @@ void InputTimeline::Begin(uint32_t base, uint32_t firstCapture, game_interface::
     phaseParts_ = rateParts_ = 0;
     modelRevision_ = 0; modelReady_ = false;
     follower_.Reset();
+    pacing_.Reset();
+    periodTicks_ = timer::NetworkPacing::Normal;
+    netplay::NetplaySession::GetInstance().GetMetronome().SetFramePeriodTicks(periodTicks_);
     phaseError_ = phaseShift_ = phaseTheta_ = phaseRtt_ = 0;
     base_ = base;
     next_ = firstCapture;
     phase_ = phase;
     host_ = host;
     lastValue_ = 0;
+    if (phase == game_interface::GamePhase::Loading)
+        MatchInputBuffer::GetInstance().WriteLoadingInput(0, 0);
     sampled_ = firstCapture - 1;
     captureTimes_ = {};
     consumed_ = base;
@@ -85,22 +92,48 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
         std::lock_guard scheduleLock(shared.scheduleMutex);
         peer = shared.peerSchedule;
     }
-    const bool fresh = !host_ && phase_ != game_interface::GamePhase::CharaSelect &&
+    const bool loading = phase_ == game_interface::GamePhase::Loading;
+    const bool fresh = !host_ && !loading && phase_ != game_interface::GamePhase::CharaSelect &&
         peer.base == base_ && peer.frame > base_ && peer.stampTicks > 0 &&
         nowTicks >= peer.stampTicks && nowTicks-peer.stampTicks < 250000LL*60;
+    const bool peerFresh = peer.base == base_ && peer.stampTicks > 0 && nowTicks >= peer.stampTicks &&
+                          nowTicks - peer.stampTicks < 1000000LL * 60;
+    if (phase_ == game_interface::GamePhase::InGame) {
+        const auto &shared = netplay::NetplaySession::GetState();
+        const auto applied = shared.appliedFrame.load(std::memory_order_acquire);
+        const auto confirmed = shared.consumedFrame.load(std::memory_order_acquire);
+        const auto delay = SettingsCommands::delay.load(std::memory_order_relaxed);
+        const auto rollback = SettingsCommands::rollback.load(std::memory_order_relaxed);
+        const bool inEpoch = applied >= base_ && applied - base_ < FrameSequence::STRIDE && confirmed >= base_;
+        const auto outstanding = inEpoch && applied >= confirmed ? applied - confirmed : 0;
+        const auto capture = applied + uint32_t(std::max(0, delay)) + 1;
+        const auto backlog = inEpoch && next_ > capture ? next_ - capture : 0;
+        const auto meanRttUs = shared.meanRttUs.load(std::memory_order_acquire);
+        const auto requested = pacing_.Update(nowTicks, meanRttUs, delay);
+        const auto previousPeriod = periodTicks_;
+        // ホストが両者の要求の大きい方を採用。クライアントは採用済み周期へ追従する。
+        // 相手情報の一時失効中は急に60Hzへ戻さず、現在の周期を保持する。
+        if (host_) periodTicks_ = std::max(requested, peerFresh ? peer.requestedPeriodTicks : periodTicks_);
+        else if (peerFresh) periodTicks_ = peer.periodTicks;
+        netplay::NetplaySession::GetInstance().GetMetronome().SetFramePeriodTicks(periodTicks_);
+        if (previousPeriod != periodTicks_)
+            domain::session::DebugLog("[NetworkPace] f=%u periodTicks=%u requestTicks=%u meanRttUs=%lld outstanding=%u backlog=%u D=%d R=%d burst=%d",
+                next_, periodTicks_, requested, meanRttUs, outstanding, backlog, delay, rollback,
+                public_api::NetplaySettings::BurstRollback);
+    }
     using game_interface::GameInput;
     // 未消費枠と再送履歴を残す。ゲームが停止しても上書きしない。
     unsigned sampled = 0;
     while (nowTicks >= cadence_.NextTicks()) {
-        if (next_ - consumed_.load(std::memory_order_acquire) >= MatchInputBuffer::RING_SIZE - 32 ||
-            next_ >= base_ + FrameSequence::STRIDE - 1) {
+        if (!loading && (next_ - consumed_.load(std::memory_order_acquire) >= MatchInputBuffer::RING_SIZE - 32 ||
+            next_ >= base_ + FrameSequence::STRIDE - 1)) {
             overflow_ = true;
             active_ = false;
             PublishSchedule();
             return;
         }
         starting_ = false;
-        const bool missed = nowTicks - cadence_.NextTicks() >= timer::ClockFrame / scale;
+        const bool missed = nowTicks - cadence_.NextTicks() >= periodTicks_ / scale;
         static const bool timingTrace = std::getenv("CCCASTER_FRAME_TIMING_TRACE") != nullptr;
         if (timingTrace) {
             static int64_t maximum = 0, total = 0;
@@ -121,6 +154,15 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
             const auto pollStart = stages ? platform::RealMonotonicUs() : 0;
             if (testing::IsScriptedInputEnabled()) {
                 value = testing::ScriptedInput(next_ - base_, host_);
+                // ロード入力の実機試験。未指定なら従来の無操作ロードを比較基準にする。
+                if (loading) {
+                    value = 0;
+                    const auto side = std::getenv("CCCASTER_TEST_LOADING_INPUT");
+                    const bool press = side && (side[0] == 'b' || (side[0] == 'h' && host_) ||
+                                                (side[0] == 'c' && !host_));
+                    if (press && next_ >= 90 && next_ % 24 == 6)
+                        value = GameInput{0, CC_BUTTON_A}.Pack();
+                }
                 // 連続ドローの再現専用。戦闘と決着演出を無操作で自然終了させる。
                 static const bool drawIdle = std::getenv("CCCASTER_TEST_DRAW_IDLE") != nullptr;
                 if (drawIdle && phase_ == game_interface::GamePhase::InGame) value = 0;
@@ -139,17 +181,16 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
                             (scenario[0] == '3' && f == (host_ ? 2400u : 2460u)))
                             value = GameInput{0, CC_BUTTON_A}.Pack();
                         if (std::getenv("CCCASTER_TEST_NATIVE_RETRY")) {
-                            // 元ゲームは最初の決定で結果メニューを開く。次の決定で項目を選ぶ。
+                            // 表示用のA入力は送らない。無操作で開いた元メニューの項目だけ選ぶ。
                             value = 0;
                             if (chara) {
-                                if (f == 60 || (f >= 144 && f % 24 == 0))
+                                if (f >= 144 && f % 24 == 0)
                                     value = GameInput{0, CC_BUTTON_A}.Pack();
                                 if (f == 120) value = GameInput{2, 0}.Pack();
                             } else if ((scenario[0] == '0' && f >= (host_ ? 60u : 300u)) ||
                                        (scenario[0] == '3' && f >= (host_ ? 2400u : 2460u))) {
                                 if (f % 24 == 12) value = GameInput{0, CC_BUTTON_A}.Pack();
                             }
-                            if (scenario[0] == '3' && f == 60) value = GameInput{0, CC_BUTTON_A}.Pack();
                         }
                     }
                 }
@@ -158,7 +199,7 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
                 value = game_interface::DirectInputHook::GetLocalPlayerInput(host_, true);
             }
             if (testing::IsScriptedInputEnabled() && phase_ == game_interface::GamePhase::CharaSelect) {
-                if (std::getenv("CCCASTER_TEST_RANDOM_STAGE"))
+                if (std::getenv("CCCASTER_TEST_RANDOM_STAGE") || std::getenv("CCCASTER_TEST_FIXED_STAGE"))
                     value = GameInput{0, static_cast<uint16_t>((next_ - base_) % 24 == 18 ? CC_BUTTON_CONFIRM : 0)}.Pack();
                 if (std::getenv("CCCASTER_TEST_SELECTION_IDLE") && !host_ && next_ - base_ < 420)
                     value = 0; // 自分の操作が相手の7秒無操作に引きずられない実機試験。
@@ -205,7 +246,8 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
                 sendSamples[sendSampleCount++] = {next_, captureBegin, captureEnd, platform::RealMonotonicTicks()};
             else ++sendSampleDropped;
         }
-        MatchInputBuffer::GetInstance().WriteLocal(next_, value, 0, false);
+        if (loading) MatchInputBuffer::GetInstance().WriteLoadingInput(next_, value);
+        else MatchInputBuffer::GetInstance().WriteLocal(next_, value, 0, false);
         captureTimes_[next_ % captureTimes_.size()] = {next_, cadence_.NextTicks(), phaseError_, phaseShift_, phaseTheta_, phaseRtt_,
             phaseParts_,rateParts_,modelRevision_,modelReady_};
         phaseShift_ = 0;
@@ -213,10 +255,11 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
         if (stages)
             publishUs = platform::RealMonotonicUs();
         // 公開済みの締切は変更せず、次の1Fを一度だけ作る。
-        const auto rateGoal = host_ ? 0 : periodCorrectionParts;
+        const auto rateGoal = host_ || loading ? 0 : periodCorrectionParts * periodTicks_ / timer::ClockFrame;
         rateParts_ += std::clamp<int64_t>(rateGoal-rateParts_,-timer::ClockParts,timer::ClockParts);
+        const auto slowdownParts = (int64_t(periodTicks_) - timer::ClockFrame) * timer::ClockParts;
         auto nominal = cadence_;
-        nominal.AdvanceCorrected(rateParts_,scale);
+        nominal.AdvanceCorrected(slowdownParts+rateParts_,scale);
         phaseError_ = phaseShift_ = 0;
         modelReady_ = fresh && peer.modelReady;
         modelRevision_ = peer.modelRevision;
@@ -228,7 +271,7 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
             phaseShift_ = follower_.RecoveryTicks(phaseError_,next_,uint64_t(peer.stampTicks),scale);
         }
         phaseParts_ = follower_.UpdateParts(phaseError_,next_,modelReady_ && !phaseShift_,scale);
-        cadence_.AdvanceCorrected(rateParts_+phaseParts_,scale);
+        cadence_.AdvanceCorrected(slowdownParts+rateParts_+phaseParts_,scale);
         if (phaseShift_) {
             cadence_.ShiftTicks(phaseShift_);
             domain::session::DebugLog("[InputClock] REPHASE errorTicks=%lld shiftTicks=%lld frame=%u",
@@ -284,9 +327,11 @@ int64_t InputTimeline::NextDeadlineUs() {
 void InputTimeline::PublishSchedule() {
     auto &state = netplay::NetplaySession::GetMutableState();
     std::lock_guard lock(state.scheduleMutex);
-    state.localSchedule = active_
+    state.localSchedule = active_ && phase_ != game_interface::GamePhase::Loading
                               ? netplay::SharedSyncState::InputSchedule{base_, next_, cadence_.NextTicks(), 0}
                               : netplay::SharedSyncState::InputSchedule{};
+    state.localSchedule.periodTicks = periodTicks_;
+    state.localSchedule.requestedPeriodTicks = pacing_.Requested();
 }
 } // namespace cccaster::core::sync
 

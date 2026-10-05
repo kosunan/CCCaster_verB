@@ -2,7 +2,7 @@
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
 #include "core_dll/common/DebugLog.hpp"
-#include "shared_contracts/GameBuild.hpp"
+#include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include <windows.h>
 #include <MinHook.h>
 #include <cstring>
@@ -32,11 +32,9 @@ bool Install() {
     const char *v = std::getenv("CCCASTER_COMBAT_STRESS");
     if (!IsScriptedInputEnabled() || !v || (v[0] != '1' && v[0] != '2')) return false;
     auto module = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-    game_build::PeIdentity identity;
     constexpr unsigned char setter[] = {0x8a,0x43,0x10,0x84,0xc0,0x74,0x0f,0x88,0x87,0x76,0x01,0,0};
     if (module != 0x400000 ||
-        !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(module), 4096}, identity) ||
-        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity)) ||
+        !game_build::RuntimeValidated() ||
         std::memcmp(reinterpret_cast<void *>(0x45f4ee), setter, sizeof(setter))) return false;
     if (v[0] == '2') {
         auto r = MH_Initialize();

@@ -14,7 +14,7 @@ namespace cccaster::public_api {
 
 // Windows Shared Memory Name (Local prefix restricts to current user session)
 constexpr const char *IPC_SHARED_MEM_NAME = "Local\\CCCasterV10_SharedState";
-constexpr uint32_t IPC_VERSION_MAGIC = 0xCC100002;
+constexpr uint32_t IPC_VERSION_MAGIC = 0xCC100003;
 
 /**
  * @brief ゲーム起動時にDLLへ指示するモードの列挙型です。
@@ -75,6 +75,11 @@ struct SharedState {
     uint32_t totalRollbackFrames;
     uint32_t localExitReason; // 終了前に保存。送信と終了はランチャーが担当。
     uint32_t peerExitReason;
+    // 新しいP2P制御だけの情報。対戦UDPの通信版10は変更しない。
+    uint32_t udpProtocolSize;
+    uint8_t udpProtocol[1024];
+    uint8_t p2pMac[32];
+    uint8_t p2pSession[8];
 };
 #pragma pack(pop)
 
@@ -145,13 +150,12 @@ class IpcManager {
             return false;
         }
 
-        if (pBuf->magicVersion == IPC_VERSION_MAGIC) {
-            modifierFunc(*pBuf);
-        }
+        const bool valid = pBuf->magicVersion == IPC_VERSION_MAGIC;
+        if (valid) modifierFunc(*pBuf);
 
         UnmapViewOfFile(pBuf);
         CloseHandle(hMapFile);
-        return true;
+        return valid;
     }
 
     // ---- For DLL (Reader/Updater) ----

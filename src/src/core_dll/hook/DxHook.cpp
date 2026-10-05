@@ -5,6 +5,7 @@
 #include "core_dll/hook/GameReleaseGate.hpp"
 #include "core_dll/common/StartupTrace.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
+#include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
 #include "core_dll/mbaa_mem/IGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -78,6 +79,16 @@ void *endSceneTarget = nullptr;
 void *resetTarget = nullptr;
 bool probingDummy = false;
 bool firstEndSceneReady = false;
+using ClientRect = BOOL(WINAPI *)(HWND, LPRECT);
+ClientRect originalClientRect = nullptr;
+BOOL WINAPI RenderingClientRect(HWND hwnd, LPRECT rect) {
+    // 元ゲームは実ウィンドウ比率を見てバックバッファ内へ黒帯を作る。
+    // ボーダーレス側でも比率維持するため、この描画計算だけ元の大きさを返す。
+    // ImGui、D3D、通常のWindows処理は実際のクライアント領域を取得する。
+    if (rect && reinterpret_cast<uintptr_t>(__builtin_return_address(0)) == CC_RENDER_ASPECT_QUERY_RETURN &&
+        borderless::RenderingClientRect(hwnd, *rect)) return TRUE;
+    return originalClientRect(hwnd, rect);
+}
 
 // ゲーム入口解放前に設置し、同じslotがまだ自分の入口を指すときだけ復元する。
 bool WriteImport(DWORD *slot, DWORD expected, DWORD replacement) {
@@ -369,6 +380,7 @@ HRESULT WINAPI DxHook::Hooked_CreateDevice(IDirect3D9 *self, UINT adapter, D3DDE
         return originalCreateDevice(self, adapter, type, window, flags, parameters, device);
     cccaster::diagnostics::startup::Mark("game_device_begin");
     if(parameters) {
+        borderless::ConfigureDevice(window, *parameters, true);
         cccaster::domain::session::DebugLog("[D3DPresentConfig] interval=%u windowed=%d swap=%u buffers=%u",unsigned(parameters->PresentationInterval),int(parameters->Windowed),unsigned(parameters->SwapEffect),unsigned(parameters->BackBufferCount));
     }
     cccaster::domain::session::DebugLog("[D3DDeviceFlags] flags=%u", unsigned(flags));
@@ -398,6 +410,12 @@ bool DxHook::Initialize() {
     const auto status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED)
         return false;
+    const bool aspectReady = MH_CreateHook(reinterpret_cast<void*>(&GetClientRect),
+        reinterpret_cast<void*>(&RenderingClientRect), reinterpret_cast<void**>(&originalClientRect)) == MH_OK &&
+        MH_EnableHook(reinterpret_cast<void*>(&GetClientRect)) == MH_OK;
+    borderless::SetAspectQueryAvailable(aspectReady);
+    HookLog(aspectReady ? "[Borderless] native aspect query hook enabled" :
+                         "[Borderless] native aspect query hook failed; borderless unavailable");
     if (!cccaster::diagnostics::startup::Baseline() && cccaster::diagnostics::startup::HasGate()) {
         if (InstallFactoryImport()) {
             isInitialized = true;
@@ -418,6 +436,7 @@ void DxHook::Shutdown() {
     if (!isInitialized)
         return;
     game_release_gate::Remove();
+    borderless::ReleaseResources();
 
     // コールバックをクリア（ダングリングポインタ防止）
     onEndScene = nullptr;
@@ -445,6 +464,7 @@ void DxHook::Shutdown() {
     createDeviceTarget = endSceneTarget = resetTarget = nullptr;
     original_EndScene = original_BeginScene = original_Reset = original_Present = nullptr;
     firstEndSceneReady = false;
+    originalClientRect = nullptr;
 }
 
 // ============================================================================
@@ -584,8 +604,9 @@ HRESULT APIENTRY DxHook::Hooked_Present(LPDIRECT3DDEVICE9 pDevice, const RECT *p
         }
         using Present_t =
             HRESULT(APIENTRY *)(LPDIRECT3DDEVICE9, const RECT *, const RECT *, HWND, const RGNDATA *);
-        result = reinterpret_cast<Present_t>(original_Present)(pDevice, pSourceRect, pDestRect,
-                                                               hDestWindowOverride, pDirtyRegion);
+        if (!borderless::Present(pDevice, result))
+            result = reinterpret_cast<Present_t>(original_Present)(pDevice, pSourceRect, pDestRect,
+                                                                   hDestWindowOverride, pDirtyRegion);
         if (!cccaster::diagnostics::startup::presentRecorded && SUCCEEDED(result) &&
             cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_CHARA_SELECT) {
             cccaster::diagnostics::startup::presentRecorded = true;
@@ -614,6 +635,9 @@ HRESULT APIENTRY DxHook::Hooked_Present(LPDIRECT3DDEVICE9 pDevice, const RECT *p
 HRESULT APIENTRY DxHook::Hooked_Reset(LPDIRECT3DDEVICE9 pDevice,
                                       D3DPRESENT_PARAMETERS *pPresentationParameters) {
     scene_pair_merge::Reset();
+    borderless::ReleaseResources();
+    if (pPresentationParameters)
+        borderless::ConfigureDevice(nullptr, *pPresentationParameters, false);
     // Reset 前コールバック（リソース解放）
     if (onPreReset) {
         onPreReset(pDevice);

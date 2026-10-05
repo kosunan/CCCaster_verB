@@ -1,5 +1,7 @@
 #include "core_dll/sync/InputTimeline.hpp"
 #include "shared_contracts/IpcData.hpp"
+#include "shared_contracts/EmblemFile.hpp"
+#include "core_dll/common/DataPaths.hpp"
 #include <cstdlib>
 #include <cstring>
 #ifdef _WIN32
@@ -100,6 +102,11 @@ void NetplaySession::Start(bool isHost, const std::string &targetIp, uint16_t ta
     if (_running.load())
         return;
 
+    cccaster::emblem::Image localEmblem;
+    cccaster::emblem::Load(cccaster::core::paths::Resolve(cccaster::emblem::FileName), localEmblem);
+    cccaster::emblem::Store::Start(std::make_shared<const cccaster::emblem::Image>(localEmblem), isHost);
+    domain::session::DebugLog("[Emblem] local loaded id=%08x", localEmblem.id);
+
     cccaster::core::sync::InputTimeline::GetInstance().Reset();
     _isHost = isHost;
     _targetIp = targetIp;
@@ -140,6 +147,8 @@ void NetplaySession::Start(bool isHost, const std::string &targetIp, uint16_t ta
 
     // SharedSyncState リセット
     _state.localPhaseToken.store(0);
+    _state.localLoadingSkipEpoch.store(0);
+    _state.peerLoadingSkipEpoch.store(0);
     _state.consumedFrame.store(0);
     _state.peerConsumedFrame.store(0);
     {
@@ -163,6 +172,8 @@ void NetplaySession::Start(bool isHost, const std::string &targetIp, uint16_t ta
     _state.peerReady.store(false);
     _state.clockOffsetUs.store(0);
     _state.lastRttUs.store(0);
+    _state.meanRttUs.store(0);
+    _meanDelay.Reset();
 
     // InputBuffer 初期化
     cccaster::core::sync::MatchInputBuffer::GetInstance().Initialize(200, delayFrames, maxRollback);
@@ -251,8 +262,11 @@ void NetplaySession::DrainAndProcessPackets() {
         const auto decodeStart = stageTrace ? platform::RealMonotonicUs() : 0;
         const auto previousRttSample = _calc.GetRttSampleSerial();
         _calc.ProcessReceivedPacket(pkt.data, pkt.fromIp, pkt.fromPort, pkt.receiveTimeTicks);
-        if (_calc.GetRttSampleSerial() != previousRttSample)
+        if (_calc.GetRttSampleSerial() != previousRttSample) {
             domain::ui::StateUiLogic::RecordNetworkSample(_calc.GetLatestRttUs() / 1000.0f);
+            _state.meanRttUs.store(_meanDelay.Add(pkt.receiveTimeTicks, _calc.GetLatestRttUs()),
+                                   std::memory_order_release);
+        }
         if (_calc.IsPeerClosed()) {
             cccaster::domain::session::DebugLog("[SessionClose] Peer closed the game. Exiting immediately.");
             cccaster::public_api::IpcManager::UpdateOrReadState([](cccaster::public_api::SharedState &s) {

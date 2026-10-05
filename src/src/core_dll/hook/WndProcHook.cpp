@@ -1,4 +1,5 @@
 #include "core_dll/hook/WndProcHook.hpp"
+#include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/ui/UIManager.hpp"
 #include "shared_contracts/IpcData.hpp"
 #include "core_dll/common/Platform.hpp"
@@ -55,6 +56,10 @@ bool BeginDrag(HWND hwnd, LPARAM position) {
     if (drag.active || IsZoomed(hwnd) || GetCapture()) return false;
     RECT rect;
     if (!GetWindowRect(hwnd, &rect)) return false;
+    // 標準のタイトルバー処理を通さない分、押下時の前面化とフォーカスを補う。
+    // DefWindowProcの移動用モーダルループへは入らず、保持中もゲームへ戻る。
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
     drag.cursor = {GET_X_LPARAM(position), GET_Y_LPARAM(position)};
     drag.origin = {rect.left, rect.top};
     drag.moves = 0;
@@ -94,6 +99,7 @@ bool WndProcHook::Initialize(HWND hwnd) {
     }
     HookLog(buf);
 
+    if (original_WndProc) borderless::Attach(hwnd);
     return original_WndProc != nullptr;
 }
 
@@ -126,6 +132,7 @@ void WndProcHook::Shutdown() {
     if (original_WndProc && hooked_hwnd) {
         FinishDrag(hooked_hwnd, "shutdown");
         drag.escapeHeld = false;
+        borderless::Detach();
         SetWindowLongPtr(hooked_hwnd, GWLP_WNDPROC, (LONG_PTR)original_WndProc);
         original_WndProc = nullptr;
         hooked_hwnd = nullptr;
@@ -134,6 +141,10 @@ void WndProcHook::Shutdown() {
 
 LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     using namespace cccaster::public_api;
+    if (borderless::HandleMessage(hWnd, uMsg, wParam, lParam)) {
+        FinishDrag(hWnd, "display-toggle");
+        return 0;
+    }
     // 標準メニューもゲームスレッドを占有する。ユーザー承認により入口を無効化する。
     // アイコン押下自体の追跡も避け、右上の閉じるボタン/SC_CLOSEは後段で従来どおり扱う。
     if (((uMsg == WM_NCLBUTTONDOWN || uMsg == WM_NCLBUTTONUP || uMsg == WM_NCLBUTTONDBLCLK) &&

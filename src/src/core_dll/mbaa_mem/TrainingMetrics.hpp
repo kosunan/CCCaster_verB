@@ -3,6 +3,9 @@
 
 namespace cccaster {
 
+// MBAACCTrainingのdummy_st: 5=DUMMY、-1=ダミー録画中。16bit符号付きで読む。
+inline constexpr bool IsDummyEnemyStatus(int16_t status) { return status == 5 || status == -1; }
+
 enum class FrameAdvantageState : uint8_t { Unmeasured, Measuring, Confirmed };
 
 struct FrameAdvantageResult {

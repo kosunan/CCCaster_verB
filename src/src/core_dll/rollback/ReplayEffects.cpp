@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <MinHook.h>
 #include <array>
+#include "shared_contracts/NetplaySettings.hpp"
 #include <cstring>
 #include <cstdlib>
 
@@ -17,10 +18,11 @@ struct Sounds {
     uint32_t frame = 0;
     std::array<uint8_t, 1500> played{};
 };
-std::array<Sounds, 16> history;
+std::array<Sounds, cccaster::public_api::NetplaySettings::RollbackHistoryFrames> history;
 std::array<uint8_t, 1500> suppressed{};
 uint32_t activeFrame = 0;
 bool replaying = false;
+bool introPreview = false;
 uint32_t skipped = 0;
 bool soundProbe = false;
 using SoundUpdate = uintptr_t (__cdecl *)();
@@ -80,6 +82,8 @@ __attribute__((naked)) void cccaster_rng_hook() {
 void *cccaster_sfx_original = nullptr;
 uintptr_t cccaster_sfx_skip = 0x4DE223;
 __attribute__((force_align_arg_pointer)) int __cdecl cccaster_sfx_should_play(uint32_t sound) {
+    // 表示だけの先行1更新では、履歴・音声時計への記録も実際の再生も抑止する。
+    if (introPreview) return 0;
     if (soundProbe) ++soundCalls;
     cccaster::diagnostics::sound_api::SetSound(sound);
     if (sound >= 1500)
@@ -177,6 +181,7 @@ void EndReplayEffects() {
     if (cccaster::testing::IsScriptedInputEnabled())
         cccaster::domain::session::DebugLog("[Rollback] SFX suppressed=%u", skipped);
 }
+void SetIntroPreviewEffects(bool active) { introPreview = active; }
 void FlushSoundProbe() {
     cccaster::diagnostics::sound_api::Flush();
     for (unsigned i = 0; i < soundSamplesUsed; ++i) {

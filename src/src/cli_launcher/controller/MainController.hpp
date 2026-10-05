@@ -3,6 +3,9 @@
 #include <string>
 #include <functional>
 #include <cstdint>
+#include <memory>
+
+namespace cccaster::p2p { struct Result; }
 
 #include "shared_contracts/IpcData.hpp"
 
@@ -31,9 +34,11 @@ class MainController {
     bool _guiSession = false;
     bool _isIpv6 = false;
     bool _isHost = false;
+    bool _allowSpectators = true;
     std::string _targetIp;
     uint16_t _port = 0;
     std::string _connectionHash; // クライアント用: 入力されたハッシュ文字列
+    std::shared_ptr<cccaster::p2p::Result> _p2p;
 
     // Negotiation結果 (FastBoot中の中継用)
     std::string _peerIp;

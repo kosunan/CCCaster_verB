@@ -1,0 +1,125 @@
+"""実通信probeと実ゲームのP2P確認。ログをtest/logsへ保存する。"""
+import argparse
+import datetime
+import json
+import pathlib
+import re
+import subprocess
+import shutil
+import sys
+import threading
+import time
+from test_p2p_service import ROOT, PROBE, Service, free_port
+from real_game_checkpoint import clean_environment, evaluate, protected_hashes
+
+
+def run_real(args, output):
+    from run_stage_rematch import free_match_port
+    shell = shutil.which('pwsh')
+    if not shell:
+        raise RuntimeError('PowerShell 7 (pwsh)が必要です')
+    env = clean_environment()
+    env['CCCASTER_NTFY_SERVER'] = args.server
+    config = dict(spectator=args.standby_spectator and not args.no_spectators)
+    config_path = output / 'checkpoint_config.json'
+    config_path.write_text(json.dumps(config), encoding='utf-8')
+    command = [shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+               str(ROOT / 'src/src/harness/run_bounded_real_pair.ps1'),
+               '-Seconds', str(args.seconds), '-Port', str(free_match_port()), '-Network', '15,25,5',
+               '-UseConnectionCode', '-CloseSide', '1', '-OutputDirectory', str(output)]
+    if not args.fixed_duration:
+        command += ['-CheckpointConfig', str(config_path), '-Python', sys.executable]
+    if args.standby_spectator:
+        command.append('-StandbySpectator')
+    if args.no_spectators:
+        command.append('-NoSpectators')
+    runtime = args.test_root.resolve()
+    command += ['-TestRoot', str(runtime)]
+    before = protected_hashes(runtime)
+    (output / 'protected_before.json').write_text(json.dumps(before, indent=2), encoding='utf-8')
+    result = dict(passed=False, command=command,
+                  environment={k: v for k, v in env.items() if k.startswith('CCCASTER_')})
+    started = time.monotonic()
+    try:
+        run = subprocess.run(command, env=env)
+        result['exit_code'] = run.returncode
+        result.update(evaluate(output, config))
+        result['passed'] &= run.returncode == 0
+    except Exception as exc:
+        result.update(passed=False, error=str(exc))
+    finally:
+        result['protected_unchanged'] = before == protected_hashes(runtime)
+        result['protected_count'] = len(before)
+        result['passed'] &= result['protected_unchanged']
+        result['elapsed_seconds'] = round(time.monotonic() - started, 3)
+        (output / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(dict(passed=result['passed'], seconds=result['elapsed_seconds'], logs=str(output))), flush=True)
+    return 0 if result['passed'] else 1
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--server", help="省略時はローカルの通知サーバー")
+    parser.add_argument("--real-game", action="store_true")
+    parser.add_argument("--standby-spectator", action="store_true", help="対戦参加前に6文字コードで観戦待機")
+    parser.add_argument("--no-spectators", action="store_true", help="観戦拒否と実ゲームのTCP待受停止を確認")
+    parser.add_argument('--seconds', type=int, default=40, help='試験上限秒。条件達成で早期終了')
+    parser.add_argument('--fixed-duration', action='store_true', help='指定秒まで継続する比較・耐久用')
+    parser.add_argument('--test-root', type=pathlib.Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')
+    args = parser.parse_args()
+    if args.seconds < 1:
+        parser.error('--secondsは1以上')
+    output = ROOT / "test/logs" / ("p2p_real_" if args.real_game else "p2p_smoke_")
+    output = output.with_name(output.name + datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f"))
+    output.mkdir()
+    service = None
+    if not args.server:
+        service = Service()
+        threading.Thread(target=service.serve_forever, daemon=True).start()
+        args.server = f"http://127.0.0.1:{service.server_port}"
+    processes, files = [], []
+    try:
+        if args.real_game:
+            return run_real(args, output)
+        for role in ("host", "guest"):
+            code = "host"
+            if role == "guest":
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    text = (output / "host.log").read_text(encoding="utf-8", errors="replace")
+                    match = re.search(r"\[P2P_CODE\] (\S+)", text)
+                    if match:
+                        code = match.group(1)
+                        break
+                    if processes[0].poll() is not None:
+                        raise RuntimeError("host exited before issuing code")
+                    time.sleep(.1)
+                if code == "host":
+                    raise RuntimeError("host code timeout")
+            file = open(output / f"{role}.log", "w", encoding="utf-8")
+            files.append(file)
+            process = subprocess.Popen([str(PROBE), code, str(free_port()), args.server, "local"],
+                                       stdout=file, stderr=subprocess.STDOUT)
+            processes.append(process)
+        for process in processes:
+            process.wait(timeout=55)
+        return 0 if all(p.returncode == 0 for p in processes) else 1
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+            process.wait(timeout=5)
+        for file in files:
+            file.close()
+        if service:
+            service.running = False
+            with service.cv:
+                service.cv.notify_all()
+            service.shutdown()
+            service.server_close()
+            (output / "service_requests.txt").write_text(repr(service.requests), encoding="utf-8")
+        print(f"Logs: {output}", flush=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

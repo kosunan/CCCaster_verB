@@ -1,5 +1,6 @@
 add_executable(CCCaster_B 
     main.cpp
+    ../gui_launcher/Worker.cpp
     ConfigManager.cpp
     controller/MainController.cpp
     ui/ConsoleRenderer.cpp
@@ -15,7 +16,7 @@ target_include_directories(CCCaster_B PRIVATE
 )
 
 # Link local libraries and system APIs
-target_link_libraries(CCCaster_B PRIVATE launcher)
+target_link_libraries(CCCaster_B PRIVATE launcher cccaster_p2p)
 
 if(WIN32)
     target_link_libraries(CCCaster_B PRIVATE ws2_32 wsock32 wininet winmm)

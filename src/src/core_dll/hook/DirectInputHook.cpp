@@ -1,3 +1,4 @@
+#include "shared_contracts/NativePath.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
 #include "core_dll/hook/TimeHooks.hpp"
@@ -637,8 +638,7 @@ static bool CheckInputBind(int joyId, const std::string &bindStr) {
             ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU)) & 0x8000))
             return false;
         const auto key = g_keyboardKeys.find(bindStr);
-        if (key != g_keyboardKeys.end() && key->second == VK_F1 &&
-            cccaster::domain::ui::FrameBarDisplay::Available(cccaster::domain::session::SceneRunner::AppMode()))
+        if (key != g_keyboardKeys.end() && key->second == VK_F1)
             return false;
         if (key != g_keyboardKeys.end() &&
             ((hudShortcut.f3 && key->second == VK_F3) ||
@@ -696,10 +696,10 @@ static std::string GetDeviceFileName(int joyId) {
     if (joyId >= 0 && joyId < static_cast<int>(g_Controllers.size())) {
         const std::string unique = cccaster::core::paths::Resolve(
             sanitizedName + "__" + FormatGuid(g_Controllers[joyId].instanceGuid) + ".ini");
-        std::ifstream uniqueFile(unique);
+        std::ifstream uniqueFile(cccaster::Utf8Path(unique));
         if (uniqueFile.good())
             return unique;
-        std::ifstream legacyFile(legacy);
+        std::ifstream legacyFile(cccaster::Utf8Path(legacy));
         if (!legacyFile.good())
             return unique;
     }

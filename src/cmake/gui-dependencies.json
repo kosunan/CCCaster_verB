@@ -1,0 +1,27 @@
+{
+  "rmluiVersion": "6.3",
+  "rmluiCommit": "ba95ffe8bfb6370efb2cdcca927eaad4710c5413",
+  "freetypeVersion": "2.13.3",
+  "files": [
+    {
+      "name": "rmlui-6.3.zip",
+      "url": "https://codeload.github.com/mikke89/RmlUi/zip/ba95ffe8bfb6370efb2cdcca927eaad4710c5413",
+      "sha256": "ed3162ef67d24b7d91557d710b3734433cfc2a8659c55b4d68a11de38b178487"
+    },
+    {
+      "name": "freetype-2.13.3.zip",
+      "url": "https://codeload.github.com/freetype/freetype/zip/refs/tags/VER-2-13-3",
+      "sha256": "a7165cb405dfce349ae64d6f59efb2567565ca8edbacbeff2a8d0e4cfa779cf5"
+    },
+    {
+      "name": "NotoSansJP.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/66a36c8c94b1a5d992ee4e7f392fccfe4945767c/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+      "sha256": "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f"
+    },
+    {
+      "name": "OFL.txt",
+      "url": "https://raw.githubusercontent.com/google/fonts/66a36c8c94b1a5d992ee4e7f392fccfe4945767c/ofl/notosansjp/OFL.txt",
+      "sha256": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9"
+    }
+  ]
+}

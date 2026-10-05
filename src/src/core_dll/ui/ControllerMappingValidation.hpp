@@ -7,6 +7,23 @@
 
 namespace cccaster::domain::ui {
 
+inline std::string ControllerBindingName(const std::string& value) {
+    if(value.empty()) return "--";
+    if(value.size()>1 && value[0]=='B' && value.size()<5 &&
+       value.find_first_not_of("0123456789",1)==std::string::npos)
+        return "Button "+std::to_string(std::stoi(value.substr(1))+1);
+    if(value.size()==4 && value[0]=='H' && value[2]=='_') {
+        const char* dir=value[3]=='8' ? "UP" : value[3]=='2' ? "DOWN" :
+                        value[3]=='4' ? "LEFT" : value[3]=='6' ? "RIGHT" : nullptr;
+        if(dir) return "D-pad "+std::string(dir);
+    }
+    if(value=="LeftShift") return "L.Shift";
+    if(value=="RightShift") return "R.Shift";
+    if(value=="LeftCtrl") return "L.Ctrl";
+    if(value=="RightCtrl") return "R.Ctrl";
+    return value;
+}
+
 struct ControllerMappingValidation {
     bool valid = false;
     std::string message;
@@ -28,7 +45,7 @@ inline ControllerMappingValidation ValidateControllerMapping(const cccaster::inp
             continue; // FN1/FN2/A+Bは未使用を許可する。
         const auto [it, inserted] = firstUse.emplace(binds[i], i);
         if (!inserted)
-            return {false, std::string(kNames[it->second]) + " and " + kNames[i] + " both use " + binds[i]};
+            return {false, std::string(kNames[it->second]) + " and " + kNames[i] + " both use " + ControllerBindingName(binds[i])};
     }
     return {true, "Mapping is valid"};
 }

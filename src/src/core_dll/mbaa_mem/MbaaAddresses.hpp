@@ -60,6 +60,8 @@
 #define CC_WINDOW_PROC_ADDR ((char *)0x40D4C0)      // Location of WindowProc
 #define CC_LOOP_START_ADDR ((char *)0x40D330)       // Start of the main event loop
 #define CC_SCREEN_WIDTH_ADDR ((uint32_t *)0x54D048) // The actual width of the main viewport
+// Ver.1.07 Rev.1.4.0: 0x432F03のGetClientRect直後。描画の比率計算だけを捕捉する。
+#define CC_RENDER_ASPECT_QUERY_RETURN (uintptr_t(0x432F09))
 #define CC_WORLD_TIMER_ADDR ((uint32_t *)0x55D1D4)  // Frame step timer, always counting up
 #define CC_PAUSE_FLAG_ADDR ((uint8_t *)0x55D203)    // 1 when paused
 // #define CC_SKIP_FRAMES_ADDR         ( ( uint32_t * ) 0x55D25C ) // 使用禁止: 描画制御は API hook で行う
@@ -295,7 +297,7 @@
 // ============================================================================
 // FastBoot / Patch 用アドレス
 // ============================================================================
-#define CC_AUTO_ACTIVATE_ADDR ((char *)0x40E0C0) // ウィンドウの非アクティブ判定関数
+// 0x40E0C0はMOV即値の途中。旧AUTO_ACTIVATEパッチには使用しない。
 #define CC_FORCE_GOTO_ADDR ((char *)0x42B475)    // メニュー遷移時のJMP強制アドレス
 
 // ============================================================================

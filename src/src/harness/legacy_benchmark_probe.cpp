@@ -65,7 +65,7 @@ static DWORD WINAPI initialize(void *) {
     constexpr unsigned char expected[] = {0x83,0x3d,0x50,0xd2,0x55,0x00,0x00};
     if (base != 0x400000 ||
         !cccaster::game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base),4096},identity) ||
-        cccaster::game_build::IdentifyHeaders(identity) != cccaster::game_build::Edition::Carnival140 ||
+        !cccaster::game_build::SupportsRuntime(cccaster::game_build::IdentifyHeaders(identity)) ||
         std::memcmp(reinterpret_cast<void *>(0x433401),expected,sizeof(expected))) {
         header->status = 4; return 4;
     }

@@ -26,6 +26,7 @@ add_library(cccaster_hook SHARED
 
     # === hook/ — 外部 API フック ===
     hook/DxHook.cpp
+    hook/BorderlessDisplay.cpp
     hook/TimeHooks.cpp
     hook/DirectInputHook.cpp
     hook/WndProcHook.cpp
@@ -55,18 +56,16 @@ add_library(cccaster_hook SHARED
     rollback/ReplayEffects.cpp
     # === ui/ — 表示 ===
     ui/OverlayRenderer.cpp
+    ui/HudResources.cpp
     ui/State_Ui_Logic.cpp
     ui/ScoreBroadcast.cpp
     ui/LearningOverlay.cpp
     ui/State_Ui_View.cpp
     ui/InGame_Ui_View.cpp
-    ui/Rematch_Ui_View.cpp
-    ui/NetplayOverlay.cpp
     ui/UIManager.cpp
     ui/CharaSelect_Ui_View.cpp
     ui/Controller_Ui_View.cpp
     ui/Controller_Ui_Logic.cpp
-    ui/ControllerMapper.cpp
 
     # === 外部参照 ===
     ../cli_launcher/ConfigManager.cpp
@@ -85,7 +84,7 @@ target_include_directories(cccaster_hook PRIVATE
 
 if(WIN32)
     # DLLも静的リンクで構成し、ランタイム非依存にする
-    target_link_options(cccaster_hook PRIVATE -static -static-libgcc -static-libstdc++)
+    target_link_options(cccaster_hook PRIVATE -static -static-libgcc -static-libstdc++ -Wl,--kill-at)
 endif()
 
 target_link_libraries(cccaster_hook PRIVATE cccaster_transport)

@@ -69,6 +69,7 @@ struct SharedSyncState {
     std::atomic<bool> peerReady{false};
     std::atomic<int64_t> clockOffsetUs{0};
     std::atomic<int64_t> lastRttUs{0};
+    std::atomic<int64_t> meanRttUs{0};
 
     // ─── IntroBarrier / Phase遷移同期（ゲーム↔通信スレッド間）───
     std::atomic<bool> localPhaseReady{false}; // ゲームスレッドが設定
@@ -80,6 +81,8 @@ struct SharedSyncState {
 
     std::atomic<uint8_t> localPhaseKind{0}, peerPhaseKind{0};
     std::atomic<uint64_t> localPhaseToken{0}, peerPhaseToken{0};
+    // スキップ対象の対戦開始世代。先着後も再送し、旧試合の要求を次へ持ち込まない。
+    std::atomic<uint32_t> localLoadingSkipEpoch{0}, peerLoadingSkipEpoch{0};
     std::atomic<uint32_t> consumedFrame{0}, peerConsumedFrame{0};
     std::atomic<uint32_t> appliedFrame{0}; // 巻き戻し中も後退しない適用済み先端
     // 入力枠と締切は一組で公開する。相手の締切はローカル時計へ換算済み。
@@ -90,6 +93,8 @@ struct SharedSyncState {
         int64_t periodCorrectionParts = 0;
         bool modelReady = false;
         uint32_t modelRevision = 0;
+        uint32_t periodTicks = timer::NetworkPacing::Normal;
+        uint32_t requestedPeriodTicks = timer::NetworkPacing::Normal;
     };
     std::mutex scheduleMutex;
     InputSchedule localSchedule{}, peerSchedule{};
@@ -205,6 +210,7 @@ class NetplaySession {
 
     // ─── 委譲先 ────────────────────────────────────────
     SyncCodec _calc;
+    timer::MeanNetworkDelay _meanDelay;
     std::vector<uint8_t> _sendBuffer; // 通信スレッド専有。OS送信から戻ったら再利用可能。
     Metronome _metronome;
 

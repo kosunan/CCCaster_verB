@@ -43,7 +43,9 @@
 #include "core_dll/rollback/RollbackStates.hpp"
 #include <cstdlib>
 #include "core_dll/engine/RematchChoice.hpp"
+#include "core_dll/engine/StageRematch.hpp"
 #include "core_dll/engine/LocalInputGate.hpp"
+#include "core_dll/engine/TrainingInputDelay.hpp"
 #include "core_dll/engine/RetryInputGate.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 
@@ -58,6 +60,7 @@ struct SceneRuntime {
     cccaster::spectator::Playback spectator;
     bool broadcasting = false;
     bool spectatorSelectionSent = false;
+    std::array<uint32_t, 2> spectatorSelectionRevisions{};
     uint32_t spectatorNext = 0;
     cccaster::spectator::Record spectatorPending;
     bool spectatorHasPending = false;
@@ -65,6 +68,8 @@ struct SceneRuntime {
     FrameAdvantageTracker advantage;
     FrameBarHistory frameBar;
     TrainingState trainingState;
+    TrainingInputDelay trainingDelay;
+    std::atomic<int> requestedTrainingDelay{-1};
     MatchContext *context = nullptr;
     scene::LocalInputGate localInputGate, secondInputGate;
     std::atomic<bool> ready{false};
@@ -80,6 +85,7 @@ struct SceneRuntime {
     bool snapshotReady = false;
     uint32_t retryDriveFrames = 0;
     bool fastRematchTransition = false;
+    scene::StageRematch stageRematch;
     int64_t rematchTransitionStarted = 0;
     int64_t replayStarted = 0;
     int64_t replayBeginTicks = 0, replayRestoreEnd = 0, replaySaveTicks = 0, replayPrepareTicks = 0;
@@ -88,6 +94,10 @@ struct SceneRuntime {
     int64_t selectionStarted = 0;
     bool selectionReleased = false;
     int64_t selectionTick = 0;
+    int64_t loadingStarted = 0;
+    uint32_t loadingInputTick = 0, loadingButtons = 0;
+    uint32_t loadingSkipFrames = 0;
+    bool loadingSkipRequested = false;
     scene::RetryInputGate retryInputGate;
     int64_t retryTick = 0;
 };
@@ -166,10 +176,12 @@ void TraceFrame(uint32_t frame, GameInput p1, GameInput p2) {
 }
 
 void Fail(Error error, const char *reason) {
+    cccaster::game_interface::GameMem().SetStageRematchFastPath(false);
     cccaster::domain::ui::score_broadcast::Clear();
     InputTimeline::GetInstance().Pause();
     runtime.running = false;
     runtime.fastRematchTransition = false;
+    runtime.stageRematch = {};
     FrameControl::SetModeNormalSpeed();
     DebugLog("[InputGate] FAILED reason=%s frame=%u WT=%u", reason, runtime.sequence.Next(),
              cccaster::game_interface::GameMem().WorldTimer());
@@ -327,14 +339,25 @@ void SceneRunner::Init(MatchContext &ctx) {
     runtime.advantage.Reset();
     runtime.frameBar.Reset();
     runtime.trainingState.Reset();
+    runtime.trainingDelay = {};
+    runtime.requestedTrainingDelay = -1;
+    if (ctx.appMode == 1) {
+        ctx.maxRollback = 0; // オフラインでは予測・ロールバックを行わない。
+        cccaster::domain::ui::StateUiLogic::SetDelay(ctx.delay);
+        cccaster::domain::ui::StateUiLogic::SetRollback(0);
+    }
     cccaster::domain::ui::score_broadcast::Publish(runtime.score.Snapshot());
     cccaster::core::sync::SettingsCommands::Reset(ctx.delay, ctx.maxRollback);
     runtime.context = &ctx;
     runtime.fastRematchTransition = false;
+    runtime.stageRematch = {};
     runtime.localInputGate = {};
     runtime.secondInputGate = {};
     runtime.running = true;
     runtime.sequence = FrameSequence{};
+    runtime.loadingStarted = 0;
+    runtime.loadingInputTick = runtime.loadingButtons = runtime.loadingSkipFrames = 0;
+    runtime.loadingSkipRequested = false;
     runtime.replayFrame = runtime.replayTarget = runtime.lastForced = 0;
     runtime.snapshotReady = false;
     runtime.previous = GamePhase::Unknown;
@@ -413,6 +436,35 @@ void SceneRunner::FlushCadence() {
         cccaster::platform::RealMonotonicTicks(), path.c_str());
 }
 
+void SceneRunner::PrepareDrawing() {
+    if (!IsReady() || !runtime.running || !runtime.context || runtime.replayFrame)
+        return;
+    auto &mem = cccaster::game_interface::GameMem();
+    if (!mem.IsAvailable()) return;
+    const auto phase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
+    if (phase == GamePhase::InGame && !mem.SetStageRematchFastPath(false)) {
+        Fail(Error::SyncTimeout, "stage rematch code restoration failed");
+        return;
+    }
+    if (runtime.context->appMode == 2) {
+        runtime.spectator.PrepareDrawing(phase);
+        return;
+    }
+    if (runtime.context->appMode == 0 && phase == GamePhase::InGame && runtime.previous == GamePhase::Loading)
+        FrameControl::WriteInput({}, {}); // ロードの決定入力を開始同期・イントロへ持ち込まない。
+    // StepはPresentの後。そこで解除すると最初のイントロ画像を捨てたまま
+    // 世代/RNG/開始時刻の合意を待つため、描画側で先に通常モードへ戻す。
+    // 遷移状態の更新はStepに残し、ロールバック中の描画省略には触れない。
+    if ((runtime.stageRematch.active && phase == GamePhase::InGame) ||
+        (runtime.fastRematchTransition && !runtime.stageRematch.active && phase != GamePhase::Rematch))
+        FrameControl::SetModeNormalSpeed();
+    // 入力時計への追いつきでも登場演出の前進画像は提示する。
+    // 締切・追いつき更新は保持し、再計算は上のreplayFrame判定で対象外にする。
+    if (runtime.context->appMode == 0 && phase == GamePhase::InGame &&
+        (mem.IntroState() == 1 || mem.IntroState() == 2))
+        cccaster::core::SpeedFlags::RenderSkip().store(false, std::memory_order_release);
+}
+
 void SceneRunner::Step() {
     using OfflinePacing = cccaster::core::timer::OfflinePacing;
     OfflinePacing::Flush();
@@ -442,6 +494,11 @@ void SceneRunner::Step() {
     }
     auto &inputBuffer = MatchInputBuffer::GetInstance();
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
+    if (runtime.loadingStarted && earlyPhase != GamePhase::Loading) {
+        DebugLog("[LoadingInput] END role=%d elapsedUs=%lld qpc=%lld", int(ctx.isHost),
+            cccaster::platform::RealMonotonicUs() - runtime.loadingStarted, cccaster::platform::RealMonotonicUs());
+        runtime.loadingStarted = 0;
+    }
     if (ctx.appMode == 2) {
         if (!scene::SceneFastBoot::IsComplete()) {
             scene::SceneFastBoot::ProcessFrame(true);
@@ -479,9 +536,22 @@ void SceneRunner::Step() {
     // 遷移先を検出した最初のPresentで解除。境界の通信待機よりも先に戻す。
     if (runtime.fastRematchTransition && earlyPhase != GamePhase::Rematch) {
         runtime.fastRematchTransition = false;
-        FrameControl::SetModeNormalSpeed();
+        if (!runtime.stageRematch.active) FrameControl::SetModeNormalSpeed();
         DebugLog("[Rematch] FAST OFF phase=%u elapsedUs=%lld", static_cast<unsigned>(earlyPhase),
                  cccaster::platform::RealMonotonicUs() - runtime.rematchTransitionStarted);
+    }
+    if (runtime.stageRematch.active) {
+        if (earlyPhase == GamePhase::InGame) {
+            if (!mem.SetStageRematchFastPath(false)) {
+                Fail(Error::SyncTimeout, "stage rematch code restoration failed"); return;
+            }
+            runtime.stageRematch = {};
+            FrameControl::SetModeNormalSpeed();
+            DebugLog("[StageRematch] FAST OFF phase=%u elapsedUs=%lld", static_cast<unsigned>(earlyPhase),
+                cccaster::platform::RealMonotonicUs() - runtime.rematchTransitionStarted);
+        } else if (cccaster::platform::RealMonotonicUs() - runtime.rematchTransitionStarted > 30000000) {
+            Fail(Error::SyncTimeout, "random stage rematch transition timeout"); return;
+        }
     }
     auto &timeline = InputTimeline::GetInstance();
     if (ctx.appMode == 0 && !runtime.replayFrame &&
@@ -690,12 +760,31 @@ reconcileBoundary:
         ++ctx.framesInPhase;
         return;
     }
-    FrameControl::SetModeNormalSpeed();
+    if (runtime.stageRematch.active) {
+        FrameControl::SetModeHighSpeedSkip();
+        if (phase != GamePhase::CharaSelect) {
+            // 再抽選ONCEのロード・演出だけ。戦闘入口では既存の世代/RNG合流へ戻る。
+            GameInput nav{};
+            if (phase == GamePhase::Loading && ++runtime.retryDriveFrames % 8 == 0)
+                nav.buttons = CC_BUTTON_A | CC_BUTTON_CONFIRM;
+            FrameControl::WriteInput(nav, nav);
+            runtime.previous = phase;
+            runtime.previousIntro = intro;
+            runtime.haveWorld = false;
+            ++ctx.framesInPhase;
+            return;
+        }
+    } else FrameControl::SetModeNormalSpeed();
     auto &metronome = Session::GetInstance().GetMetronome();
     int64_t offlineDue = 0;
     if (ctx.appMode != 0) {
         // オフラインではNetplaySession::Startを通らないため、初回通常更新で始動。
         // 起動中の高速化を終えた後、処理込みの絶対締切で60Hzを刻む。
+        // ロードで過ぎた締切をイントロへ持ち越すと、最初の画像の直後に
+        // 次の画像を提示してDWMに捨てられる。場面の入口だけ時計を張り直す。
+        // 対戦中の連続フレームと通信対戦の締切には触らない。
+        if (phase == GamePhase::InGame && runtime.previous != GamePhase::InGame)
+            metronome.Stop();
         if (!metronome.IsRunning()) metronome.Start();
         const bool finalGate = OfflinePacing::Mode() != OfflinePacing::Variant::Legacy;
         // トレーニングのキャラセレは対戦の同期締切を持たない。ここだけ最後の
@@ -712,6 +801,15 @@ reconcileBoundary:
         auto output1 = runtime.localInputGate.Apply(GameInput::Unpack(raw1), configuring);
         auto output2 = runtime.secondInputGate.Apply(GameInput::Unpack(raw2), configuring);
         if (ctx.appMode == 1) {
+            const int requested = runtime.requestedTrainingDelay.exchange(-1);
+            if (requested >= 0 && requested != ctx.delay &&
+                (phase == GamePhase::CharaSelect || phase == GamePhase::InGame)) {
+                ctx.delay = requested;
+                runtime.trainingDelay.Clear();
+                SettingsCommands::delay = requested;
+                cccaster::domain::ui::StateUiLogic::SetDelay(requested);
+                DebugLog("[TrainingDelay] ACTIVE D=%d R=0 mode=%u", requested, mem.GameMode());
+            }
             mem.SetTrainingHold(false);
             const auto beforeWorld = mem.WorldTimer();
             const auto sample = phase == GamePhase::InGame ? mem.ReadTrainingFrame() : TrainingFrameSample{};
@@ -721,9 +819,12 @@ reconcileBoundary:
             const auto event = runtime.trainingState.Step(ctx.appMode, phase == GamePhase::InGame,
                 configuring, trainingButtons, sample,
                 mem, cccaster::platform::RealMonotonicUs());
-            if (event == TrainingStateEvent::Loaded) {
+            const bool trainingRestarted = event == TrainingStateEvent::Loaded ||
+                                           event == TrainingStateEvent::RecordingRestarted;
+            if (trainingRestarted) {
                 runtime.advantage.Reset();
                 runtime.frameBar.Reset();
+                runtime.trainingDelay.Clear();
             }
             if (event != TrainingStateEvent::None)
                 DebugLog("[TrainingState] event=%d saved=%d beforeWT=%u afterWT=%u stopped=%d paused=%d players=%d/%d restoredStopped=%d", int(event),
@@ -731,14 +832,23 @@ reconcileBoundary:
                     int(sample.paused), int(sample.playerStopped[0]), int(sample.playerStopped[1]),
                     int(event == TrainingStateEvent::Loaded && mem.ReadTrainingFrame().stopped));
             if (phase == GamePhase::InGame) {
-                // FN1のゲーム本来の機能はTraining戦闘中には渡さない。
+                // DUMMYでは直接ロード。それ以外は従来の標準リセット完了後にロード。
                 output1.buttons &= ~CC_BUTTON_FN1; output2.buttons &= ~CC_BUTTON_FN1;
                 if (!runtime.trainingState.AllowResetInput()) {
                     output1.buttons &= ~CC_BUTTON_FN2; output2.buttons &= ~CC_BUTTON_FN2;
                 }
-                if (runtime.trainingState.Holding()) output1 = output2 = {};
+                if (runtime.trainingState.Holding() || trainingRestarted) output1 = output2 = {};
             }
             mem.SetTrainingHold(runtime.trainingState.Holding());
+            const bool delayActive = phase == GamePhase::InGame && sample.valid && !sample.paused &&
+                !configuring && !runtime.trainingState.Holding() && mem.IntroState() == 0;
+            const auto before1 = output1, before2 = output2;
+            const auto delayed = runtime.trainingDelay.Apply(output1, output2, ctx.delay, delayActive);
+            output1 = delayed[0]; output2 = delayed[1];
+            static const bool traceDelay = std::getenv("CCCASTER_TRAINING_DELAY_TRACE") != nullptr;
+            if (traceDelay)
+                DebugLog("[TrainingDelayInput] D=%d active=%d in1=%08X in2=%08X out1=%08X out2=%08X",
+                    int(ctx.delay), int(delayActive), before1.Pack(), before2.Pack(), output1.Pack(), output2.Pack());
         }
         FrameControl::WriteInput(output1, output2);
         if (cccaster::diagnostics::input::Enabled()) {
@@ -825,17 +935,28 @@ reconcileBoundary:
         }
         if (local.CanRelease(peer)) {
             const int result = local.Result(peer);
+            {
+                std::lock_guard lock(state.selectionMutex);
+                runtime.stageRematch.Begin(result, ctx.isHost, state.localSelection, state.peerSelection);
+            }
+            const int target = runtime.stageRematch.active ? 1 : result;
+            if (!mem.SetStageRematchFastPath(runtime.stageRematch.active)) {
+                Fail(Error::SyncTimeout, "stage rematch code signature mismatch"); return;
+            }
             if (runtime.broadcasting) {
                 cccaster::spectator::Record record;
-                record.Set(cccaster::spectator::Retry, frame, uint32_t(result));
+                record.Set(cccaster::spectator::Retry, frame, uint32_t(runtime.stageRematch.active ? 2 : result));
                 cccaster::spectator::Transport::Get().Publish(record);
             }
-            mem.SetRetryTarget(result);
+            mem.SetRetryTarget(target);
             timeline.Pause();
             runtime.fastRematchTransition = true;
             runtime.rematchTransitionStarted = cccaster::platform::RealMonotonicUs();
             FrameControl::SetModeHighSpeedSkip();
             FrameControl::WriteInput({}, {});
+            if (runtime.stageRematch.active)
+                DebugLog("[StageRematch] FAST ON previous=%u char=%u moon=%u color=%u", runtime.stageRematch.saved.stage,
+                    runtime.stageRematch.saved.character, runtime.stageRematch.saved.moon, runtime.stageRematch.saved.color);
             DebugLog("[RetryMenu] RESOLVED epoch=%u frame=%u local=%d peer=%d target=%d ack=%u/%u",
                      local.epoch, frame, int(local.choice)-1, int(peer.choice)-1, result, local.ack, peer.ack);
         } else {
@@ -875,9 +996,14 @@ reconcileBoundary:
             runtime.haveWorld = false;
             runtime.selectionReleased = false;
             runtime.spectatorSelectionSent = false;
+            runtime.spectatorSelectionRevisions = {};
             runtime.selectionTick = 0;
             runtime.selectionStarted = cccaster::platform::RealMonotonicUs();
             const auto base = runtime.sequence.Base();
+            const auto rerolled = runtime.stageRematch.active && ctx.isHost ? mem.DrawRandomStage() : 0;
+            if (runtime.stageRematch.active && ctx.isHost && !rerolled) {
+                Fail(Error::SyncTimeout, "random stage pool empty or random source failed"); return;
+            }
             {
                 std::lock_guard lock(state.selectionMutex);
                 state.localSelection = {};
@@ -885,6 +1011,8 @@ reconcileBoundary:
                 state.localSelection.revision = 1;
                 state.localSelection.delay = SettingsCommands::delay;
                 state.localSelection.rollback = SettingsCommands::rollback;
+                if (runtime.stageRematch.active)
+                    state.localSelection = runtime.stageRematch.Restore(base, ctx.isHost, rerolled);
             }
             state.phaseBaseFrame = base;
             state.localPhaseKind = static_cast<uint8_t>(phase);
@@ -892,7 +1020,7 @@ reconcileBoundary:
             state.appliedFrame = base;
             state.consumedFrame = base;
             state.localPhaseToken = (uint64_t(base) << 32) | static_cast<uint8_t>(phase);
-            timeline.Begin(base, runtime.sequence.Next(), phase, ctx.isHost);
+            if (!runtime.stageRematch.active) timeline.Begin(base, runtime.sequence.Next(), phase, ctx.isHost);
             DebugLog("[Select] INDEPENDENT epoch=%u", base);
         }
         if (state.protocolError || (state.isSynced && !state.isPeerAlive) ||
@@ -901,14 +1029,14 @@ reconcileBoundary:
             return;
         }
         const auto frame = runtime.sequence.Next();
-        if (!runtime.sequence.CanAdvance() || timeline.HasOverflowed()) {
+        if (!runtime.stageRematch.active && (!runtime.sequence.CanAdvance() || timeline.HasOverflowed())) {
             Fail(Error::SyncTimeout, "character select input range exhausted");
             return;
         }
-        if (!Wait("local selection clock", 3000000, [&] { return timeline.HasCaptured(frame); },
+        if (!runtime.stageRematch.active && !Wait("local selection clock", 3000000, [&] { return timeline.HasCaptured(frame); },
                   0, timeline.NextDeadlineTicks(), 0, 200)) return;
         uint32_t localInput = 0;
-        if (!buf.TryGetLocalInput(frame, localInput)) {
+        if (!runtime.stageRematch.active && !buf.TryGetLocalInput(frame, localInput)) {
             Fail(Error::SyncTimeout, "local selection input missing"); return;
         }
         SelectionState local, peer;
@@ -918,7 +1046,7 @@ reconcileBoundary:
             peer = state.peerSelection;
         }
         if (peer.epoch != local.epoch) peer = {};
-        if (!mem.ReadLocalSelection(ctx.isHost, local)) {
+        if (!runtime.stageRematch.active && !mem.ReadLocalSelection(ctx.isHost, local)) {
             Fail(Error::SyncTimeout, "invalid final character selection"); return;
         }
         // 設定操作だけを確実に受け渡す。ホストが順序を決め、最終値を両者へ公開する。
@@ -947,14 +1075,18 @@ reconcileBoundary:
             SettingsCommands::rollback = local.rollback = peer.rollback;
         }
         local.ack = peer.revision;
-        const auto remoteInput = mem.DriveRemoteSelection(ctx.isHost, peer, frame);
+        const auto navFrame = runtime.stageRematch.active ? ++runtime.retryDriveFrames : frame;
+        const auto remoteInput = mem.DriveRemoteSelection(ctx.isHost, peer, navFrame);
         const bool settingsReady = ctx.isHost ? !SettingsCommands::pending.load() :
             (!local.commandSerial || peer.commandAck == local.commandSerial);
         const auto &hostState = ctx.isHost ? local : peer;
         if (local.PeerHasFinal(peer) && hostState.stageConfirmed && settingsReady && state.isSynced)
             runtime.selectionReleased = true;
-        if (runtime.broadcasting && runtime.selectionReleased && !runtime.spectatorSelectionSent) {
-            // 選択確定を先に送る。観戦端末はロードを先行し、両者のイントロ合流通知を待つ。
+        if (runtime.broadcasting && !runtime.spectatorSelectionSent &&
+            (runtime.selectionReleased || runtime.spectatorSelectionRevisions[0] != local.revision ||
+             runtime.spectatorSelectionRevisions[1] != peer.revision)) {
+            // キャラ選択到達/確定値変更で先に通知する。毎F配信せず、ステージ確定前にも
+            // 途中参加の履歴入口を現在の選択へ更新する。ロード解放は双方の最終合意後だけ。
             cccaster::spectator::StartData selected;
             selected.p1 = local; selected.p2 = peer;
             const auto rules = mem.SpectatorRules();
@@ -963,10 +1095,15 @@ reconcileBoundary:
             selected.score = {score.p1Wins, score.p2Wins, score.unresolved, uint32_t(score.revision)};
             { std::lock_guard lock(state.playerNameMutex);
               std::memcpy(selected.names[0], state.localPlayerName, 32); std::memcpy(selected.names[1], state.peerPlayerName, 32); }
-            cccaster::spectator::Record record; record.Set(cccaster::spectator::Selection, frame, selected);
+            cccaster::spectator::Record record;
+            record.Set(runtime.selectionReleased ? cccaster::spectator::Selection : cccaster::spectator::Selecting,
+                       frame, selected);
             cccaster::spectator::Transport::Get().Publish(record);
-            runtime.spectatorSelectionSent = true;
-            DebugLog("[Spectator] SELECT READY frame=%u qpc=%lld", frame, cccaster::platform::RealMonotonicUs());
+            runtime.spectatorSelectionSent = runtime.selectionReleased;
+            runtime.spectatorSelectionRevisions = {local.revision, peer.revision};
+            DebugLog("[Spectator] SELECT %s frame=%u qpc=%lld p1=%u p2=%u stage=%u",
+                runtime.selectionReleased ? "READY" : "UPDATE", frame, cccaster::platform::RealMonotonicUs(),
+                local.confirmed, peer.confirmed, local.stageConfirmed);
         }
         mem.SetSelectionRelease(runtime.selectionReleased, hostState.stage);
         {
@@ -979,13 +1116,18 @@ reconcileBoundary:
             own.buttons &= ~(CC_BUTTON_B | CC_BUTTON_CANCEL);
             if (!ctx.isHost || local.stageConfirmed) own = {};
         }
-        const auto due = timeline.CapturedDeadlineTicks(frame) +
-                         60 * cccaster::core::timer::FrameTiming::SimulationGuardUs;
-        cccaster::core::timer::FrameTiming::presentDueTicks = due +
-                         60 * cccaster::core::timer::FrameTiming::PresentBudgetUs();
-        if (!Wait("local selection deadline", 3000000,
-                  [&] { return cccaster::core::timer::WasapiClock::GetTimeTicks() >= due; }, due,
-                  0, 200)) return;
+        if (runtime.stageRematch.active) {
+            // 確定済みキャラを通常selector＋自動決定で準備。押しっぱなしや新規操作は持ち込まない。
+            own = mem.DriveRemoteSelection(!ctx.isHost, local, navFrame);
+        } else {
+            const auto due = timeline.CapturedDeadlineTicks(frame) +
+                             60 * cccaster::core::timer::FrameTiming::SimulationGuardUs;
+            cccaster::core::timer::FrameTiming::presentDueTicks = due +
+                             60 * cccaster::core::timer::FrameTiming::PresentBudgetUs();
+            if (!Wait("local selection deadline", 3000000,
+                      [&] { return cccaster::core::timer::WasapiClock::GetTimeTicks() >= due; }, due,
+                      0, 200)) return;
+        }
         FrameControl::WriteInput(ctx.isHost ? own : remoteInput, ctx.isHost ? remoteInput : own);
         if (std::getenv("CCCASTER_PACE_TRACE")) {
             const auto now = cccaster::platform::RealMonotonicUs();
@@ -997,9 +1139,11 @@ reconcileBoundary:
             DebugLog("[Select] TICK f=%u WT=%u peer=%u final=%u/%u stage=%u release=%d",
                      frame, world, peer.revision, local.confirmed, peer.confirmed,
                      hostState.stageConfirmed, runtime.selectionReleased);
-        runtime.sequence.Commit(frame);
-        timeline.SetConsumed(frame);
-        state.appliedFrame = frame; // ローカル実更新の計測用。相手消費ACKとは別。
+        if (!runtime.stageRematch.active) {
+            runtime.sequence.Commit(frame);
+            timeline.SetConsumed(frame);
+            state.appliedFrame = frame; // ローカル実更新の計測用。相手消費ACKとは別。
+        }
         runtime.previous = phase;
         runtime.previousIntro = intro;
         ++ctx.framesInPhase;
@@ -1017,8 +1161,44 @@ reconcileBoundary:
     const bool inputPhase =
         phase == GamePhase::CharaSelect || phase == GamePhase::InGame || phase == GamePhase::Rematch;
     if (!inputPhase) {
-        // ロード中は入力消費しない。速い側は次の世代の入口で待つ。
-        FrameControl::WriteInput({}, {});
+        // 片方のロードスキップ要求を同じ開始世代の両端末へ適用する。
+        // 入力履歴は進めず、元ゲームのロード完了判定とイントロ合流を維持する。
+        GameInput confirm{};
+        if (phase == GamePhase::Loading) {
+            if (runtime.previous != phase) {
+                timeline.Begin(0, 1, phase, ctx.isHost);
+                runtime.loadingInputTick = runtime.loadingButtons = 0;
+                runtime.loadingSkipFrames = 0;
+                runtime.loadingSkipRequested = false;
+                runtime.loadingStarted = cccaster::platform::RealMonotonicUs();
+                DebugLog("[LoadingInput] BEGIN role=%d qpc=%lld", int(ctx.isHost), runtime.loadingStarted);
+            }
+            uint32_t tick = 0;
+            const auto sample = GameInput::Unpack(inputBuffer.ReadLoadingInput(tick));
+            // B等も安全な決定入力へ変換し、キャンセル／メニュー遷移を起こさない。
+            constexpr uint16_t buttons = CC_BUTTON_A | CC_BUTTON_B | CC_BUTTON_C | CC_BUTTON_D |
+                CC_BUTTON_E | CC_BUTTON_AB | CC_BUTTON_CONFIRM | CC_BUTTON_CANCEL;
+            const auto pressed = sample.buttons & buttons;
+            if (tick != runtime.loadingInputTick) {
+                if (pressed && !runtime.loadingButtons)
+                    DebugLog("[LoadingInput] PRESS role=%d tick=%u buttons=%u qpc=%lld",
+                        int(ctx.isHost), tick, unsigned(pressed), cccaster::platform::RealMonotonicUs());
+                runtime.loadingInputTick = tick;
+                runtime.loadingButtons = pressed;
+            }
+            const auto skipEpoch = runtime.sequence.Base() + FrameSequence::STRIDE;
+            const bool peerRequested = state.peerLoadingSkipEpoch.load(std::memory_order_acquire) == skipEpoch;
+            if (!runtime.loadingSkipRequested && (pressed || peerRequested)) {
+                runtime.loadingSkipRequested = true;
+                // イントロ到達後も同じ要求を送る。相手は実ロード完了後に追従する。
+                state.localLoadingSkipEpoch.store(skipEpoch, std::memory_order_release);
+                DebugLog("[LoadingSkip] REQUEST role=%d epoch=%u source=%s qpc=%lld",
+                    int(ctx.isHost), skipEpoch, pressed ? "local" : "peer", cccaster::platform::RealMonotonicUs());
+            }
+            if (runtime.loadingSkipRequested && ++runtime.loadingSkipFrames % 8 == 1)
+                confirm.buttons = CC_BUTTON_A | CC_BUTTON_CONFIRM;
+        }
+        FrameControl::WriteInput(ctx.isHost ? confirm : GameInput{}, ctx.isHost ? GameInput{} : confirm);
         runtime.previous = phase;
         runtime.previousIntro = intro;
         runtime.haveWorld = false;
@@ -1028,6 +1208,12 @@ reconcileBoundary:
     const bool newRound =
         phase == GamePhase::InGame && runtime.previous == phase && intro == 2 && runtime.previousIntro != 2;
     const bool boundary = phase != runtime.previous || runtime.sequence.Base() == 0 || newRound;
+    cccaster::core::sync::EpochStartGate startGate;
+    const auto roundStartBegan = boundary && phase == GamePhase::InGame
+        ? cccaster::platform::RealMonotonicUs() : 0;
+    if (roundStartBegan)
+        DebugLog("[RoundStart] BEGIN nextRound=%u WT=%u draw=%u qpc=%lld", unsigned(newRound), world,
+            unsigned(!cccaster::core::SpeedFlags::RenderSkip().load()), roundStartBegan);
     auto &buf = MatchInputBuffer::GetInstance();
     if (boundary) {
         timeline.Pause();
@@ -1060,14 +1246,15 @@ reconcileBoundary:
         DebugLog("[Settings] ACTIVE D=%d R=%d", int(ctx.delay), int(ctx.maxRollback));
         const int delay = int(ctx.delay);
         if (!cccaster::public_api::NetplaySettings::IsValid(ctx.delay, ctx.maxRollback)) {
-            Fail(Error::SyncTimeout, "D+R exceeds 8");
+            Fail(Error::SyncTimeout, "D and R must each be 0..8");
             return;
         }
         if (delay < 0 || !runtime.sequence.Begin(static_cast<uint32_t>(delay))) {
-            Fail(Error::SyncTimeout, "unsupported delay (D+R must be 0..8) or epoch exhausted");
+            Fail(Error::SyncTimeout, "unsupported delay (D must be 0..8) or epoch exhausted");
             return;
         }
-        runtime.history.Reset(runtime.sequence.Next(), ctx.maxRollback);
+        runtime.history.Reset(runtime.sequence.Next(), ctx.maxRollback > 0
+            ? cccaster::public_api::NetplaySettings::BurstRollback : 0);
         runtime.postRoundDelay.Reset();
         runtime.snapshotReady = phase == GamePhase::InGame && ctx.maxRollback > 0 && mem.SupportsSnapshots();
         if (runtime.snapshotReady && !mem.SnapshotSize()) {
@@ -1097,6 +1284,13 @@ reconcileBoundary:
         // 全消去せず、先に到達した相手からの今世代入力を残す。
         for (uint32_t i = 0; i < runtime.sequence.Lookahead(); ++i)
             buf.WriteLocal(runtime.sequence.Next() + i, GameInput{}.Pack(), 0, false);
+        if (phase == GamePhase::InGame) {
+            startGate.Begin(runtime.sequence.Base());
+            // 世代通知と同じパケットでReadyを送る。RNG/barrierを通過してから
+            // Readyを送り始める余分な往復を省く。Offer以降は既存の合流後に行う。
+            std::lock_guard lock(state.epochStartMutex);
+            state.localEpochStart = startGate.local;
+        }
         state.localPhaseKind.store(static_cast<uint8_t>(phase), std::memory_order_relaxed);
         state.phaseBaseFrame.store(runtime.sequence.Base(), std::memory_order_release);
         state.localPhaseReady.store(true, std::memory_order_release);
@@ -1169,8 +1363,7 @@ reconcileBoundary:
         }
         int64_t firstTicks = 0;
         if (phase == GamePhase::InGame) {
-            cccaster::core::sync::EpochStartGate gate;
-            gate.Begin(runtime.sequence.Base());
+            auto &gate = startGate;
             bool expired = false;
             if (!Wait("epoch future start", 30000000, [&] {
                     std::lock_guard lock(state.epochStartMutex);
@@ -1206,7 +1399,6 @@ reconcileBoundary:
     // ゲームの処理遅延分も入力枠は捨てず、描画待機を止めて順番に追いつく。
     const auto sampledFrame = timeline.SampledFrame();
     if (sampledFrame > runtime.sequence.Capture()) {
-        FrameControl::SetModeHighSpeedSkip();
         static const bool catchupTrace = std::getenv("CCCASTER_CLOCK_FOLLOW_TRACE") != nullptr;
         if (catchupTrace)
             DebugLog("[InputCatchup] f=%u capture=%u sampled=%u lateTicks=%lld",
@@ -1294,6 +1486,20 @@ reconcileBoundary:
         !runtime.history.Record(runtime.sequence.Next(), ctx.isHost ? p1 : p2, ctx.isHost ? p2 : p1)) {
         Fail(Error::SyncTimeout, "prediction history sequence");
         return;
+    }
+    if (roundStartBegan)
+        DebugLog("[RoundStart] END epoch=%u elapsedUs=%lld draw=%u qpc=%lld", runtime.sequence.Base(),
+            cccaster::platform::RealMonotonicUs() - roundStartBegan,
+            unsigned(!cccaster::core::SpeedFlags::RenderSkip().load()), cccaster::platform::RealMonotonicUs());
+    // 今用意した画像の次も進める場合だけ省略する。通信待ちに入る最後の画像は提示。
+    // 採取時計との距離だけで決めると、R上限で待つ高遅延対戦が描画OFFのままになる。
+    if (timeline.SampledFrame() > runtime.sequence.Capture()) {
+        uint32_t followingRemote = 0;
+        const bool nextReady = runtime.snapshotReady
+            ? ((allowPrediction && runtime.history.CanPredict()) ||
+               runtime.history.ReadyToResume(readRemote, allowPrediction))
+            : readRemote(runtime.sequence.Next() + 1, followingRemote);
+        if (nextReady) FrameControl::SetModeHighSpeedSkip();
     }
     if (phase == GamePhase::CharaSelect) {
         using Commands = cccaster::core::sync::SettingsCommands;
@@ -1383,6 +1589,12 @@ bool SceneRunner::IsReady() {
 uint8_t SceneRunner::AppMode() {
     return IsReady() && runtime.context ? runtime.context->appMode : uint8_t{255};
 }
+bool SceneRunner::RequestTrainingDelay(int frames) {
+    if (AppMode() != 1 || frames < 0 || frames > cccaster::public_api::NetplaySettings::MaxDelay)
+        return false;
+    runtime.requestedTrainingDelay.store(frames);
+    return true;
+}
 SessionScoreSnapshot SceneRunner::Score() {
     if (AppMode() == 2) {
         const auto &s = runtime.spectator.score;
@@ -1403,6 +1615,11 @@ SceneRunner::PlayerNamesSnapshot SceneRunner::PlayerNames() {
     if (AppMode() == 2) {
         std::memcpy(result.p1.data(), runtime.spectator.match.names[0], 32);
         std::memcpy(result.p2.data(), runtime.spectator.match.names[1], 32);
+        return result;
+    }
+    if (AppMode() == 1) {
+        cccaster::public_api::NormalizePlayerName(result.p1.data(), result.p1.size(), runtime.context->playerName, "PLAYER 1");
+        cccaster::public_api::NormalizePlayerName(result.p2.data(), result.p2.size(), "PLAYER 2", "PLAYER 2");
         return result;
     }
     auto &shared = Session::GetMutableState();

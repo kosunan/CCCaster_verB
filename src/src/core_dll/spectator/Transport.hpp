@@ -9,7 +9,7 @@ class Transport {
     Queue<2048> queue_;
     std::atomic<bool> running_{false};
     std::atomic<Status> status_{Status::Off};
-    std::atomic<uint32_t> viewers_{0}, latest_{0};
+    std::atomic<uint32_t> viewers_{0}, latest_{0}, latestMatch_{0};
     std::atomic<uint16_t> port_{0};
     std::thread worker_;
     void Serve(uint16_t port);
@@ -38,6 +38,7 @@ public:
     bool Take(Record &r) { return queue_.Pop(r); }
     uint32_t Buffered() const { return queue_.Count(); }
     uint32_t Latest() const { return latest_.load(std::memory_order_relaxed); }
+    uint32_t LatestMatch() const { return latestMatch_.load(std::memory_order_relaxed); }
     uint32_t Viewers() const { return viewers_.load(std::memory_order_relaxed); }
     uint16_t Port() const { return port_.load(std::memory_order_acquire); }
     Status State() const { return status_.load(std::memory_order_acquire); }

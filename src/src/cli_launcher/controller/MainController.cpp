@@ -9,10 +9,14 @@
 #include "cli_launcher/ConfigManager.hpp"
 #include "cli_launcher/GuiSession.hpp"
 #include "launcher/GameLauncher.hpp"
+#include "launcher/RequestNotification.hpp"
 #include "shared_contracts/IpcData.hpp"
 #include "shared_contracts/PlayerName.hpp"
 #include "shared_contracts/SessionClosePacket.hpp"
 #include "core_dll/network/UdpSocket.hpp"
+#include "p2p/Session.hpp"
+#include "p2p/Watch.hpp"
+#include "shared_contracts/NativePath.hpp"
 
 #include <iostream>
 #include <conio.h>
@@ -49,6 +53,8 @@ MainController::MainController(bool isHeadless, bool isIpv6, bool isHost, const 
       _targetIp(targetIp), _port(port), _connectionHash(connectionHash) {
     _guiSession = guiSession;
     _targetGameMode = gameMode;
+    _allowSpectators = ConfigManager::GetInt("Connection", "AllowSpectators", 1) != 0 &&
+        !std::getenv("CCCASTER_SPECTATE_OFF");
     ui::ConsoleRenderer::EnableVirtualTerminalProcessing();
 
     if (_isHeadless) {
@@ -73,6 +79,10 @@ void MainController::ShowGameNotFoundError() {
 }
 
 void MainController::LaunchAndMonitorGame() {
+    struct ReleaseConnection {
+        std::shared_ptr<cccaster::p2p::Result>& value;
+        ~ReleaseConnection() { value.reset(); }
+    } releaseConnection{_p2p};
     if (_guiSession && gui::Cancelled()) return;
     std::cout << "[Release] " CCCASTER_PRODUCT_TITLE "\n" << std::flush;
     // Trainingの開始席はP1。メニューから来た場合や直前の接続役割に依存させない。
@@ -84,11 +94,14 @@ void MainController::LaunchAndMonitorGame() {
               << std::flush;
 
     // EXE自身のディレクトリを基準にMBAA.exeとプレイヤー設定を解決（CWD非依存）
-    char myExePath[MAX_PATH];
-    GetModuleFileNameA(NULL, myExePath, MAX_PATH);
-    std::string exeDir(myExePath);
-    exeDir = exeDir.substr(0, exeDir.find_last_of("\\/")); // cccaster_B/
-    const auto gameDirectory = std::filesystem::path(exeDir).parent_path();
+    wchar_t myExePath[32768]{};
+    const DWORD pathLength = GetModuleFileNameW(nullptr, myExePath, std::size(myExePath));
+    if (!pathLength || pathLength >= std::size(myExePath)) {
+        std::cerr << "[BOOT_ERROR] code=windows stage=preflight win32=" << GetLastError() << "\n";
+        return;
+    }
+    const auto exeDir = std::filesystem::path(myExePath).parent_path();
+    const auto gameDirectory = exeDir.parent_path();
 
     // ---- Write IPC Shared Memory for DLL ----
     cccaster::public_api::SharedState state{};
@@ -108,16 +121,14 @@ void MainController::LaunchAndMonitorGame() {
     state.peerPort = _peerPort;
     state.localPort = _localPort;
 
-    // INI設定からRollback関連の設定値を読み込んでIPCに反映
-    // cccaster.ini の [Netplay] セクション: DefaultDelay, MaxRollback
+    // DはINIを尊重。Rは利用者指定で当面7固定とし、INIの旧値は保全する。
     const bool replay = _targetGameMode == cccaster::public_api::IpcGameMode::Replay;
     const bool training = _targetGameMode == cccaster::public_api::IpcGameMode::Training || replay;
     const int delay = training ? cccaster::public_api::NetplaySettings::DefaultDelay :
         ConfigManager::GetInt("Netplay", "DefaultDelay", cccaster::public_api::NetplaySettings::DefaultDelay);
-    const int rollback = training ? cccaster::public_api::NetplaySettings::DefaultRollback : ConfigManager::GetInt("Netplay", "MaxRollback",
-                                               cccaster::public_api::NetplaySettings::DefaultRollback);
+    const int rollback = cccaster::public_api::NetplaySettings::DefaultRollback;
     if (!cccaster::public_api::NetplaySettings::IsValid(delay, rollback))
-        throw std::runtime_error("Netplay settings require D >= 0, R >= 0 and D + R <= 8.");
+        throw std::runtime_error("入力ディレイは0〜8で指定してください。ロールバックはR7固定です。");
     state.delayFrames = static_cast<uint8_t>(delay);
     state.maxRollbackFrames = static_cast<uint8_t>(rollback);
     auto configuredName = ConfigManager::GetString("Player", "Name", "");
@@ -132,21 +143,28 @@ void MainController::LaunchAndMonitorGame() {
     // Keep handle alive until game ends or Controller exits
     HANDLE hIpc = cccaster::public_api::IpcManager::CreateAndWrite(state);
     if (!hIpc) {
-        std::cout << "  \x1b[31m[ ERROR ]\x1b[0m Failed to create Shared Memory IPC bridge.\n";
+        std::cerr << "[BOOT_ERROR] code=ipc stage=ipc win32=" << GetLastError() << "\n";
+        return;
     }
 
-    // EXE自身のディレクトリを基準にMBAA.exeのパスを解決（CWD非依存）
-    std::string absPathStr = exeDir + "\\..\\MBAA.exe";    // cccaster_B/../MBAA.exe
-
-    // 正規化（..を解決）
-    char absPath[MAX_PATH];
-    GetFullPathNameA(absPathStr.c_str(), MAX_PATH, absPath, nullptr);
+    const auto absPath = (gameDirectory / L"MBAA.exe").lexically_normal();
 
     // ---- Boot Game and Inject DLL ----
     cccaster::main_app::GameLauncher monitor;
     SessionCloseMonitor closeMonitor;
+    SetEnvironmentVariableA("CCCASTER_SPECTATE_OFF", _allowSpectators ? nullptr : "1");
 
-    if (!monitor.BootAndMonitor(absPath)) {
+    if (!monitor.BootAndMonitor(absPath, [this](uint32_t pid) {
+        if (!_p2p || !_p2p->socket) return true;
+        auto protocol = _p2p->socket->DuplicateForProcess(pid);
+        if (protocol.empty() || protocol.size() > sizeof(cccaster::public_api::SharedState::udpProtocol)) return false;
+        return cccaster::public_api::IpcManager::UpdateOrReadState([&](cccaster::public_api::SharedState& ipc) {
+            ipc.udpProtocolSize = uint32_t(protocol.size());
+            std::copy(protocol.begin(),protocol.end(),ipc.udpProtocol);
+            std::copy(_p2p->mac.begin(),_p2p->mac.end(),ipc.p2pMac);
+            std::copy(_p2p->session.begin(),_p2p->session.end(),ipc.p2pSession);
+        });
+    })) {
         std::cout << "  \x1b[31m[ ERROR ]\x1b[0m Fast boot execution failed.\n";
         if (!_isHeadless) {
             std::cout << "  (Press any key to return to Main Menu)\n";
@@ -222,7 +240,7 @@ void MainController::LaunchAndMonitorGame() {
             }
         }
 
-        closeMonitor.Finish(hProcess);
+        closeMonitor.Finish(hProcess, _p2p ? _p2p->socket : nullptr);
 
         // DLLの終了処理はloader lock下。終了を確認した監視元が自分の配信ファイルだけ無効化する。
         if (!training && hProcess && WaitForSingleObject(hProcess, 0) == WAIT_OBJECT_0) {
@@ -298,6 +316,7 @@ void MainController::LaunchAndMonitorGame() {
     ui::ConsoleRenderer::ClearScreen();
     _isHost = false;
     _isIpv6 = false;
+    _p2p.reset();
 }
 
 void MainController::Run() {
@@ -401,19 +420,72 @@ void MainController::HandleNetplayConnection() {
 
     network_wrapper::SessionNegotiator negotiator;
     network_wrapper::NegotiationResult negoResult;
+    auto connectP2p = [&](bool host, uint16_t port, const std::string& code) {
+        cccaster::p2p::Options options;
+        options.host = host; options.port = port; options.code = code;
+        options.allowSpectators = _allowSpectators;
+        options.preference = _guiSession ? gui::hostPreference : 0;
+        options.server = ConfigManager::GetString("Connection", "NtfyServer", "https://ntfy.sh");
+        if (const char* server = std::getenv("CCCASTER_NTFY_SERVER")) options.server = server;
+        options.offline = std::getenv("CCCASTER_P2P_OFFLINE") != nullptr;
+        options.cancelled = [] { return gui::Cancelled(); };
+        options.report = [host, allowSpectators=_allowSpectators, guiSession=_guiSession](const std::string& line) {
+            std::cout << line << '\n' << std::flush;
+            if (host && !guiSession && line.rfind("[INCOMING_REQUEST] ", 0) == 0) {
+                if (ConfigManager::GetInt("Notifications", "Sound", 1))
+                    cccaster::notification::PlayIncomingSound();
+                if (ConfigManager::GetInt("Notifications", "FlashTaskbar", 1))
+                    cccaster::notification::FlashIncomingWindow(GetConsoleWindow(), true);
+            }
+            if(host && !gui::matchedSession && line.rfind("[P2P_CODE] ",0)==0) network_wrapper::SessionNegotiator{}.CopyToClipboard(line.substr(11));
+            if(host && allowSpectators && line.rfind("[P2P_CODE] ",0)==0)
+                std::cout << "[SPECTATOR CODE] " << line.substr(11) << '\n' << std::flush;
+            if(host && !guiSession && line.rfind("[P2P_MANUAL] ",0)==0)
+                std::cout << "[P2P] 手動交換時は相手の返信コードを貼り付け、Enterを押してください。\n" << std::flush;
+            if(!host && !guiSession && line=="[P2P_STATUS] manual_reply")
+                std::cout << "[P2P] 返信コードを募集側へ送り、双方で準備ができたらEnterで接続を開始してください。\n" << std::flush;
+        };
+        options.manualPeer = [last = std::string{}, typed = std::string{}]() mutable {
+            const char* path = std::getenv("CCCASTER_P2P_PEER_FILE");
+            if(!path) {
+                while(_kbhit()) {int c=_getch();if(c==0||c==224){_getch();continue;}
+                    if(c=='\r'||c=='\n'){auto result=std::move(typed);typed.clear();std::cout<<'\n';return result.empty()?std::string("start"):result;}
+                    if(c==8){if(!typed.empty()){typed.pop_back();std::cout<<"\b \b";}}
+                    else if(c>=32&&c<=126&&typed.size()<400){typed+=char(c);std::cout<<char(c)<<std::flush;}}
+                return std::string{};
+            }
+            std::ifstream input(cccaster::Utf8Path(path)); std::string line;
+            std::getline(input,line);
+            if(line==last||line.size()>400) return std::string{};
+            last=line; return line;
+        };
+        std::cout << "[P2P] P2P接続では対戦相手にIPアドレスが伝わります。\n" << std::flush;
+        _p2p = std::make_shared<cccaster::p2p::Result>(cccaster::p2p::Connect(std::move(options)));
+        if(!_p2p->socket) { _p2p.reset(); return network_wrapper::NegotiationResult{}; }
+        // 終了通知の世代識別も同じセッションから役割別に導出する。
+        auto nonce = [&](const char* role) {auto key=cccaster::p2p::Hkdf(_p2p->mac,cccaster::p2p::Hex(_p2p->session)+role);uint64_t n=0;for(int i=0;i<8;++i)n=(n<<8)|key[i];return std::to_string(n?n:1);};
+        SetEnvironmentVariableA(cccaster::public_api::startup::LocalNonceEnv,nonce(host?"host":"guest").c_str());
+        SetEnvironmentVariableA(cccaster::public_api::startup::PeerNonceEnv,nonce(host?"guest":"host").c_str());
+        return network_wrapper::NegotiationResult{true,_p2p->ip,_p2p->port,_p2p->socket->GetPort(),_p2p->ipv6};
+    };
 
     if (_isHeadless) {
         // === ヘッドレスモード: 既存CLI引数ベースの分岐をそのまま使用 ===
         if (_isHost) {
             uint16_t port = (_port > 0) ? _port : 7500;
+            if (!std::getenv("CCCASTER_LEGACY_HOST")) {
+                negoResult = connectP2p(true,port,{});
+            } else {
             std::string hash = network_wrapper::SessionNegotiator::GenerateConnectionHash(port);
             std::cout << "  [HEADLESS HOST] Hash: " << hash << "\n";
             std::cout << "  [SPECTATOR CODE] " << hash << "\n"
                       << "  観戦者は「観戦」を選び、この接続コードをそのまま入力してください。\n";
             negoResult = negotiator.RunAutomaticHost(port, hash,
                 static_cast<network_wrapper::route::Preference>(_guiSession ? gui::hostPreference : 0), true);
+            }
         } else if (!_connectionHash.empty()) {
-            negoResult = negotiator.RunNegotiationFromHash(_connectionHash);
+            negoResult = !cccaster::p2p::NormalizeCode(_connectionHash).empty() || _connectionHash.rfind("P1-",0)==0
+                ? connectP2p(false,_port ? _port : 7500,_connectionHash) : negotiator.RunNegotiationFromHash(_connectionHash);
         } else if (!_targetIp.empty()) {
             network_wrapper::RouteRequest request; request.addresses={_targetIp}; request.port=_port;
             negoResult = negotiator.RunAutomatic(std::move(request));
@@ -465,27 +537,12 @@ void MainController::HandleNetplayConnection() {
             _isHost = true;
             uint16_t port = input.empty() ? 7500 : static_cast<uint16_t>(std::stoi(input));
 
-            // ハッシュ生成（IPv4+IPv6同時取得）
-            std::string hash = network_wrapper::SessionNegotiator::GenerateConnectionHash(port);
-
-            std::cout << "\n  \x1b[1;32m[ CONNECTION HASH ]\x1b[0m\n";
-            std::cout << "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            std::cout << "  \x1b[1;33m" << hash << "\x1b[0m\n";
-            std::cout << "  [SPECTATOR CODE] " << hash << "\n"
-                      << "  観戦者は「観戦」を選び、この接続コードをそのまま入力してください。\n";
-            std::cout << "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            std::cout << "  \x1b[32m[ INFO ]\x1b[0m Hash copied to clipboard. Share with opponent.\n\n";
-
-            // クリップボードにコピー
-            negotiator.CopyToClipboard(hash);
-
-            // ハッシュモード: skipHostDisplay=true で RunNegotiation 内の
-            // グローバルIP再取得・画面クリア・クリップボード上書きをスキップ
-            negoResult = negotiator.RunAutomaticHost(port, hash);
+            negoResult = connectP2p(true,port ? port : 7500,{});
         } else {
             // === CLIENTモード（ハッシュ接続） ===
             _isHost = false;
-            negoResult = negotiator.RunNegotiationFromHash(input);
+            negoResult = !cccaster::p2p::NormalizeCode(input).empty() || input.rfind("P1-",0)==0
+                ? connectP2p(false,7500,input) : negotiator.RunNegotiationFromHash(input);
         }
     }
 
@@ -495,6 +552,7 @@ void MainController::HandleNetplayConnection() {
         _peerIp = negoResult.peerIp;
         _peerPort = negoResult.peerPort;
         _localPort = negoResult.localPort;
+        if(_isHost) _port = _localPort;
         if (_isHeadless) {
             std::cout
                 << "  \x1b[32m[ HEADLESS ]\x1b[0m Connection established successfully. Booting game...\n";
@@ -513,12 +571,30 @@ void MainController::HandleNetplayConnection() {
 void MainController::HandleSpectateConnect() {
     std::string code = _connectionHash;
     if (!_isHeadless) {
-        std::cout << "募集側の接続コードをそのまま入力してください。S-の追加は不要です。\n";
+        std::cout << "募集側の6文字コードを入力してください。対戦開始前でも待機できます。\n";
         const auto input = ui::ConsoleRenderer::GetTextInputWithCancel("接続コード", "", true);
         if (!input) { _currentState = AppState::MainMenu; return; }
         code = *input;
     }
-    if (!code.empty()) {
+    if (!cccaster::p2p::NormalizeCode(code).empty()) {
+        cccaster::p2p::WatchOptions options;
+        options.code = code;
+        options.server = ConfigManager::GetString("Connection", "NtfyServer", "https://ntfy.sh");
+        if (const char* server = std::getenv("CCCASTER_NTFY_SERVER")) options.server = server;
+        options.cancelled = [this] { return (_guiSession && gui::Cancelled()) || (!_guiSession && _kbhit() && _getch() == 27); };
+        options.report = [](const std::string& line) { std::cout << line << '\n' << std::flush; };
+        std::cout << "[ SPECTATE ] 対戦開始まで待機します。待機中はGUIのキャンセル、CLIではESCで終了できます。\n" << std::flush;
+        try {
+            const auto endpoint = cccaster::p2p::WaitForSpectator(std::move(options));
+            _peerIp = endpoint.ip; _peerPort = endpoint.port;
+        } catch (const std::exception& e) {
+            std::cout << "[WATCH_STATUS] unavailable\n[ SPECTATE ] " << e.what() << '\n' << std::flush;
+            _peerIp.clear(); _peerPort = 0;
+        }
+        if (_peerIp.empty()) {
+            _currentState = _isHeadless ? AppState::Exit : AppState::MainMenu; return;
+        }
+    } else if (!code.empty()) {
         network_wrapper::ConnectionHash::DecodedAddress address;
         if (!network_wrapper::ConnectionHash::DecodeSpectator(code, address)) {
             std::cout << "[ ERROR ] 接続コードが不正、または期限切れです。募集側のコードを確認してください。\n";

@@ -68,6 +68,16 @@ class MatchInputBuffer {
         _writeHead.store(frame, std::memory_order_release);
     }
 
+    // ロード画面の入力は端末内だけで消費する。対戦履歴・再送位置を動かさない。
+    void WriteLoadingInput(uint32_t tick, uint32_t value) {
+        _loadingInput.store((uint64_t(tick) << 32) | value, std::memory_order_release);
+    }
+    uint32_t ReadLoadingInput(uint32_t &tick) const {
+        const auto sample = _loadingInput.load(std::memory_order_acquire);
+        tick = uint32_t(sample >> 32);
+        return uint32_t(sample);
+    }
+
     // ════════════════════════════════════════════════════
     // 通信スレッド — 相手入力の確定
     // ════════════════════════════════════════════════════
@@ -254,6 +264,7 @@ class MatchInputBuffer {
             s.rollbackable = false;
         }
         _writeHead.store(0, std::memory_order_relaxed);
+        _loadingInput.store(0, std::memory_order_relaxed);
         _gameReadFrame.store(EMPTY_SLOT, std::memory_order_relaxed);
         _mismatchFrame.store(0, std::memory_order_relaxed);
         _hasMismatch.store(false, std::memory_order_relaxed);
@@ -291,6 +302,7 @@ class MatchInputBuffer {
     Slot _ring[RING_SIZE];
 
     std::atomic<uint32_t> _writeHead{0};
+    std::atomic<uint64_t> _loadingInput{0};
     std::atomic<uint32_t> _gameReadFrame{EMPTY_SLOT};
 
     std::atomic<uint32_t> _mismatchFrame{0};

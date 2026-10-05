@@ -1,3 +1,4 @@
+#include "shared_contracts/NativePath.hpp"
 // ============================================================================
 // LogSink.cpp — ログ行のバッファリングとバックグラウンド書き出し（実装）
 //
@@ -10,6 +11,7 @@
 #include "core_dll/common/LogSink.hpp"
 
 #include <atomic>
+#include <filesystem>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -60,7 +62,11 @@ void OpenFileLocked(Sink &s) {
         return;
 
     const char *p = s.path.empty() ? "cccaster_hook_log.txt" : s.path.c_str();
+#ifdef _WIN32
+    s.fp = _wfopen(cccaster::Utf8Path(p).c_str(), L"a");
+#else
     s.fp = std::fopen(p, "a");
+#endif
     if (!s.fp)
         return;
 

@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // NetplayManager.cpp — ネット対戦の通信管理（実装）
 //
 // 旧 GameHooks.cpp から UDP ソケット管理部分のみを抽出・移設。
@@ -69,8 +69,23 @@ void NetplayManager::Initialize(bool isNetplay, bool isHost, uint16_t localPort,
         const auto localNonce = readNonce(cccaster::public_api::startup::LocalNonceEnv);
         const auto peerNonce = readNonce(cccaster::public_api::startup::PeerNonceEnv);
         const auto began = cccaster::platform::RealMonotonicUs();
-        _udpSocket = std::make_unique<cccaster::network::UdpSocket>(_localPort, targetIp.find(':') != std::string::npos);
-        if (!_udpSocket->ConfigurePeer(targetIp, targetPort))
+        cccaster::public_api::SharedState ipc{};
+        const bool inherited = cccaster::public_api::IpcManager::OpenAndRead(ipc) && ipc.udpProtocolSize;
+        if (inherited) {
+            if (ipc.udpProtocolSize > sizeof(ipc.udpProtocol)) throw std::runtime_error("Invalid UDP handoff size");
+            _udpSocket = std::make_unique<cccaster::network::UdpSocket>(std::span(ipc.udpProtocol, ipc.udpProtocolSize));
+            std::array<uint8_t,32> mac{}; std::array<uint8_t,8> session{};
+            std::copy_n(ipc.p2pMac,32,mac.begin()); std::copy_n(ipc.p2pSession,8,session.begin());
+            if (!_udpSocket->IsValid()) throw std::runtime_error("UDP socket handoff failed");
+            if (!_udpSocket->ConfigurePeer(targetIp,targetPort)) throw std::runtime_error("UDP peer configuration failed");
+            _udpSocket->EnableP2p(mac,session,targetIp,targetPort,ipc.isHost,[] {
+                cccaster::public_api::IpcManager::UpdateOrReadState([](cccaster::public_api::SharedState& state) {
+                    state.lastErrorCode=static_cast<uint32_t>(cccaster::public_api::SessionErrorType::PeerDisconnected);
+                });
+            });
+            cccaster::domain::session::DebugLog("[P2P] UDP socket inherited, no rebind");
+        } else _udpSocket = std::make_unique<cccaster::network::UdpSocket>(_localPort, targetIp.find(':') != std::string::npos);
+        if (!inherited && !_udpSocket->ConfigurePeer(targetIp, targetPort))
             throw std::runtime_error("UDP peer configuration failed");
         auto *socket = _udpSocket.get();
         _udpSocket->OnReceive([socket, localNonce, peerNonce, began, targetIp, targetPort, reportedReply = false]
@@ -125,6 +140,7 @@ void NetplayManager::Initialize(bool isNetplay, bool isHost, uint16_t localPort,
         cccaster::domain::session::DebugLog(
             "[NetplayManager] UdpSocket をポート %u でバインド成功。受信ループ稼働。", _localPort);
     } catch (const std::exception &e) {
+        _udpSocket.reset();
         cccaster::domain::session::DebugLog("[NetplayManager] UdpSocket のバインドに失敗: %s", e.what());
     }
 }

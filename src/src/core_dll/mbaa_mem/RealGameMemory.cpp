@@ -9,6 +9,7 @@
 // ============================================================================
 
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
+#include "core_dll/mbaa_mem/RoundTest.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include "core_dll/common/DebugLog.hpp"
@@ -18,7 +19,8 @@
 #include "core_dll/mbaa_mem/SoundPrewarm.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
-#include "shared_contracts/GameBuild.hpp"
+#include "core_dll/mbaa_mem/GameBuildGuard.hpp"
+#include "core_dll/mbaa_mem/SpectatorIntroDraw.hpp"
 
 #include <windows.h>
 #include <cstring>
@@ -149,6 +151,7 @@ bool RealGameMemory::WriteRng(const RngState &state) {
 
 #include "core_dll/rollback/GameSnapshotLayout.hpp"
 #include "core_dll/rollback/ReplayRoundLocation.hpp"
+#include "core_dll/rollback/ReplayCursorBounds.hpp"
 #include "core_dll/rollback/IntroSoundClock.hpp"
 #include "core_dll/mbaa_mem/BattleProgress.hpp"
 #include "core_dll/rollback/ReplayEffects.hpp"
@@ -185,7 +188,7 @@ struct ReplayContainer {
     char *end;
     uint32_t unknown1;
     int total, total2, index;
-    uint32_t unknown2;
+    uint32_t frameInState; // 同じ入力が続く区間内の再生経過。標準0x444D52でリセット。
 };
 struct ReplayRound {
     char unknown[0x120];
@@ -214,7 +217,7 @@ static bool CurrentReplayRound(ReplayRound *&round) {
     round = reinterpret_cast<ReplayRound *>(location.address);
     return location.valid && (!round || !IsBadReadPtr(round, sizeof(ReplayRound)));
 }
-static bool ReadReplayCursors(ReplayCursors &cursors) {
+static bool ReadReplayCursors(ReplayCursors &cursors, bool restartPlayback = false) {
     ReplayRound *round = nullptr;
     if (!CurrentReplayRound(round)) return false;
     for (auto &saved : cursors) saved.round = CurrentReplayRoundIndex() + 1;
@@ -230,31 +233,33 @@ static bool ReadReplayCursors(ReplayCursors &cursors) {
     for (int i = 0; i < 4; ++i) {
         const auto &c = round->inputs[i];
         const auto length = uintptr_t(c.end) - uintptr_t(c.states);
-        if (length > 16000000 || c.index > 1000000) {
+        if (length > 16000000 || (!restartPlayback && c.index > 1000000)) {
             DebugLog("[ReplayCursor] capture invalid player=%d states=%p end=%p index=%d total=%d", i,
                      c.states, c.end, c.index, c.total);
             return false;
         }
         auto &saved = cursors[i];
-        saved.index = c.index;
+        // 抽選で選ばれた録画は、前の再生終了でindexが末尾の次にある場合がある。
+        // 先頭再生では現在indexでなく、存在する最初の入力から検証する。
+        saved.index = restartPlayback ? 0 : c.index;
         saved.total = c.total;
         saved.total2 = c.total2;
         saved.endOffset = static_cast<uint32_t>(length);
         // 再戦開始直後はindex=0でも格納件数0。この空状態も有効なスナップショット。
         if (length) {
-            if (!c.states || c.index < 0 || length < sizeof(ReplayState) * size_t(c.index + 1) ||
-                IsBadReadPtr(&c.states[c.index], 8)) {
+            if (!c.states || saved.index < 0 || length < sizeof(ReplayState) * size_t(saved.index + 1) ||
+                IsBadReadPtr(&c.states[saved.index], 8)) {
                 DebugLog("[ReplayCursor] capture bounds player=%d length=%u index=%d total=%d", i,
                          unsigned(length), c.index, c.total);
                 return false;
             }
-            saved.last = c.states[c.index];
+            saved.last = c.states[saved.index];
             saved.hasLast = true;
         }
     }
     return true;
 }
-static bool WriteReplayCursors(const ReplayCursors &cursors) {
+static bool WriteReplayCursors(const ReplayCursors &cursors, bool playback = false) {
     ReplayRound *round = nullptr;
     if (!CurrentReplayRound(round)) return false;
     for (const auto &saved : cursors) {
@@ -280,7 +285,8 @@ static bool WriteReplayCursors(const ReplayCursors &cursors) {
                 saved.endOffset, unsigned(length), *CC_INTRO_STATE_ADDR);
             return false;
         }
-        if (saved.hasLast && (saved.index < 0 || c.index < saved.index)) {
+        if (!cccaster::sync::CanRestoreReplayCursor(saved.index, saved.endOffset, saved.hasLast,
+                                                    c.index, length, playback)) {
             DebugLog("[ReplayCursor] restore index player=%d saved=%d current=%d intro=%u", i,
                 saved.index, c.index, *CC_INTRO_STATE_ADDR);
             return false;
@@ -290,17 +296,20 @@ static bool WriteReplayCursors(const ReplayCursors &cursors) {
         const auto &saved = cursors[i];
         auto &c = round->inputs[i];
         const auto length = uintptr_t(c.end) - uintptr_t(c.states);
-        if (length > saved.endOffset)
+        if (!playback && length > saved.endOffset)
             std::memset(reinterpret_cast<char *>(c.states) + saved.endOffset, 0, length - saved.endOffset);
-        if (saved.hasLast)
+        if (!playback && saved.hasLast)
             c.states[saved.index] = saved.last;
-        c.index = saved.index;
-        c.total = saved.total;
+        // TrainingのDUMMYは、保存時の途中位置ではなく録画の先頭から再生する。
+        // total2は録画の総フレーム数なので保持し、記録内容には触れない。
+        c.index = playback ? 0 : saved.index;
+        c.total = playback ? 0 : saved.total;
         c.total2 = saved.total2;
-        c.end = c.states ? reinterpret_cast<char *>(c.states) + saved.endOffset : nullptr;
+        if (playback) c.frameInState = 0;
+        if (!playback) c.end = c.states ? reinterpret_cast<char *>(c.states) + saved.endOffset : nullptr;
     }
     // vectorの容量と現在のバッファは保持。訂正再計算で古い予測の乱数列を上書きする。
-    round->rngEnd = round->rngBegin ? round->rngBegin + cursors[0].rngCount : nullptr;
+    if (!playback) round->rngEnd = round->rngBegin ? round->rngBegin + cursors[0].rngCount : nullptr;
     return true;
 }
 size_t RealGameMemory::SnapshotSize() const {
@@ -325,6 +334,83 @@ bool RealGameMemory::LoadSnapshot(std::span<char> data) {
     if (!WriteReplayCursors(cursors))
         return false;
     return SnapshotDumper().Load(data.first(size));
+}
+
+// Trainingは戦闘状態だけを保存し、現在の敵設定・ダミー録画と独立させる。
+// 通信の記録末尾を戻すSaveSnapshot/LoadSnapshotの形式は変更しない。
+static bool DummyPlayback() {
+    int16_t status = 0;
+    std::memcpy(&status, CC_DUMMY_STATUS_ADDR, sizeof(status));
+    return status == CC_DUMMY_STATUS_DUMMY;
+}
+static bool ReselectTrainingDummySlot() {
+    // 標準の0x477920は空スロットを除外し、REPLAY SLOTのランダム設定で抽選する。
+    // 呼出規約は引数なし・EAX戻り値。選択結果は0x74D5CCにも格納される。
+    constexpr uint8_t expected[] = {0x83,0x3D,0x28,0xC2,0x77,0x00,0x01,
+                                    0xA1,0xD8,0xD5,0x74,0x00};
+    if (std::memcmp(reinterpret_cast<const void *>(0x477920), expected, sizeof(expected))) return false;
+    const auto selected = reinterpret_cast<uint32_t (__cdecl *)()>(0x477920)();
+    *reinterpret_cast<uint32_t *>(0x77BFA4) = selected;
+    return true;
+}
+bool RealGameMemory::RestartTrainingRecording() {
+    if (!IsTrainingRecording()) return false;
+    ReplayRound *round = nullptr;
+    if (!CurrentReplayRound(round) || !round || !round->inputs ||
+        IsBadWritePtr(round, sizeof(ReplayRound))) return false;
+    // 現在のスロットだけを空の記録へ戻す。確保済みバッファと他スロットは保持。
+    // 全コンテナを検証してから記録末尾・総F・再生位置・乱数末尾を0へ戻す。
+    ReplayCursors empty{};
+    for (auto &cursor : empty) cursor.round = CurrentReplayRoundIndex() + 1;
+    if (!WriteReplayCursors(empty)) return false;
+    for (int i = 0; i < 4; ++i) round->inputs[i].frameInState = 0;
+    // 標準の録画クリア0x444C9D/0x444CA3と同じラウンド内カウンタ。
+    std::memset(reinterpret_cast<char *>(round) + 0x12C, 0, 4);
+    std::memset(reinterpret_cast<char *>(round) + 0x80, 0, 4);
+    return true;
+}
+size_t RealGameMemory::TrainingSnapshotSize() const {
+    return cccaster::sync::InstallReplayEffects() ? SnapshotDumper().Size() : 0;
+}
+bool RealGameMemory::SaveTrainingSnapshot(std::span<char> data) {
+    return SnapshotDumper().Save(data);
+}
+bool RealGameMemory::LoadTrainingSnapshot(std::span<char> data) {
+    if (data.size() != SnapshotDumper().Size()) return false;
+    // 0x477BD0の録画開始でP1/P2のCPU操作フラグが入れ替わる。
+    // 保存時の値で上書きすると録画側がCPU扱いになり入力・記録が停止する。
+    // 子キャラも含め現在の操作設定を保持する。戦闘中の入力値は通常どおり復元。
+    constexpr uintptr_t inputModeBase = 0x555137, actorStride = 0xAFC;
+    std::array<uint8_t, 4> inputModes{};
+    for (size_t i = 0; i < inputModes.size(); ++i)
+        inputModes[i] = *reinterpret_cast<const uint8_t *>(inputModeBase + i * actorStride);
+    const bool randomPlayback = DummyPlayback() && *reinterpret_cast<const uint32_t *>(0x77C228) == 1;
+    uint32_t liveSlotRngIndex = 0;
+    if (IsTrainingRecording()) {
+        if (!RestartTrainingRecording()) return false;
+    } else if (DummyPlayback()) {
+        // ランダム設定なら、一巡前のFN2でも標準処理で抽選し直す。
+        const auto previousRound = CurrentReplayRoundIndex();
+        const auto previousSelection = *reinterpret_cast<const uint32_t *>(0x74D5CC);
+        if (randomPlayback && !ReselectTrainingDummySlot()) return false;
+        // 内容・長さ・総フレーム数を保ち、選ばれた録画を先頭へ戻す。
+        ReplayCursors current{};
+        if (!ReadReplayCursors(current, true) || !WriteReplayCursors(current, true)) {
+            *reinterpret_cast<uint32_t *>(0x77BFA4) = previousRound;
+            *reinterpret_cast<uint32_t *>(0x74D5CC) = previousSelection;
+            return false;
+        }
+        liveSlotRngIndex = *reinterpret_cast<const uint32_t *>(0x563864);
+        DebugLog("[TrainingDummy] restart random=%d slot=%u rngIndex=%u", int(randomPlayback),
+                 CurrentReplayRoundIndex(), liveSlotRngIndex);
+    }
+    if (!SnapshotDumper().Load(data)) return false;
+    for (size_t i = 0; i < inputModes.size(); ++i)
+        *reinterpret_cast<uint8_t *>(inputModeBase + i * actorStride) = inputModes[i];
+    // 抽選用乱数テーブル0x563868..0x563947は保存対象外だが、indexだけは保存表にある。
+    // ランダム再生では対応する現在indexも保持し、毎回同じ保存時点へ巻き戻さない。
+    if (randomPlayback) *reinterpret_cast<uint32_t *>(0x563864) = liveSlotRngIndex;
+    return true;
 }
 } // namespace cccaster::game_interface
 
@@ -356,11 +442,18 @@ bool RealGameMemory::BeginReplay(uint32_t from, uint32_t target) {
 void RealGameMemory::EndReplay() {
     cccaster::sync::EndReplayEffects();
 }
+bool RealGameMemory::SetIntroPreview(bool active) {
+    if (active && !game_memory::spectator_intro_draw::Prepare()) return false;
+    cccaster::sync::SetIntroPreviewEffects(active);
+    return true;
+}
 void RealGameMemory::BeginSimulation(uint32_t f) {
     // 起動時に設定する試験オプション。毎FのCRT環境変数参照を締切後に持ち込まない。
     static const bool quickRetry = std::getenv("CCCASTER_TEST_RETRY_QUICK") != nullptr;
     static const bool quickKo = std::getenv("CCCASTER_TEST_ROUND_KO") != nullptr;
     static const bool quickDraw = std::getenv("CCCASTER_TEST_ROUND_DRAW") != nullptr;
+    static const auto roundTestFrame = cccaster::testing::RoundTestFrame(std::getenv("CCCASTER_TEST_ROUND_END_FRAME"));
+    static const auto roundTestLastEpoch = cccaster::testing::RoundTestFrame(std::getenv("CCCASTER_TEST_ROUND_END_MAX_EPOCH"), 0);
     using Probe = cccaster::diagnostics::SpinProbe;
     const bool probe = Probe::Enabled() && Probe::pending && Probe::sample.frame == f;
     auto *sample = probe ? &Probe::sample : nullptr;
@@ -368,7 +461,7 @@ void RealGameMemory::BeginSimulation(uint32_t f) {
     // 再戦疎通の短時間実機試験専用。通常対戦では無効。
     // 再計算でも同じFで適用し、ゲーム本来の時間切れ・勝敗・再戦遷移を通す。
     if ((cccaster::testing::IsScriptedInputEnabled() || cccaster::testing::IsVirtualControllerTest()) && (quickRetry || quickKo || quickDraw) &&
-        CanPredict() && f % 65536 >= 600) {
+        CanPredict() && cccaster::testing::RoundTestDue(f, roundTestFrame, roundTestLastEpoch)) {
         if (quickKo) {
             // 時間切れと分けたKO経路の自動試験。ゲームスレッドでのみ変更する。
             if (*CC_P2_HEALTH_ADDR) {
@@ -438,11 +531,9 @@ bool RealGameMemory::PrepareBattleAudio() {
         return true;
     }
     auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
-    game_build::PeIdentity identity;
     constexpr unsigned char expected[] = {0x8b,0x47,0x04,0x56,0x8b,0x30};
     if (base != 0x400000 ||
-        !game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base), 4096}, identity) ||
-        !game_build::SupportsRuntime(game_build::IdentifyHeaders(identity)) ||
+        !game_build::RuntimeValidated() ||
         std::memcmp(reinterpret_cast<void *>(0x40f3a0), expected, sizeof(expected))) {
         DebugLog("[SoundPrewarm] skipped=image_mismatch");
         return true;

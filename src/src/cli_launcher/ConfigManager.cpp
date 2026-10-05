@@ -1,3 +1,4 @@
+#include "shared_contracts/NativePath.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include <fstream>
 #include <mutex>
@@ -30,7 +31,7 @@ static inline std::string Trim(const std::string &s) {
 void Config::Load(const std::string &filePath) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     configData.clear();
-    std::ifstream file(filePath);
+    std::ifstream file(cccaster::Utf8Path(filePath));
     if (!file.is_open())
         return;
 
@@ -57,18 +58,18 @@ void Config::Load(const std::string &filePath) {
 
 void Config::Save(const std::string &filePath) {
     std::shared_lock<std::shared_mutex> lock(mutex_);
-    std::ofstream file(filePath);
+    std::ofstream file(cccaster::Utf8Path(filePath));
     if (!file.is_open())
         return;
 
-    for (const auto &sectionPair : configData) {
-        if (!sectionPair.first.empty()) {
-            file << "[" << sectionPair.first << "]\n";
-        }
-        for (const auto &keyValuePair : sectionPair.second) {
-            file << keyValuePair.first << " = " << keyValuePair.second << "\n";
-        }
-        file << "\n";
+    Write(file);
+}
+
+void Config::Write(std::ostream &output) const {
+    for (const auto &[section, values] : configData) {
+        if (!section.empty()) output << '[' << section << "]\n";
+        for (const auto &[key, value] : values) output << key << " = " << value << '\n';
+        output << '\n';
     }
 }
 
@@ -78,31 +79,29 @@ void Config::Clear() {
 }
 
 bool Config::SaveChecked(const std::string &filePath) {
-    const auto temporary = filePath + ".tmp";
+    const auto destination = cccaster::Utf8Path(filePath);
+    auto temporary = destination; temporary += ".tmp";
+    auto backup = destination; backup += ".bak";
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         std::ofstream file(temporary, std::ios::trunc);
         if (!file) return false;
-        for (const auto &[section, values] : configData) {
-            if (!section.empty()) file << '[' << section << "]\n";
-            for (const auto &[key, value] : values) file << key << " = " << value << '\n';
-            file << '\n';
-        }
+        Write(file);
         file.flush();
         if (!file) return false;
         file.close();
         if (file.fail()) return false;
     }
     std::error_code error;
-    if (std::filesystem::exists(filePath, error)) {
-        std::filesystem::copy_file(filePath, filePath + ".bak",
+    if (std::filesystem::exists(destination, error)) {
+        std::filesystem::copy_file(destination, backup,
                                   std::filesystem::copy_options::overwrite_existing, error);
         if (error) return false;
     } else if (error) return false;
 #ifdef _WIN32
-    return MoveFileExA(temporary.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    return MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 #else
-    std::filesystem::rename(temporary, filePath, error);
+    std::filesystem::rename(temporary, destination, error);
     return !error;
 #endif
 }

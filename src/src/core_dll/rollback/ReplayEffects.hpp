@@ -5,5 +5,6 @@ bool InstallReplayEffects();
 void BeginSimulationEffects(uint32_t frame);
 void BeginReplayEffects(uint32_t from, uint32_t target);
 void EndReplayEffects();
+void SetIntroPreviewEffects(bool active);
 void FlushSoundProbe();
 } // namespace cccaster::sync

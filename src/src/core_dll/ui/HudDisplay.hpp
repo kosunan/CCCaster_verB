@@ -5,20 +5,10 @@
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
+#include "shared_contracts/NetplaySettings.hpp"
 
 namespace cccaster::domain::ui {
 enum class HudDisplayMode { Compact, Detailed, Hidden };
-
-class FrameBarDisplay {
-  public:
-    static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2 || appMode == 4; }
-    static bool Visible(int appMode = 1) { return (appMode == 4 ? replayVisible_ : appMode == 2 ? spectatorVisible_ : visible_).load(std::memory_order_relaxed); }
-    static void Toggle(int appMode = 1) { (appMode == 4 ? replayVisible_ : appMode == 2 ? spectatorVisible_ : visible_).store(!Visible(appMode), std::memory_order_relaxed); }
-  private:
-    inline static std::atomic<bool> visible_{true};
-    inline static std::atomic<bool> spectatorVisible_{false};
-    inline static std::atomic<bool> replayVisible_{false};
-};
 
 // キーを離す順番に依存せず、HUD操作で使ったキーだけ解放まで抑止する。
 struct HudShortcutLatch {
@@ -71,14 +61,14 @@ inline HudFixedValues FormatHudFixedValues(bool pingAvailable, bool stale, float
         std::snprintf(value.delay, sizeof(value.delay), "%dF", delay);
     else
         std::snprintf(value.delay, sizeof(value.delay), "?F");
-    if (rollback >= 0 && rollback <= 8)
+    if (rollback >= 0 && rollback <= cccaster::public_api::NetplaySettings::MaxRollback)
         std::snprintf(value.rollback, sizeof(value.rollback), "%dF", rollback);
     else
         std::snprintf(value.rollback, sizeof(value.rollback), "?F");
     return value;
 }
 
-// 通常HUDは描画モードにかかわらずこの1行だけを表示する。
+// 詳細HUDの下段。ロールバックは内部管理のため表示しない。
 // ASCIIだけを使い、ゲーム同梱フォントや言語設定へ依存させない。
 inline void FormatNetplayHudLine(char *output, std::size_t outputSize,
                                  bool pingAvailable, bool stale, float pingMs,
@@ -87,11 +77,11 @@ inline void FormatNetplayHudLine(char *output, std::size_t outputSize,
     const auto value = FormatHudFixedValues(pingAvailable, stale, pingMs, jitterAvailable,
                                              jitterMs, delay, rollback, frameUs);
     std::snprintf(output, outputSize,
-                  "RTT %7s   JITTER %8s   D %2s   RB LIMIT %2s   1F %9s",
-                  value.ping, value.jitter, value.delay, value.rollback, value.frame);
+                  "RTT %7s   JITTER %8s   1F %9s",
+                  value.ping, value.jitter, value.frame);
 }
 
-// 対戦中の中央下端は通信・提示時間のみ。D/Rは勝数の右隣へ表示する。
+// 対戦中の中央下端は通信・提示時間のみ。DELAYは中央上部、勝数は各名前欄。
 inline void FormatBattleHudLine(char *output, std::size_t outputSize,
                                 bool pingAvailable, bool stale, float pingMs,
                                 bool jitterAvailable, float jitterMs,
@@ -115,6 +105,8 @@ inline const char *ControllerSetupGuidance(bool settingsKept) {
 class HudDisplay {
   public:
     static HudDisplayMode Get() { return mode_.load(std::memory_order_relaxed); }
+    static bool Visible() { return Get() != HudDisplayMode::Hidden; }
+    static bool Detailed() { return Get() == HudDisplayMode::Detailed; }
     static void Cycle() {
         auto current = mode_.load(std::memory_order_relaxed);
         while (!mode_.compare_exchange_weak(current, Next(current), std::memory_order_relaxed)) {}
@@ -126,4 +118,17 @@ class HudDisplay {
   private:
     inline static std::atomic<HudDisplayMode> mode_{HudDisplayMode::Compact};
 };
+
+class FrameBarDisplay {
+  public:
+    static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2 || appMode == 4; }
+    static bool Visible(int appMode = 1) { return Available(appMode) && HudDisplay::Detailed(); }
+};
+
+inline void FormatDelayLabel(char* output, std::size_t size, int delay) {
+    if (delay >= 0 && delay <= cccaster::public_api::NetplaySettings::MaxDelay)
+        std::snprintf(output, size, "DELAY %d", delay);
+    else
+        std::snprintf(output, size, "DELAY ?");
+}
 } // namespace cccaster::domain::ui

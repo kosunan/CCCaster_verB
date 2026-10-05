@@ -26,7 +26,7 @@ namespace cccaster::domain::ui {
 
 void UIManager::Render(UiPhase phase) {
     // 相手側の画面遷移などで設定画面を離れても、入力遮断状態を次画面へ持ち越さない。
-    // 強制遷移では自動保存しない。未保存ドラフトだけ次回F4へ保持する。
+    // 登録済みの項目は都度保存済み。強制遷移では入力待ちだけ中止する。
     const bool training = cccaster::domain::session::SceneRunner::AppMode() == 1;
     const bool replayList = cccaster::domain::session::SceneRunner::AppMode() == 4 &&
         cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_REPLAY;
@@ -56,15 +56,21 @@ void UIManager::Render(UiPhase phase) {
 // --- 入力イベント委譲 ---
 void UIManager::OnDelayInput(int num) {
     auto &mem = cccaster::game_interface::GameMem();
+    if (mem.IsAvailable() && cccaster::domain::session::SceneRunner::AppMode() == 1 &&
+        (mem.GameMode() == CC_GAME_MODE_CHARA_SELECT || mem.GameMode() == CC_GAME_MODE_IN_GAME)) {
+        cccaster::domain::session::SceneRunner::RequestTrainingDelay(num);
+        return;
+    }
     if (mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT &&
         cccaster::core::netplay::NetplaySession::GetInstance().IsRunning())
         cccaster::core::sync::SettingsCommands::Request(false, num);
 }
 void UIManager::OnRollbackInput(int num) {
+    (void)num;
     auto &mem = cccaster::game_interface::GameMem();
     if (mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT &&
         cccaster::core::netplay::NetplaySession::GetInstance().IsRunning())
-        cccaster::core::sync::SettingsCommands::Request(true, num);
+        cccaster::core::sync::SettingsCommands::notice = 4; // 通常対戦は当面R7固定。
 }
 
 void UIManager::OnMappingInput() {
@@ -88,19 +94,18 @@ bool UIManager::IsMappingWindowOpen() {
 // ============================================================================
 
 int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    // F1は表示だけを切替。長押しと解放をゲームへ通さない。
-    static bool frameBarF1Held = false;
-    if (uMsg == WM_KILLFOCUS) frameBarF1Held = false;
-    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F1 && frameBarF1Held) {
-        frameBarF1Held = false;
+    // 全モード共通でF1は通常→詳細→非表示。長押しと解放をゲームへ通さない。
+    static bool hudF1Held = false;
+    if (uMsg == WM_KILLFOCUS) hudF1Held = false;
+    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F1 && hudF1Held) {
+        hudF1Held = false;
         return 1;
     }
-    if (uMsg == WM_KEYDOWN && wParam == VK_F1 &&
-        FrameBarDisplay::Available(cccaster::domain::session::SceneRunner::AppMode())) {
-        frameBarF1Held = true;
+    if (uMsg == WM_KEYDOWN && wParam == VK_F1) {
+        hudF1Held = true;
         if (!(lParam & (1u << 30)) && !IsMappingWindowOpen() &&
             !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000))
-            FrameBarDisplay::Toggle(cccaster::domain::session::SceneRunner::AppMode());
+            HudDisplay::Cycle();
         return 1;
     }
     static bool hudF3Held = false;

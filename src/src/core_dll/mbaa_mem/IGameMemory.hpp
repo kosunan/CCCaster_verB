@@ -52,6 +52,10 @@ class IGameMemory {
     virtual std::string ReplayFilePath() const { return {}; }
     virtual bool SaveReplay(const char *, const char *, int) { return false; }
     virtual TrainingFrameSample ReadTrainingFrame() const { return {}; }
+    virtual bool IsPauseMenuOpen() const { return false; }
+    virtual bool IsTrainingDummy() const { return false; }
+    virtual bool IsTrainingRecording() const { return false; }
+    virtual bool RestartTrainingRecording() { return false; }
 
     // ── 書き込み ──
     virtual void WriteInput(GameInput p1, GameInput p2) = 0;
@@ -60,7 +64,10 @@ class IGameMemory {
     virtual bool ConfigureNetplayMenu() {
         return true;
     }
+    virtual bool ConfigureRandomStages() { return true; }
+    virtual uint32_t DrawRandomStage() { return 0; }
     virtual void SetRetryTarget(int) {}
+    virtual bool SetStageRematchFastPath(bool) { return true; }
     virtual bool HasIndependentRetry() const { return false; }
     virtual void BeginIndependentRetry() {}
     virtual int ReadRetryChoice() const { return -1; }
@@ -79,6 +86,8 @@ class IGameMemory {
     virtual void EndReplay() {}
     virtual void BeginSimulation(uint32_t) {}
     virtual bool PrepareBattleAudio() { return true; }
+    // 観戦の待機画像だけを作る1更新。音声・音声時計の外部効果を発生させない。
+    virtual bool SetIntroPreview(bool) { return true; }
     virtual bool CanPredict() const {
         return false;
     }
@@ -97,6 +106,10 @@ class IGameMemory {
     virtual bool LoadSnapshot(std::span<char>) {
         return false;
     }
+    // Trainingは現在の敵設定・ダミー録画から独立した戦闘状態を保存する。
+    virtual size_t TrainingSnapshotSize() const { return SnapshotSize(); }
+    virtual bool SaveTrainingSnapshot(std::span<char> data) { return SaveSnapshot(data); }
+    virtual bool LoadTrainingSnapshot(std::span<char> data) { return LoadSnapshot(data); }
     virtual bool ReadRng(RngState &) const {
         return false;
     }

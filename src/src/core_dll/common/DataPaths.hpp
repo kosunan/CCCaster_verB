@@ -10,7 +10,7 @@
 //   「設定が効かない」という形でしか現れず、原因が見えない。
 //
 //   `HookLog` は既に「DLL 自身のパスから解決する」方式に直してあった
-//   （`dllmain.cpp` の `GetModuleFileNameA`）。同じことを設定ファイルにもする。
+//   （`dllmain.cpp` の `GetModuleFileNameW`）。同じことを設定ファイルにもする。
 //
 // 【ルート】
 //   DLL が置かれているディレクトリ。実機では `<ゲーム>\cccaster_B\` にあたり、
@@ -26,7 +26,7 @@
 namespace cccaster::core::paths {
 
 /// データディレクトリを設定する。dllmain の初期化で1回だけ呼ぶ。
-/// 末尾の区切り文字は有無どちらでもよい。
+/// UTF-8。末尾の区切り文字は有無どちらでもよい。
 void SetDataRoot(const std::string &absoluteDir);
 
 /// ファイル名をデータディレクトリ基準の絶対パスに解決する。

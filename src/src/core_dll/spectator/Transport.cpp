@@ -51,6 +51,9 @@ void Transport::Serve(uint16_t port) {
             std::array<uint8_t, 4096> outgoing{};
             size_t bytes = 0;
             bool greeted = false;
+            uint32_t latestMatch = UINT32_MAX;
+            std::array<uint32_t, 2> emblemId{UINT32_MAX, UINT32_MAX};
+            std::array<unsigned, 2> emblemIndex{};
             Clock::time_point progress = Clock::now();
             Clock::time_point heartbeat = Clock::now();
             explicit Peer(asio::io_context &io) : socket(io) {}
@@ -95,6 +98,30 @@ void Transport::Serve(uint16_t port) {
                     if (!p.greeted) {
                         std::memcpy(p.outgoing.data(), Hello.data(), 16); p.bytes = 16; p.greeted = true;
                     } else {
+                        // 最新試合番号は再生順から独立して通知する。古い入力の配送中にも
+                        // 更新でき、対戦スレッド・既存のSPSCキューへ追加処理を持ち込まない。
+                        const auto latestMatch = archive.LatestMatch();
+                        if (p.latestMatch != latestMatch || Clock::now() - p.heartbeat >= std::chrono::seconds(1)) {
+                            Record heartbeat; heartbeat.Set(Heartbeat, 0, latestMatch);
+                            std::memcpy(p.outgoing.data(), &heartbeat, heartbeat.size); p.bytes = heartbeat.size;
+                            p.latestMatch = latestMatch; p.heartbeat = Clock::now();
+                        }
+                        // 画像はworkerが直接配信する。ゲーム用キューと履歴へ混ぜない。
+                        for (unsigned side = 0; side < 2; ++side) {
+                            const auto image = cccaster::emblem::Store::Get(side);
+                            if (!image) continue;
+                            if (p.emblemId[side] != image->id) {
+                                p.emblemId[side] = image->id; p.emblemIndex[side] = 0;
+                            }
+                            const unsigned count = image->id ? cccaster::emblem::ChunkCount : 1;
+                            for (unsigned n = 0; n < 2 && p.emblemIndex[side] < count; ++n) {
+                                Record emblem;
+                                emblem.Set(Emblem, 0, EmblemData{side,
+                                    cccaster::emblem::MakeChunk(*image, p.emblemIndex[side]++)});
+                                std::memcpy(p.outgoing.data() + p.bytes, &emblem, emblem.size);
+                                p.bytes += emblem.size;
+                            }
+                        }
                         if (!p.cursor) p.cursor = archive.Join();
                         if (p.cursor && p.cursor < archive.head && !archive.Get(p.cursor)) { slot.reset(); continue; }
                         // 1回4096B、約256KB/s/人を上限に再送はTCPへ任せる。
@@ -104,10 +131,7 @@ void Transport::Serve(uint16_t port) {
                             p.bytes += r->size; ++p.cursor;
                         }
                         if (!p.bytes) {
-                            if (Clock::now() - p.heartbeat < std::chrono::seconds(1)) { p.progress = Clock::now(); continue; }
-                            Record heartbeat; heartbeat.Set(Heartbeat, 0, uint32_t(0));
-                            std::memcpy(p.outgoing.data(), &heartbeat, heartbeat.size); p.bytes = heartbeat.size;
-                            p.heartbeat = Clock::now();
+                            p.progress = Clock::now(); continue;
                         }
                     }
                 }
@@ -145,6 +169,8 @@ void Transport::Receive(std::string ip, uint16_t port) {
         bool greeted = false, header = false, pending = false;
         Record record;
         auto last = Clock::now();
+        std::array<cccaster::emblem::Receiver, 2> emblems;
+        cccaster::emblem::Store::Set(2, nullptr); cccaster::emblem::Store::Set(3, nullptr);
         while (running_) {
             if (sent < 16) {
                 sent += socket.write_some(asio::buffer(reinterpret_cast<const uint8_t*>(Hello.data()) + sent, 16 - sent), error);
@@ -168,10 +194,27 @@ void Transport::Receive(std::string ip, uint16_t port) {
                     header = true; want = record.size;
                 } else {
                     if (!record.Valid()) throw std::runtime_error("record");
-                    if (record.kind == Heartbeat) { have = 0; want = 12; header = false; }
+                    if (record.kind == Emblem) {
+                        const auto data = record.Get<EmblemData>();
+                        if (auto image = emblems[data.player].Accept(data.chunk)) {
+                            domain::session::DebugLog("[Emblem] spectator player=%u id=%08x", data.player + 1, image->id);
+                            cccaster::emblem::Store::Set(data.player + 2, std::move(image));
+                        }
+                        have = 0; want = 12; header = false;
+                    } else if (record.kind == Heartbeat) {
+                        // 後続する古いStartや従来の0 heartbeatで最新位置を巻き戻さない。
+                        if (record.payload[0] > latestMatch_.load(std::memory_order_relaxed))
+                            latestMatch_.store(record.payload[0], std::memory_order_relaxed);
+                        have = 0; want = 12; header = false;
+                    }
                     else {
                         pending = true; status_ = Status::Receiving;
                         if (record.kind == Input) latest_ = record.frame;
+                        if (record.kind == Start || record.kind == Selection || record.kind == Selecting) {
+                            const auto revision = record.Get<StartData>().score.revision;
+                            if (revision > latestMatch_.load(std::memory_order_relaxed))
+                                latestMatch_.store(revision, std::memory_order_relaxed);
+                        }
                     }
                 }
             }

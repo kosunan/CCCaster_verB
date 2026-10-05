@@ -15,6 +15,7 @@
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/StartupTrace.hpp"
 #include "core_dll/mbaa_mem/StartupPatch.hpp"
+#include "core_dll/mbaa_mem/MbaaPatcher.hpp"
 #include "core_dll/mbaa_mem/StartupSystemInfo.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
 #include "core_dll/hook/TimeHooks.hpp"
@@ -112,6 +113,10 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // キャラセレ到達判定
     const bool replay = s_targetMode == cccaster::public_api::IpcGameMode::Replay;
     if (gameMode == CC_GAME_MODE_CHARA_SELECT || (replay && gameMode == CC_GAME_MODE_REPLAY)) {
+        if (!cccaster::game_memory::MbaaPatcher::ApplyPostLoadStagePatches())
+            ExitProcess(ERROR_WRITE_FAULT);
+        if (!cccaster::game_interface::GameMem().ConfigureRandomStages())
+            ExitProcess(ERROR_INVALID_FUNCTION);
         if (replay && !cccaster::game_memory::startup::SetReplayEntry(false)) ExitProcess(ERROR_WRITE_FAULT);
         cccaster::game_memory::startup_assets::Restore(true);
         if (!cccaster::game_memory::startup::SetBootFade(false))

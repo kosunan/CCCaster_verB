@@ -29,11 +29,15 @@ class EpochStartGate {
     void Begin(uint32_t epoch) { local = {epoch, 0, 0, EpochStart::Ready}; dueTicks = 0; }
     Result Update(bool host, const EpochStart &peer, int64_t peerLocalTicks, int64_t now, int64_t rtt) {
         constexpr int64_t guard = 100000*60;
+        rtt = std::clamp<int64_t>(rtt, 0, 1000000*60);
         if (peer.epoch != local.epoch || !peer.Valid()) return Waiting;
         if (host) {
             if (local.stage == EpochStart::Ready ||
-                (local.stage == EpochStart::Offer && dueTicks - now < guard)) {
-                const auto lead = std::clamp<int64_t>(rtt * 6 + 200000*60, 500000*60, 2500000*60);
+                (local.stage == EpochStart::Offer && dueTicks - now < rtt + guard)) {
+                // Offer→Accepted→Commit→Committedは2往復。再送用にさらに1往復と
+                // 200msを確保する。旧6往復分の余裕は高遅延時の静止時間を増やしていた。
+                // Commitを出す前にも、残り1往復+100msがなければ再提案する。
+                const auto lead = std::clamp<int64_t>(rtt * 3 + 200000*60, 500000*60, 2500000*60);
                 local = {local.epoch, local.serial + 1, now + lead, EpochStart::Offer};
                 dueTicks = local.hostTicks;
             }

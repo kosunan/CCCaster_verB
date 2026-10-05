@@ -8,8 +8,7 @@
 //   時間ユーティリティなど、特定のUI画面に依存しない共通機能を提供。
 //
 // 【再利用性】
-//   NetplayOverlay, ControllerMapper, 将来のスペクテーターUI等、
-//   任意のオーバーレイモジュールから利用可能な汎用基盤。
+//   StateUiView や ControllerUiView から使う共通基盤。
 //
 // 【依存関係】
 //   - ImGui (v1.90.4-docking)

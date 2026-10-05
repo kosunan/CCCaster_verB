@@ -1,6 +1,6 @@
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
-#include "shared_contracts/GameBuild.hpp"
+#include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include <windows.h>
 #include <cstring>
 
@@ -50,14 +50,26 @@ template<class T> T Read(uintptr_t address) {
 }
 
 bool SupportedImage() {
-    // DLL入口では既存GameBuildGuardが.text全体も照合済み。
-    // フック適用後にコードハッシュを取り直さず、ここでは版・固定基底を確認する。
+    // 初期化入口で入力・状態配置の互換性を照合済み。
+    // パッチ後のコードを再照合せず、確認結果と固定基底を使用する。
     const uintptr_t base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     if (base != 0x400000 || !ReadableImageRange(base, 4096)) return false;
-    game_build::PeIdentity identity;
-    return game_build::ReadHeaders({reinterpret_cast<const uint8_t *>(base), 4096}, identity) &&
-        game_build::SupportsRuntime(game_build::IdentifyHeaders(identity));
+    return game_build::RuntimeValidated();
 }
+}
+
+bool RealGameMemory::IsPauseMenuOpen() const {
+    return IsAvailable() && GameMode() == CC_GAME_MODE_IN_GAME &&
+        (*CC_PAUSE_FLAG_ADDR != 0 || *CC_TRAINING_PAUSE_ADDR != 0);
+}
+bool RealGameMemory::IsTrainingDummy() const {
+    // kosunan/MBAACCTraining e4f2f976: Fn_01の2byte読取とFn_03の5/-1判定に合わせる。
+    return IsAvailable() && GameMode() == CC_GAME_MODE_IN_GAME &&
+        IsDummyEnemyStatus(Read<int16_t>(reinterpret_cast<uintptr_t>(CC_DUMMY_STATUS_ADDR)));
+}
+bool RealGameMemory::IsTrainingRecording() const {
+    return IsAvailable() && GameMode() == CC_GAME_MODE_IN_GAME &&
+        Read<int16_t>(reinterpret_cast<uintptr_t>(CC_DUMMY_STATUS_ADDR)) == CC_DUMMY_STATUS_RECORD;
 }
 
 TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {

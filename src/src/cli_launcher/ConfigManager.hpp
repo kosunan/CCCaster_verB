@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <iosfwd>
 #include <unordered_map>
 #include <shared_mutex>
 
@@ -21,6 +22,9 @@ class Config {
     void SetInt(const std::string &section, const std::string &key, int value);
 
   private:
+    // 呼出し元が mutex_ の共有ロックを保持する。
+    void Write(std::ostream &output) const;
+
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> configData;
     mutable std::shared_mutex mutex_;
 };

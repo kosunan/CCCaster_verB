@@ -1,6 +1,8 @@
 ﻿#include "core_dll/network/NetworkSimulator.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <cstdio>
 
 namespace cccaster::network {
 
@@ -14,6 +16,16 @@ void NetworkSimulator::Enable(uint32_t minDelayMs, uint32_t maxDelayMs, uint32_t
     _minDelayMs = minDelayMs;
     _maxDelayMs = std::max(minDelayMs, maxDelayMs); // min <= max を保証
     _lossPercent = std::min(lossPercent, uint32_t(100));
+    _spikeEveryMs = _spikeDurationMs = _spikeExtraMs = 0;
+    _enabledUs = NowUs();
+    // 明示的な実通信試験専用。実時間で周期/継続/追加遅延を指定し、同じUDP保留キューへ載せる。
+    if (const char *profile = std::getenv("CCCASTER_TEST_NETWORK_SPIKE")) {
+        unsigned every = 0, duration = 0, extra = 0;
+        if (std::sscanf(profile, "%u,%u,%u", &every, &duration, &extra) == 3 &&
+            every >= 1000 && every <= 60000 && duration > 0 && duration < every && extra <= 1000) {
+            _spikeEveryMs = every; _spikeDurationMs = duration; _spikeExtraMs = extra;
+        }
+    }
     _receiveOnly.store(receiveOnly);
     _enabled.store(true, std::memory_order_release);
 }
@@ -24,10 +36,13 @@ bool NetworkSimulator::IsEnabled() const {
 
 uint32_t NetworkSimulator::GetRandomDelayMs() {
     std::lock_guard<std::mutex> lock(_mtx);
+    const auto elapsedMs = std::max<int64_t>(0, NowUs() - _enabledUs) / 1000;
+    const uint32_t extra = _spikeEveryMs && elapsedMs >= _spikeEveryMs &&
+        elapsedMs % _spikeEveryMs < _spikeDurationMs ? _spikeExtraMs : 0;
     if (_minDelayMs == _maxDelayMs)
-        return _minDelayMs;
+        return _minDelayMs + extra;
     std::uniform_int_distribution<uint32_t> dist(_minDelayMs, _maxDelayMs);
-    return dist(_rng);
+    return dist(_rng) + extra;
 }
 
 bool NetworkSimulator::ShouldDrop() {

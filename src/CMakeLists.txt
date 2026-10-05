@@ -14,12 +14,32 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
+# VERSIONを変えない開発ビルド同士も識別する。生成物・ゲーム・設定は入力に含めない。
+file(GLOB_RECURSE CCCASTER_ID_INPUTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/ui/*" "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/*.rc.in" "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/assets/app.manifest"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/GRP/*.dds"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
+list(APPEND CCCASTER_ID_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
+list(SORT CCCASTER_ID_INPUTS)
+set(CCCASTER_ID_TEXT "${CCCASTER_VERSION}|${CMAKE_CXX_COMPILER_ID}|${CMAKE_CXX_COMPILER_VERSION}|${CMAKE_BUILD_TYPE}|${CMAKE_CXX_FLAGS}|${CMAKE_CXX_FLAGS_RELEASE}")
+foreach(input IN LISTS CCCASTER_ID_INPUTS)
+    file(SHA256 "${input}" digest)
+    file(RELATIVE_PATH relative "${CMAKE_CURRENT_SOURCE_DIR}" "${input}")
+    string(APPEND CCCASTER_ID_TEXT "\n${relative}:${digest}")
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CCCASTER_ID_INPUTS})
+string(SHA256 CCCASTER_BUILD_ID "${CCCASTER_ID_TEXT}")
+configure_file(cmake/BuildIdentity.hpp.in generated/BuildIdentity.hpp @ONLY)
+
 # ==========================================
 # 成果物出力先の一元化設定 (exe, dllなどをすべてこのディレクトリ直下に集約)
 # ==========================================
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+include(cmake/StageSelectAssets.cmake)
 
 foreach(OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES})
     string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
@@ -131,6 +151,21 @@ endif()
 enable_testing()
 
 if(WIN32)
+    FetchContent_Declare(nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa)
+    FetchContent_MakeAvailable(nlohmann_json)
+    add_library(cccaster_p2p_protocol STATIC src/p2p/Crypto.cpp src/p2p/Protocol.cpp)
+    target_include_directories(cccaster_p2p_protocol PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(cccaster_p2p_protocol PUBLIC nlohmann_json::nlohmann_json bcrypt crypt32 ws2_32)
+    target_link_libraries(cccaster_transport PUBLIC cccaster_p2p_protocol)
+    add_library(cccaster_p2p STATIC src/p2p/Ntfy.cpp src/p2p/Session.cpp src/p2p/Watch.cpp
+        src/p2p/Matching.cpp src/p2p/MatchingProtocol.cpp)
+    target_include_directories(cccaster_p2p PRIVATE ${asio_SOURCE_DIR}/asio/include)
+    target_link_libraries(cccaster_p2p PUBLIC cccaster_transport winhttp iphlpapi)
+    if(MSVC)
+        set_property(TARGET cccaster_p2p_protocol cccaster_p2p PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
     # 実機用の成果物。DLL 注入と D3D9/DirectInput/MinHook を含むため Windows 専用。
     add_subdirectory(src/launcher)
     add_subdirectory(src/core_dll)

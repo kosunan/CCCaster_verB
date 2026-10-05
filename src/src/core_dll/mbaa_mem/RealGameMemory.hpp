@@ -20,12 +20,19 @@ class RealGameMemory final : public IGameMemory {
     uint32_t MenuStateCounter() const override;
     domain::session::MatchResultFacts ReadMatchResult() const override;
     TrainingFrameSample ReadTrainingFrame() const override;
+    bool IsPauseMenuOpen() const override;
+    bool IsTrainingDummy() const override;
+    bool IsTrainingRecording() const override;
+    bool RestartTrainingRecording() override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
     bool ConfigureNetplayMenu() override;
+    bool ConfigureRandomStages() override;
+    uint32_t DrawRandomStage() override;
     std::string ReplayFilePath() const override;
     bool SaveReplay(const char *p1, const char *p2, int winner) override;
     void SetRetryTarget(int) override;
+    bool SetStageRematchFastPath(bool) override;
     bool HasIndependentRetry() const override { return true; }
     void BeginIndependentRetry() override;
     int ReadRetryChoice() const override;
@@ -40,6 +47,7 @@ class RealGameMemory final : public IGameMemory {
     void EndReplay() override;
     void BeginSimulation(uint32_t) override;
     bool PrepareBattleAudio() override;
+    bool SetIntroPreview(bool) override;
     bool CanPredict() const override;
     bool CanRollback() const override;
     void AlignIntroRng() override;
@@ -49,6 +57,9 @@ class RealGameMemory final : public IGameMemory {
     size_t SnapshotSize() const override;
     bool SaveSnapshot(std::span<char>) override;
     bool LoadSnapshot(std::span<char>) override;
+    size_t TrainingSnapshotSize() const override;
+    bool SaveTrainingSnapshot(std::span<char>) override;
+    bool LoadTrainingSnapshot(std::span<char>) override;
     bool ReadRng(RngState &state) const override;
     bool WriteRng(const RngState &state) override;
   private:

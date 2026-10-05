@@ -22,6 +22,7 @@
 #include <atomic>
 #include <vector>
 #include <string>
+#include "shared_contracts/PlayerEmblem.hpp"
 #include "core_dll/sync/NetplayClock.hpp"
 
 namespace cccaster {
@@ -31,6 +32,7 @@ namespace netplay {
 class Metronome; // 前方宣言
 
 class SyncCodec {
+    cccaster::emblem::Exchange _emblems;
   public:
     // ─── 初期化 ─────────────────────────────────────────
     void Initialize(bool isHost, int delayFrames, int maxRollback, Metronome *metronome);
@@ -144,6 +146,10 @@ class SyncCodec {
     //   入力はセッション通しの単一フレーム空間で扱う。
     static constexpr uint8_t FLAG_READY = 0x01;       // 準備完了
     static constexpr uint8_t FLAG_PHASE_READY = 0x02; // Phase遷移準備完了
+    // 既存phaseBaseFrameに対するスキップ対象世代。先着側はNEXTからCURRENTへ移る。
+    // 追加の任意フラグなのでwire 10拡張8のサイズ・必須同期処理は変えない。
+    static constexpr uint8_t FLAG_LOADING_SKIP_CURRENT = 0x04;
+    static constexpr uint8_t FLAG_LOADING_SKIP_NEXT = 0x08;
 
   private:
     static void BuildUnifiedPacket(std::vector<uint8_t> &pkt, uint8_t phase, uint8_t type, int64_t timestampTicks,

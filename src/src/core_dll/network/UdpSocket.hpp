@@ -5,6 +5,8 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include <array>
+#include <span>
 
 namespace cccaster::network {
 
@@ -24,7 +26,16 @@ class UdpSocket {
     using ReceiveCallback = std::function<void(const std::vector<uint8_t> &, const std::string &, uint16_t)>;
 
     // 待受用ポートを指定してインスタンス化
-    UdpSocket(uint16_t bindPort, bool isIpv6 = false, bool ipv6Only = false);
+    UdpSocket(uint16_t bindPort, bool isIpv6 = false, bool ipv6Only = false, bool exclusive = false);
+#ifdef _WIN32
+    // WSADuplicateSocketで同じUDP endpointを子プロセスへ引き継ぐ。
+    explicit UdpSocket(std::span<const uint8_t> protocolInfo);
+    std::vector<uint8_t> DuplicateForProcess(uint32_t processId);
+    void Pause();
+    void Resume();
+    void EnableP2p(const std::array<uint8_t,32>& mac,const std::array<uint8_t,8>& session,
+                   const std::string& peerIp,uint16_t peerPort,bool host,std::function<void()> disconnected = {});
+#endif
     ~UdpSocket();
     UdpSocket(const UdpSocket &) = delete;
     UdpSocket &operator=(const UdpSocket &) = delete;

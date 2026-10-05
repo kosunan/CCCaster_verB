@@ -9,7 +9,7 @@ class FrameSequence {
   public:
     static constexpr uint32_t STRIDE = 65536;
     // 最新から10件を再送する現行wire形式で、最古の未消費入力を保持する。
-    static constexpr uint32_t MAX_LOOKAHEAD = cccaster::public_api::NetplaySettings::MaxBufferedFrames;
+    static constexpr uint32_t MAX_LOOKAHEAD = cccaster::public_api::NetplaySettings::MaxDelay;
     bool Begin(uint32_t lookahead) {
         if (lookahead > MAX_LOOKAHEAD || _epoch >= 65534)
             return false;

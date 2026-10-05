@@ -1,5 +1,6 @@
 #pragma once
 #include "core_dll/mbaa_mem/IGameMemory.hpp"
+#include "shared_contracts/NetplaySettings.hpp"
 #include <array>
 #include <vector>
 #include <cfenv>
@@ -45,6 +46,6 @@ class RollbackStates {
         std::fenv_t fp{};
         uint32_t local = 0, remote = 0;
     };
-    std::array<Slot, 12> slots_;
+    std::array<Slot, public_api::NetplaySettings::RollbackHistoryFrames> slots_;
 };
 } // namespace cccaster::sync

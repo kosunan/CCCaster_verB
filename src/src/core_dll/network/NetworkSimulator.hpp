@@ -73,6 +73,8 @@ class NetworkSimulator {
     uint32_t _minDelayMs = 0;
     uint32_t _maxDelayMs = 0;
     uint32_t _lossPercent = 0;
+    uint32_t _spikeEveryMs = 0, _spikeDurationMs = 0, _spikeExtraMs = 0;
+    int64_t _enabledUs = 0;
     std::mt19937 _rng{std::random_device{}()};
     std::mutex _mtx;
 };

@@ -3,6 +3,7 @@
 #include "core_dll/engine/LocalInputGate.hpp"
 #include "core_dll/timing/FrameCadence.hpp"
 #include "core_dll/timing/PhaseFollower.hpp"
+#include "core_dll/timing/NetworkPacing.hpp"
 #include <atomic>
 #include <array>
 #include "core_dll/sync/MatchInputBuffer.hpp"
@@ -55,6 +56,8 @@ class InputTimeline {
     std::array<CaptureTime, MatchInputBuffer::RING_SIZE> captureTimes_{};
     int64_t phaseParts_ = 0, rateParts_ = 0;
     uint32_t modelRevision_ = 0;
+    timer::NetworkPacing pacing_;
+    uint32_t periodTicks_ = timer::NetworkPacing::Normal;
     bool modelReady_ = false;
     int64_t phaseError_ = 0, phaseShift_ = 0, phaseTheta_ = 0, phaseRtt_ = 0;
     std::mutex mutex_;

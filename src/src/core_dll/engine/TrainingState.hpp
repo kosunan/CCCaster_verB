@@ -5,13 +5,14 @@
 #include <new>
 
 namespace cccaster::domain::session {
-enum class TrainingStateEvent { None, Saved, Loaded, Empty, SaveFailed, LoadFailed, Holding, Cleared };
+enum class TrainingStateEvent { None, Saved, Loaded, Empty, SaveFailed, LoadFailed, Holding, Cleared,
+                                RecordingRestarted, RecordingRestartFailed };
 // ゲームスレッド専用。通信入力・リプレイ保存・ディスクとは独立した1スロット。
 class TrainingState {
   public:
     void Reset() {
         bytes_.clear(); scratch_.clear(); haveState_ = armed_ = holding_ = pending_ = transitioned_ = false;
-        previous_ = 0; event_ = {}; resetInput_ = true;
+        previous_ = 0; event_ = {}; noticeUntil_ = 0; resetInput_ = true;
     }
     bool HasState() const { return haveState_; }
     bool Holding() const { return holding_; }
@@ -21,7 +22,9 @@ class TrainingState {
     }
     TrainingStateEvent Step(int appMode, bool battle, bool configuring, uint8_t buttons,
                             const TrainingFrameSample &sample, game_interface::IGameMemory &mem, int64_t now) {
-        resetInput_ = !haveState_;
+        const bool directLoad = mem.IsTrainingDummy();
+        resetInput_ = !haveState_ && !directLoad;
+        if (directLoad) pending_ = false;
         if (appMode != 1 || !battle) {
             const bool cleared = haveState_;
             Reset();
@@ -38,7 +41,7 @@ class TrainingState {
         // ヒットストップ・技の暗転も保存できる戦闘状態。メニューの一時停止と
         // F4中だけ操作を遮断し、画面遷移前からの押しっぱなしを発火させない。
         if (configuring || sample.paused) {
-            // FN2のリセット処理自身も一時停止を1更新挟む。予約はそこで消さない。
+            // 通常FN2のリセット自身も一時停止を挟むため、そこで予約を捨てない。
             if (configuring) pending_ = false;
             holding_ = armed_ = false; previous_ = buttons; return {};
         }
@@ -51,11 +54,10 @@ class TrainingState {
                      sample.simulationFrame < resetSimulationFrame_) {
                 pending_ = false;
                 previous_ = buttons; armed_ = buttons == 0;
-                if (mem.LoadSnapshot(bytes_)) {
+                if (mem.LoadTrainingSnapshot(bytes_)) {
                     std::fesetenv(&fp_);
                     return Notify(TrainingStateEvent::Loaded, now);
                 }
-                haveState_ = false;
                 return Notify(TrainingStateEvent::LoadFailed, now);
             }
         }
@@ -64,7 +66,22 @@ class TrainingState {
         previous_ = buttons;
         if (!armed_ || !edge) return {};
         TrainingStateEvent result = TrainingStateEvent::None;
-        if (edge & 2) { // FN2優先。通常リセットを送るだけで、このフレームではロードしない。
+        if ((edge & 2) && directLoad) { // 敵の設定がDUMMYの時だけ、押下時に直接ロードする。
+            armed_ = false;
+            if (!haveState_) {
+                // 保存がなくても、録画中なら現在位置から録画をやり直せる。
+                if (mem.IsTrainingRecording())
+                    result = mem.RestartTrainingRecording() ? TrainingStateEvent::RecordingRestarted
+                                                           : TrainingStateEvent::RecordingRestartFailed;
+                else result = TrainingStateEvent::Empty;
+            }
+            else if (mem.LoadTrainingSnapshot(bytes_)) {
+                std::fesetenv(&fp_);
+                result = TrainingStateEvent::Loaded;
+            } else {
+                result = TrainingStateEvent::LoadFailed;
+            }
+        } else if (edge & 2) {
             resetInput_ = true;
             if (haveState_ && !pending_) {
                 pending_ = true; transitioned_ = false;
@@ -72,12 +89,12 @@ class TrainingState {
                 resetUntil_ = now + 10000000;
             }
         } else if ((edge & 1) && !pending_) {
-            const auto size = mem.SupportsSnapshots() ? mem.SnapshotSize() : 0;
+            const auto size = mem.SupportsSnapshots() ? mem.TrainingSnapshotSize() : 0;
             try {
                 if (!size || size > 16 * 1024 * 1024) result = TrainingStateEvent::SaveFailed;
                 else {
                     scratch_.resize(size);
-                    if (mem.SaveSnapshot(scratch_)) {
+                    if (mem.SaveTrainingSnapshot(scratch_)) {
                         bytes_.swap(scratch_); std::fegetenv(&fp_);
                         haveState_ = holding_ = true; result = TrainingStateEvent::Saved;
                     } else result = TrainingStateEvent::SaveFailed;
@@ -94,7 +111,9 @@ class TrainingState {
         case TrainingStateEvent::Loaded: return "STATE LOADED";
         case TrainingStateEvent::Empty: return "NO SAVED STATE - SAVE FIRST";
         case TrainingStateEvent::SaveFailed: return "SAVE FAILED - PREVIOUS STATE KEPT";
-        case TrainingStateEvent::LoadFailed: return "LOAD FAILED - SAVE A NEW STATE";
+        case TrainingStateEvent::LoadFailed: return "LOAD FAILED - SAVED STATE KEPT";
+        case TrainingStateEvent::RecordingRestarted: return "RECORDING RESTARTED";
+        case TrainingStateEvent::RecordingRestartFailed: return "RECORDING RESTART FAILED";
         default: return "";
         }
     }

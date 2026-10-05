@@ -2,34 +2,72 @@
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include <windows.h>
+#include <bcrypt.h>
 #include <MinHook.h>
 #include <cstring>
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/ScriptedInput.hpp"
+#include "core_dll/mbaa_mem/RandomStage.hpp"
+#include "core_dll/mbaa_mem/StageRematchPatch.hpp"
 namespace {
 int target = -1;
 bool retryActive = false;
 int retryChoice = -1, retryCursor = -1;
 bool selectActive = false, selectHost = false, stageChosen = false, selectRelease = false;
 uint32_t chosenStage = 0, agreedStage = 0;
+bool chosenRandom = false;
+uint32_t DrawStage() {
+    const cccaster::game_memory::stages::RandomPool pool(
+        std::span<const uint32_t>(reinterpret_cast<const uint32_t *>(0x74FC08), 60));
+    uint32_t random = 0, stage = 0;
+    if (pool.count) {
+        do {
+            if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(&random), sizeof(random),
+                                BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) return 0;
+        } while (!pool.Pick(random, stage));
+    }
+    if (stage) cccaster::domain::session::DebugLog("[Select] RANDOM resolved=%u candidates=%u", stage, pool.count);
+    return stage;
+}
 }
 extern "C" {
+void *cccaster_random_stage_original = nullptr;
+__attribute__((force_align_arg_pointer)) void __cdecl cccaster_random_stage() {
+    // オフラインのRANDOMも同じ候補から選ぶ。元ゲームの乱数や抽選関数は使わない。
+    const auto stage = DrawStage();
+    if (!stage) {
+        cccaster::domain::session::DebugLog("[Select] FAILED random stage unavailable");
+        ExitProcess(ERROR_INVALID_DATA);
+    }
+    *CC_STAGE_SELECTOR_ADDR = stage;
+}
+void *cccaster_retry_open_original = nullptr;
+__attribute__((force_align_arg_pointer)) uint32_t __cdecl cccaster_retry_open(uint32_t command) {
+    // 0x43A730は結果表示の30F待機後、メニューを開くかどうかの判定だけ。
+    // 旧版の自動リプレイ保存経路と同じ0x43A734へ進み、元ゲームに後始末させる。
+    // 項目の決定処理0x4299CBやGameMemの入力・派生入力は変更しない。
+    if (retryActive && *CC_GAME_MODE_ADDR == CC_GAME_MODE_RETRY) {
+        cccaster::domain::session::DebugLog("[RetryMenu] AUTO OPEN command=%u", command);
+        return 1;
+    }
+    return command;
+}
+__attribute__((naked)) void cccaster_retry_open_hook() {
+    __asm__ __volatile__("pushfl\n\tpushal\n\tpushl %eax\n\tcall _cccaster_retry_open\n\t"
+                         "addl $4,%esp\n\tmovl %eax,28(%esp)\n\tpopal\n\tpopfl\n\t"
+                         "jmp *_cccaster_retry_open_original\n\t");
+}
 void *cccaster_stage_original = nullptr;
 __attribute__((force_align_arg_pointer)) uint32_t __cdecl cccaster_stage_result(uint32_t result) {
     if (!selectActive || *CC_GAME_MODE_ADDR != CC_GAME_MODE_CHARA_SELECT) return result;
     if (selectHost && !stageChosen && result == 255) {
-        // 0は実ステージではなくランダム指定。通常は0x42F016でロード時に
-        // 各端末が抽選するため、独立操作で進んだ乱数から別々の背景になる。
-        // 元ゲームの抽選（使用可能ステージ・除外設定込み）をホストだけで先行し、
-        // 実番号を最終選択として交換する。非0なのでロード側は再抽選しない。
-        if (*CC_STAGE_SELECTOR_ADDR == 0) {
-            reinterpret_cast<void (__cdecl *)()>(0x42F140)();
-            cccaster::domain::session::DebugLog("[Select] RANDOM resolved=%u", *CC_STAGE_SELECTOR_ADDR);
-        }
+        // 抽選方法も保持する。実番号だけでは手動選択との区別が消える。
+        chosenRandom = *CC_STAGE_SELECTOR_ADDR == 0;
+        if (chosenRandom) cccaster_random_stage();
         stageChosen = true;
         chosenStage = *CC_STAGE_SELECTOR_ADDR;
     }
-    if (selectRelease) {
+    if (selectRelease && *CC_P1_SELECTOR_MODE_ADDR == 5 && *CC_P2_SELECTOR_MODE_ADDR == 5) {
         *CC_STAGE_SELECTOR_ADDR = agreedStage;
         cccaster::domain::session::DebugLog("[Select] COMMIT p1=%u/%u/%u p2=%u/%u/%u stage=%u",
             *CC_P1_CHARACTER_ADDR, *CC_P1_MOON_SELECTOR_ADDR, *CC_P1_COLOR_SELECTOR_ADDR,
@@ -84,6 +122,20 @@ __attribute__((naked)) void cccaster_menu_hook() {
 }
 }
 namespace cccaster::game_interface {
+bool RealGameMemory::ConfigureRandomStages() {
+    static bool installed = false;
+    if (installed) return true;
+    auto address = reinterpret_cast<void *>(0x42F140);
+    const unsigned char expected[] = {0x83, 0xec, 0x08, 0x80, 0x3d, 0x0a, 0xd2, 0x55, 0x00, 0x00};
+    if (std::memcmp(address, expected, sizeof(expected))) return false;
+    const auto status = MH_Initialize();
+    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) return false;
+    if (MH_CreateHook(address, reinterpret_cast<void *>(cccaster_random_stage),
+                      &cccaster_random_stage_original) != MH_OK || MH_EnableHook(address) != MH_OK) return false;
+    installed = true;
+    return true;
+}
+uint32_t RealGameMemory::DrawRandomStage() { return DrawStage(); }
 std::array<uint32_t, 3> RealGameMemory::SpectatorRules() const {
     return {*CC_WIN_COUNT_VS_ADDR, *CC_DAMAGE_LEVEL_ADDR, *CC_TIMER_SPEED_ADDR};
 }
@@ -103,6 +155,10 @@ bool RealGameMemory::ConfigureNetplayMenu() {
     const unsigned char expected[] = {0x85, 0xc9, 0x8b, 0x7e, 0x40};
     if (std::memcmp(address, expected, sizeof(expected)))
         return false;
+    void *openAddress = reinterpret_cast<void *>(0x43A730);
+    const unsigned char openExpected[] = {0x85, 0xc0, 0x74, 0x0a, 0x8b, 0xc6};
+    if (std::memcmp(openAddress, openExpected, sizeof(openExpected)))
+        return false;
     auto status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED)
         return false;
@@ -111,12 +167,21 @@ bool RealGameMemory::ConfigureNetplayMenu() {
         return false;
     if (MH_EnableHook(address) != MH_OK)
         return false;
+    if (MH_CreateHook(openAddress, reinterpret_cast<void *>(cccaster_retry_open_hook),
+                      &cccaster_retry_open_original) != MH_OK || MH_EnableHook(openAddress) != MH_OK)
+        return false;
     installed = true;
     return true;
 }
 void RealGameMemory::SetRetryTarget(int value) {
     target = value;
     if (value < 0) retryActive = false;
+}
+bool RealGameMemory::SetStageRematchFastPath(bool enable) {
+    // 比較測定専用。通常の再抽選・同期・描画制御は両条件で同じにする。
+    if (enable && testing::IsScriptedInputEnabled() && std::getenv("CCCASTER_TEST_REMATCH_BASELINE"))
+        return true;
+    return game_memory::stage_rematch::Set(enable);
 }
 void RealGameMemory::BeginIndependentRetry() {
     retryActive = true;
@@ -129,8 +194,6 @@ bool RealGameMemory::BeginIndependentSelect(bool host) {
         auto address = reinterpret_cast<void *>(0x42725B);
         const unsigned char expected[] = {0x83, 0xf8, 0xff, 0x74, 0x17};
         if (std::memcmp(address, expected, sizeof(expected))) return false;
-        const unsigned char randomEntry[] = {0x83, 0xec, 0x08, 0x80, 0x3d, 0x0a, 0xd2, 0x55, 0x00, 0x00};
-        if (std::memcmp(reinterpret_cast<void *>(0x42F140), randomEntry, sizeof(randomEntry))) return false;
         if (MH_CreateHook(address, reinterpret_cast<void *>(cccaster_stage_hook),
                           &cccaster_stage_original) != MH_OK || MH_EnableHook(address) != MH_OK) return false;
         installed = true;
@@ -139,14 +202,20 @@ bool RealGameMemory::BeginIndependentSelect(bool host) {
     selectHost = host;
     stageChosen = selectRelease = false;
     chosenStage = agreedStage = 0;
+    chosenRandom = false;
     return true;
 }
 bool RealGameMemory::ReadLocalSelection(bool host, core::sync::SelectionState &state) {
     // 実機回帰試験専用。両キャラ確定後、通常の決定入力でランダムを選ぶ。
     if (host && !stageChosen && testing::IsScriptedInputEnabled() &&
-        std::getenv("CCCASTER_TEST_RANDOM_STAGE") &&
-        *CC_P1_SELECTOR_MODE_ADDR == 5 && *CC_P2_SELECTOR_MODE_ADDR == 5)
-        *CC_STAGE_SELECTOR_ADDR = 0;
+        *CC_P1_SELECTOR_MODE_ADDR == 5 && *CC_P2_SELECTOR_MODE_ADDR == 5) {
+        if (std::getenv("CCCASTER_TEST_RANDOM_STAGE")) *CC_STAGE_SELECTOR_ADDR = 0;
+        else if (const auto fixed = std::getenv("CCCASTER_TEST_FIXED_STAGE")) {
+            const auto stage = std::strtoul(fixed, nullptr, 10);
+            if (stage > 0 && stage < 60 && reinterpret_cast<const uint32_t *>(0x74FC08)[stage])
+                *CC_STAGE_SELECTOR_ADDR = stage;
+        }
+    }
     uint32_t *s = host ? CC_P1_SELECTOR_MODE_ADDR : CC_P2_SELECTOR_MODE_ADDR;
     if (!state.confirmed && s[0] >= 4 && s[0] <= 5) {
         state.selector = s[3]; state.character = s[4]; state.moon = s[5]; state.color = s[6];
@@ -159,6 +228,7 @@ bool RealGameMemory::ReadLocalSelection(bool host, core::sync::SelectionState &s
     if (host && stageChosen && !state.stageConfirmed) {
         state.stage = chosenStage;
         state.stageConfirmed = 1;
+        state.randomStage = chosenRandom;
         ++state.revision;
     }
     if (state.confirmed) {

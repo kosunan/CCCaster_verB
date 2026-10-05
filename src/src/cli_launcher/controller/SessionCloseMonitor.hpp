@@ -41,7 +41,7 @@ class SessionCloseMonitor {
     void Wait(HANDLE game) {
         while (!Poll(game)) WaitForSingleObject(game, 10);
     }
-    void Finish(HANDLE game) {
+    void Finish(HANDLE game, std::shared_ptr<cccaster::network::UdpSocket> inherited = {}) {
         using namespace cccaster::public_api;
         if (!game || WaitForSingleObject(game, 0) != WAIT_OBJECT_0) return;
         SharedState state{};
@@ -60,7 +60,8 @@ class SessionCloseMonitor {
         const auto reason = state.gameShutdownRequest ? static_cast<SessionExitReason>(state.localExitReason) : SessionExitReason::Unknown;
         std::atomic<bool> confirmed{false};
         std::atomic<int> remoteReason{peerReported ? static_cast<int>(state.peerExitReason) : -1};
-        cccaster::network::UdpSocket socket(state.localPort, std::strchr(state.peerIp, ':') != nullptr);
+        auto owned = inherited ? inherited : std::make_shared<cccaster::network::UdpSocket>(state.localPort, std::strchr(state.peerIp, ':') != nullptr);
+        auto& socket = *owned;
         if (!socket.IsValid()) {
             std::cout << "[ CLOSE FAILED ] 終了通知ポートを確保できません。\n" << std::flush;
             return;
@@ -73,6 +74,7 @@ class SessionCloseMonitor {
                 if (message.reason == reason) confirmed = true;
             } else remoteReason = static_cast<int>(message.reason);
         });
+        if(inherited) socket.Resume();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
         int attempts = 0;
         while (std::chrono::steady_clock::now() < deadline) {
@@ -97,6 +99,8 @@ class SessionCloseMonitor {
         if (initiated) std::cout << (confirmed ? "[ CLOSE ACK ] 相手ランチャーの受領を確認しました。送信回数="
                                                : "[ CLOSE UNCONFIRMED ] 終了通知の受領を確認できませんでした。送信回数=")
                                  << attempts << '\n' << std::flush;
+        // 継承元socketの寿命はこの関数より長い。stack参照を受信threadに残さない。
+        if(inherited) { socket.OnReceive({}); socket.Pause(); }
     }
 };
 }

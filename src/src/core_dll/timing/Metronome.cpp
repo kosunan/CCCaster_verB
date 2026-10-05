@@ -22,7 +22,7 @@ namespace netplay {
 // ============================================================================
 int64_t Metronome::GetCurrentIntervalUs() const {
     // HUD/疎通診断専用。実際の締切はAdvanceCorrectedを使う。
-    return (timer::ClockFrame*timer::ClockParts + GetPeriodCorrectionParts()) /
+    return (timer::ClockFrame*timer::ClockParts + GetFrameCorrectionParts()) /
            (60*timer::ClockParts*cccaster::testing::TimeScale());
 }
 
@@ -34,6 +34,7 @@ void Metronome::Start() {
         return;
 
     SetPeriodCorrectionParts(0);
+    SetFramePeriodTicks(timer::NetworkPacing::Normal);
     cadence_.ResetTicks(timer::WasapiClock::GetTimeTicks());
 
     _running.store(true, std::memory_order_release);
@@ -91,7 +92,7 @@ int64_t Metronome::WaitForNextTick(bool skipWait, int64_t preparationTicks, int6
     const int64_t now = timer::WasapiClock::GetTimeTicks();
     if (cadence_.NextTicks() < now - intervalUs * 180)
         cadence_.ResetTicks(now);
-    cadence_.AdvanceCorrected(GetPeriodCorrectionParts(), cccaster::testing::TimeScale());
+    cadence_.AdvanceCorrected(GetFrameCorrectionParts(), cccaster::testing::TimeScale());
 
     if (!skipWait) {
         SleepUntil(cadence_.NextTicks() - std::max<int64_t>(0, preparationTicks),

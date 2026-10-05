@@ -33,6 +33,8 @@ class SceneRunner {
     /// @brief 1フレーム分の処理。未着入力には期限付きで待機する。
     static void Step();
     static void FlushCadence();
+    /// 再戦の高速遷移を抜けた完成画像を、Stepの通信待機より前に表示する。
+    static void PrepareDrawing();
 
     /// @brief Init() 完了済みか
     static bool IsReady();
@@ -49,6 +51,7 @@ class SceneRunner {
     static const FrameBarHistory &FrameBar(); // ゲームスレッドの描画専用
     static TrainingStateEvent TrainingStateNotice();
     static bool HasTrainingState();
+    static bool RequestTrainingDelay(int frames); // UIから予約し、ゲームスレッドで適用
     struct SpectatorInfo { uint32_t frame, latest, viewers, state; bool catching; uint32_t delay, rollback; };
     static SpectatorInfo SpectatorStatus();
 };

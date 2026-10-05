@@ -2,14 +2,16 @@
 #include "core_dll/mbaa_mem/RngState.hpp"
 #include "core_dll/sync/SelectionState.hpp"
 #include "shared_contracts/SpectatorHello.hpp"
+#include "shared_contracts/PlayerEmblem.hpp"
 #include <array>
 #include <atomic>
 #include <cstring>
 #include <memory>
 
 namespace cccaster::spectator {
-// TCP専用。プレイヤーのUDP版10/拡張5には混ぜない。全整数は32bit little endian。
-enum Kind : uint32_t { Start = 1, Epoch, Input, Result, Retry, Heartbeat, Selection };
+// TCP専用。プレイヤーのUDP版10/拡張8には混ぜない。全整数は32bit little endian。
+enum Kind : uint32_t { Start = 1, Epoch, Input, Result, Retry, Heartbeat, Selection, Emblem, Selecting };
+struct EmblemData { uint32_t player = 0; cccaster::emblem::Chunk chunk; };
 struct Score {
     uint32_t p1 = 0, p2 = 0, unresolved = 0, revision = 0;
 };
@@ -21,7 +23,7 @@ struct StartData {
     uint32_t roundsToWin = 2;
     uint32_t damageLevel = 2, timerSpeed = 2;
 };
-static_assert(sizeof(StartData) == 444);
+static_assert(sizeof(StartData) == 452);
 struct Record {
     uint32_t size, kind, frame;
     std::array<uint32_t, 128> payload;
@@ -39,26 +41,32 @@ struct Record {
         switch (k) {
         case Start: return 12 + sizeof(StartData);
         case Selection: return 12 + sizeof(StartData);
+        case Selecting: return 12 + sizeof(StartData);
         case Epoch: return 12 + sizeof(game_interface::RngState);
         case Input: return 20;
         case Result: return 12 + sizeof(Score);
         case Retry: return 16;
         case Heartbeat: return 16;
+        case Emblem: return 12 + sizeof(EmblemData);
         default: return 0;
         }
     }
     bool Valid() const {
         if (!ExpectedSize(kind) || size != ExpectedSize(kind)) return false;
-        if (kind == Start || kind == Selection) {
+        if (kind == Emblem) {
+            const auto e = Get<EmblemData>();
+            return !frame && e.player < 2 && e.chunk.Valid();
+        }
+        if (kind == Start || kind == Selection || kind == Selecting) {
             const auto s = Get<StartData>();
-            return (kind == Selection || (frame && (frame & 65535) == 1)) && s.p1.Valid() && s.p2.Valid() &&
-                s.p1.confirmed && s.p2.confirmed && s.p1.stageConfirmed &&
+            return (kind != Start || (frame && (frame & 65535) == 1)) && s.p1.Valid() && s.p2.Valid() &&
+                (kind == Selecting || (s.p1.confirmed && s.p2.confirmed && s.p1.stageConfirmed)) &&
                 s.names[0][31] == 0 && s.names[1][31] == 0 && s.roundsToWin >= 1 && s.roundsToWin <= 5 &&
                 s.damageLevel <= 4 && s.timerSpeed <= 4;
         }
         if (kind == Epoch) return frame && (frame & 65535) == 1;
         if (kind == Input) return frame && (frame & 65535) && (payload[0] >> 16) <= 9 && (payload[1] >> 16) <= 9;
-        if (kind == Retry) return payload[0] <= 1;
+        if (kind == Retry) return payload[0] <= 2; // 2=RANDOMのONCE（キャラ保持・ステージ再抽選）
         return true;
     }
 };
@@ -101,10 +109,14 @@ public:
 template<uint32_t N> class Archive {
     static_assert(N && !(N & (N - 1)));
     std::unique_ptr<Record[]> slots_{new Record[N]};
+    uint32_t latestMatch_ = 0;
 public:
     uint64_t head = 1, start = 0;
     void Append(const Record &r) {
-        if (r.kind == Start || r.kind == Selection) start = head;
+        if (r.kind == Start || r.kind == Selection || r.kind == Selecting) {
+            start = head;
+            latestMatch_ = r.Get<StartData>().score.revision;
+        }
         std::memcpy(&slots_[head & (N - 1)], &r, r.size);
         ++head;
     }
@@ -112,5 +124,6 @@ public:
         return cursor && cursor < head && head - cursor <= N ? &slots_[cursor & (N - 1)] : nullptr;
     }
     uint64_t Join() const { return Get(start) ? start : 0; }
+    uint32_t LatestMatch() const { return latestMatch_; }
 };
 }

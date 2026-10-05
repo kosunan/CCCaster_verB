@@ -9,7 +9,7 @@ class WndProcHook {
     static void Shutdown();
     // ゲームスレッドの入力待機側でも、移動取消のEscを終了操作にしない。
     static bool BlocksEscapeExit();
-    // 通常フレーム境界で自分の窓のキューを処理する。再計算中は呼ばない。
+    // 通常フレーム境界・観戦の受信待機で自分の窓のキューを処理する。再計算中は呼ばない。
     static void PumpMessages();
 
   private:

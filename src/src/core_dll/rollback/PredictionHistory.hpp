@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include "shared_contracts/NetplaySettings.hpp"
 namespace cccaster::sync {
 // ゲームスレッドだけが変更する。通信リングから確定値を読み取って照合する。
 class PredictionHistory {
@@ -83,7 +84,7 @@ class PredictionHistory {
     }
 
   private:
-    std::array<Entry, 32> entries_{};
+    std::array<Entry, public_api::NetplaySettings::RollbackHistoryFrames> entries_{};
     uint32_t first_ = 1, next_ = 1, confirmed_ = 0, limit_ = 0;
 };
 } // namespace cccaster::sync

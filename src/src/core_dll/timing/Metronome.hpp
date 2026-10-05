@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include "core_dll/timing/FrameCadence.hpp"
+#include "core_dll/timing/NetworkPacing.hpp"
 #include <cstdint>
 
 namespace cccaster {
@@ -31,14 +32,21 @@ class Metronome {
     // 採用時計の周期補正。1/60µsの百万分率、整数µsを経由しない。
     void SetPeriodCorrectionParts(int64_t parts) { correctionParts_.store(parts,std::memory_order_release); }
     int64_t GetPeriodCorrectionParts() const { return correctionParts_.load(std::memory_order_acquire); }
+    void SetFramePeriodTicks(uint32_t ticks) {
+        if (timer::NetworkPacing::Valid(ticks)) framePeriodTicks_.store(ticks, std::memory_order_release);
+    }
+    uint32_t GetFramePeriodTicks() const { return framePeriodTicks_.load(std::memory_order_acquire); }
+    int64_t GetFrameCorrectionParts() const {
+        const int64_t ticks = GetFramePeriodTicks();
+        return (ticks - timer::ClockFrame) * timer::ClockParts +
+               GetPeriodCorrectionParts() * ticks / timer::ClockFrame;
+    }
 
     // ─── 現在のフレーム間隔 ─────────────────────────────
     int64_t GetCurrentIntervalUs() const;
 
     // ─── 定数 ──────────────────────────────────────────
     static constexpr int64_t BASE_TICK_US = 16666; // 60fps 基本間隔
-    static constexpr int64_t MAX_TICK_US = 19332;  // 最大（減速上限）
-    static constexpr int64_t MIN_TICK_US = 14000;  // 最小（加速下限）
 
   private:
     static void SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinGuardUs);
@@ -47,6 +55,7 @@ class Metronome {
     timer::FrameCadence cadence_;
 
     std::atomic<int64_t> correctionParts_{0};
+    std::atomic<uint32_t> framePeriodTicks_{timer::NetworkPacing::Normal};
 
     // ─── 状態 ──────────────────────────────────────────
     std::atomic<bool> _running{false};

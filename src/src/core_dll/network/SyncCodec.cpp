@@ -58,8 +58,12 @@ struct SyncPayload {
     sync::RetrySelection retry;
     char playerName[cccaster::public_api::PlayerNameSize];
     uint32_t clockGeneration; // WASAPIからQPCへの明示切替。
+    uint32_t framePeriodTicks; // ホストが採用した論理1F。物理時計の補正とは別。
+    uint32_t requestedPeriodTicks;
 };
 #pragma pack(pop)
+static_assert(20 + sizeof(SyncPayload) + sizeof(cccaster::emblem::Chunk) <= 1200,
+              "Emblem extension must fit a single conservative UDP datagram");
 
 // ============================================================================
 // BuildUnifiedPacket — CC10統一ヘッダ + ペイロードを組み立てる
@@ -72,7 +76,7 @@ void SyncCodec::BuildUnifiedPacket(std::vector<uint8_t> &pkt, uint8_t phase, uin
     std::memcpy(pkt.data(), &magic, sizeof(magic));
     pkt[4] = phase;
     pkt[5] = type;
-    pkt[7] = 6; // wire 10拡張6: 時計同期は1/60µs。旧単位との混在を拒否。
+    pkt[7] = 8; // wire 10拡張8: ステージ選択方法を共有。旧DLLとの混在を拒否。
     pkt[6] =
         cccaster::public_api::NetplaySettings::WireVersion; // 再戦の両者選択ゲート。旧DLLと混在させない。
     std::memcpy(pkt.data() + HDR_TIMESTAMP_OFFSET, &timestampTicks, sizeof(timestampTicks));
@@ -94,6 +98,7 @@ void SyncCodec::Initialize(bool isHost, int delayFrames, int maxRollback, Metron
 }
 
 void SyncCodec::Reset() {
+    _emblems.Start(cccaster::emblem::Store::Get(0));
     _peerClosed = false;
     _clock.Reset();
     _lastModelEvaluation = UINT32_MAX;
@@ -138,7 +143,7 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
     if (_peerClosed) return; // 遅れて届いた通常入力で終了を取り消さない。
     if (pktType != PKT_SYNC_TICK)
         return;
-    if (data[7] != 6) {
+    if (data[7] != 8) {
         NetplaySession::GetMutableState().protocolError = true;
         return;
     }
@@ -154,6 +159,8 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
         !validTime(gtp.echo_t1) || !validTime(gtp.echo_t2) ||
         !validTime(gtp.nextCaptureTicks) || !validTime(gtp.startTimeTicks) ||
         !validTime(gtp.epochStart.hostTicks)) return;
+    if (!timer::NetworkPacing::Valid(gtp.framePeriodTicks) ||
+        !timer::NetworkPacing::Valid(gtp.requestedPeriodTicks)) return;
 
     // 不正な入力範囲を受理して疎通を延命したり、フレームを逆周回させない。
     if (gtp.inputCount > 10 || gtp.inputCount > gtp.baseFrame)
@@ -189,6 +196,28 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
     if (gtp.delay != _delayFrames || gtp.maxRollback != _maxRollback) {
         shared.protocolError.store(true, std::memory_order_release);
         return;
+    }
+
+    // ロード中の相手にも、イントロへ先着した相手にも同じ対象世代を通知する。
+    // 両ビット同時・境界外は無視。再送の順序が逆転しても受信世代を戻さない。
+    const auto skipFlags = gtp.flags & (FLAG_LOADING_SKIP_CURRENT | FLAG_LOADING_SKIP_NEXT);
+    if (gtp.phaseBaseFrame && gtp.phaseBaseFrame % sync::FrameSequence::STRIDE == 0 &&
+        gtp.phaseBaseFrame <= 65534u * sync::FrameSequence::STRIDE &&
+        (skipFlags == FLAG_LOADING_SKIP_CURRENT ||
+         (skipFlags == FLAG_LOADING_SKIP_NEXT && gtp.phaseBaseFrame < 65534u * sync::FrameSequence::STRIDE))) {
+        const uint32_t epoch = gtp.phaseBaseFrame +
+            (skipFlags == FLAG_LOADING_SKIP_NEXT ? sync::FrameSequence::STRIDE : 0);
+        if (epoch > shared.peerLoadingSkipEpoch.load(std::memory_order_relaxed))
+            shared.peerLoadingSkipEpoch.store(epoch, std::memory_order_release);
+    }
+
+    if (data.size() == UNIFIED_HEADER_SIZE + sizeof(SyncPayload) + sizeof(cccaster::emblem::Chunk)) {
+        cccaster::emblem::Chunk chunk;
+        std::memcpy(&chunk, data.data() + UNIFIED_HEADER_SIZE + sizeof(SyncPayload), sizeof(chunk));
+        if (auto image = _emblems.Receive(chunk)) {
+            cccaster::domain::session::DebugLog("[Emblem] peer received id=%08x", image->id);
+            cccaster::emblem::Store::Set(1, std::move(image));
+        }
     }
 
     const uint64_t progressToken = (uint64_t(gtp.phaseBaseFrame) << 32) | data[4];
@@ -233,7 +262,7 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
             model.WindowUncertaintyTicks(),model.WindowRateErrorPpb());
     }
 
-    if (currentSource && !_isHost && (gtp.flags & FLAG_PHASE_READY) && gtp.nextCaptureFrame > gtp.phaseBaseFrame &&
+    if (currentSource && (gtp.flags & FLAG_PHASE_READY) && gtp.nextCaptureFrame > gtp.phaseBaseFrame &&
         gtp.nextCaptureFrame - gtp.phaseBaseFrame < sync::FrameSequence::STRIDE && gtp.nextCaptureTicks > 0 &&
         std::abs(gtp.nextCaptureTicks - gtp.t_send) < 2000000LL*60 && _clock.HasTimingEstimate()) {
         std::lock_guard lock(shared.scheduleMutex);
@@ -242,7 +271,10 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
             shared.peerSchedule = {gtp.phaseBaseFrame, gtp.nextCaptureFrame,
                                    _clock.PeerToLocalTicks(gtp.nextCaptureTicks, receiveTimeTicks), receiveTimeTicks,
                                    _clock.GetThetaTicks(), _clock.GetRttTicks(),
-                                   model.PeriodCorrectionParts(receiveTimeTicks),model.Ready(receiveTimeTicks),model.Revision()};
+                                   (int64_t(gtp.framePeriodTicks) - timer::ClockFrame) * timer::ClockParts +
+                                       model.PeriodCorrectionParts(receiveTimeTicks) * gtp.framePeriodTicks / timer::ClockFrame,
+                                   model.Ready(receiveTimeTicks),model.Revision(),
+                                   gtp.framePeriodTicks,gtp.requestedPeriodTicks};
         }
     }
 
@@ -394,6 +426,10 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
     gtp.flags = ready ? FLAG_READY : 0;
     if (phaseToken != 0)
         gtp.flags |= FLAG_PHASE_READY;
+    const auto skipEpoch = state.localLoadingSkipEpoch.load(std::memory_order_acquire);
+    if (base && skipEpoch == base) gtp.flags |= FLAG_LOADING_SKIP_CURRENT;
+    else if (base && base < 65534u * sync::FrameSequence::STRIDE &&
+             skipEpoch == base + sync::FrameSequence::STRIDE) gtp.flags |= FLAG_LOADING_SKIP_NEXT;
     gtp.startTimeTicks = startTimeUs * 60;
     gtp.clockGeneration = timer::WasapiClock::GetSourceGeneration();
 
@@ -401,12 +437,15 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
 
     gtp.phaseBaseFrame = uint32_t(phaseToken >> 32);
     gtp.appliedFrame = state.appliedFrame.load(std::memory_order_acquire);
+    gtp.framePeriodTicks = gtp.requestedPeriodTicks = timer::NetworkPacing::Normal;
     {
         auto &shared = NetplaySession::GetMutableState();
         std::lock_guard lock(shared.scheduleMutex);
         if (shared.localSchedule.base == gtp.phaseBaseFrame) {
             gtp.nextCaptureFrame = shared.localSchedule.frame;
             gtp.nextCaptureTicks = shared.localSchedule.dueTicks;
+            gtp.framePeriodTicks = shared.localSchedule.periodTicks;
+            gtp.requestedPeriodTicks = shared.localSchedule.requestedPeriodTicks;
         }
     }
 
@@ -418,6 +457,12 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
         gtp.seed = shared.localSeed;
     }
     BuildUnifiedPacket(packet, uint8_t(phaseToken), PKT_SYNC_TICK, now, &gtp, sizeof(gtp));
+    cccaster::emblem::Chunk chunk;
+    if (_emblems.Next(now / 60, chunk)) {
+        const auto offset = packet.size();
+        packet.resize(offset + sizeof(chunk));
+        std::memcpy(packet.data() + offset, &chunk, sizeof(chunk));
+    }
 }
 
 // ============================================================================
