@@ -75,6 +75,17 @@ try {
             state=e.OldThreadState.ToString(),old_priority=e.OldThreadPriority,new_priority=e.NewThreadPriority });
     };
     // InitialTimeQPCはイベントpayload先頭のInt64。ElapsedTimeMSecから逆算して丸めない。
+    kernel.PerfInfoSample += e => {
+        Count("sample",e.TimeStampQPC);
+        Write(new { type="sample",qpc=e.TimeStampQPC,cpu=e.ProcessorNumber,pid=e.ProcessID,tid=e.ThreadID,
+            ip=e.InstructionPointer,count=e.Count,dpc=e.ExecutingDPC,isr=e.ExecutingISR });
+    };
+    kernel.StackWalkStack += e => {
+        Count("stack",e.TimeStampQPC);
+        Write(new { type="stack",qpc=e.TimeStampQPC,event_qpc=e.EventTimeStampQPC,
+            cpu=e.ProcessorNumber,pid=e.ProcessID,tid=e.ThreadID,
+            frames=Enumerable.Range(0,e.FrameCount).Select(e.InstructionPointer).ToArray() });
+    };
     // 対応TraceEventのprivate getterを使用し、API変更時は無言で推定せず失敗する。
     void Dpc(DPCTraceData e) {
         long begin=LongProperty(typeof(DPCTraceData),e,"InitialTimeQPC");

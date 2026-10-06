@@ -57,6 +57,27 @@ uint8_t RealGameMemory::IntroState() const {
     return *CC_INTRO_STATE_ADDR;
 }
 
+int RealGameMemory::StageAnimation() const {
+    // 0x431B69: 標準StageAnimationは[0x554140の設定構造体+0x164]。
+    // 0x4B954E: 非0なら初期2更新以外の背景アニメーション更新を省略する。
+    if (!game_build::RuntimeValidated() ||
+        *reinterpret_cast<uintptr_t *>(0x554140) + 0x164 !=
+            reinterpret_cast<uintptr_t>(CC_STAGE_ANIMATION_OFF_ADDR)) return -1;
+    const auto value = *CC_STAGE_ANIMATION_OFF_ADDR;
+    return value <= 1 ? int(value == 0) : -1;
+}
+bool RealGameMemory::SetStageAnimation(bool enabled) {
+    if (GameMode() != CC_GAME_MODE_CHARA_SELECT || StageAnimation() < 0) return false;
+    *CC_STAGE_ANIMATION_OFF_ADDR = enabled ? 0 : 1;
+    DebugLog("[SelectionOptions] BACKGROUND animation=%s mode=%u", enabled ? "ON" : "OFF", GameMode());
+    return true;
+}
+bool RealGameMemory::SelectionDelayEditable(bool host) const {
+    // 0x4281B7..0x4281C1のカラー確定(mode4)以降は既存合意でも変更不可。
+    return GameMode() == CC_GAME_MODE_CHARA_SELECT &&
+        *(host ? CC_P1_SELECTOR_MODE_ADDR : CC_P2_SELECTOR_MODE_ADDR) < 4;
+}
+
 void RealGameMemory::SetTrainingHold(bool hold) {
     if (hold == trainingHold_) return;
     // 通常pauseはトレーニングメニューを開いてしまうため使用しない。
@@ -199,6 +220,17 @@ static cccaster::sync::PointerSnapshot &SnapshotDumper() {
         // 状態初期化の0x45EF90等が積み、0x4DE200が再生後に消去する未処理要求。
         // 初期化直後の保存でも、再計算側に同じ要求と音声開始Fを渡す。
         nodes.push_back({-1, 0x76E008, 0, 1500});
+        // 0x45D700の拡大演出設定、0x44AF20の進行。倍率だけ戻すと次Fで補間がずれる。
+        nodes.push_back({-1, 0x564AFC, 0, 4});
+        nodes.push_back({-1, 0x564B04, 0, 8});
+        nodes.push_back({-1, 0x564B20, 0, 4});
+        // EF152（0x45D700）の透過演出。0x4B7060が進めるモードと濃度も戻す。
+        nodes.push_back({-1, 0x558604, 0, 4});
+        nodes.push_back({-1, 0x562A50, 0, 4});
+        // 0x42FD40等が使う第3乱数列。旧表はindex（0x563864）だけで列を保存していない。
+        nodes.push_back({-1, 0x563868, 0, 224});
+        // EF11発動直後の停止開始フラグ。0x423900で消去する前段EFでも参照される。
+        nodes.push_back({-1, 0x5595BC, 0, 4});
         return dumper.Configure(nodes);
     }();
     (void)configured;
@@ -413,6 +445,7 @@ bool RealGameMemory::LoadTrainingSnapshot(std::span<char> data) {
         inputModes[i] = *reinterpret_cast<const uint8_t *>(inputModeBase + i * actorStride);
     const bool randomPlayback = DummyPlayback() && *reinterpret_cast<const uint32_t *>(0x77C228) == 1;
     uint32_t liveSlotRngIndex = 0;
+    std::array<uint32_t, 56> liveSlotRngTable{};
     if (IsTrainingRecording()) {
         if (!RestartTrainingRecording()) return false;
     } else if (DummyPlayback()) {
@@ -428,15 +461,19 @@ bool RealGameMemory::LoadTrainingSnapshot(std::span<char> data) {
             return false;
         }
         liveSlotRngIndex = *reinterpret_cast<const uint32_t *>(0x563864);
+        if (randomPlayback)
+            std::memcpy(liveSlotRngTable.data(), reinterpret_cast<void *>(0x563868), sizeof(liveSlotRngTable));
         DebugLog("[TrainingDummy] restart random=%d slot=%u rngIndex=%u", int(randomPlayback),
                  CurrentReplayRoundIndex(), liveSlotRngIndex);
     }
     if (!SnapshotDumper().Load(data)) return false;
     for (size_t i = 0; i < inputModes.size(); ++i)
         *reinterpret_cast<uint8_t *>(inputModeBase + i * actorStride) = inputModes[i];
-    // 抽選用乱数テーブル0x563868..0x563947は保存対象外だが、indexだけは保存表にある。
-    // ランダム再生では対応する現在indexも保持し、毎回同じ保存時点へ巻き戻さない。
-    if (randomPlayback) *reinterpret_cast<uint32_t *>(0x563864) = liveSlotRngIndex;
+    // FN2のランダム再生選択は現在の抽選履歴を保持する。通常のロールバックでは全て戻す。
+    if (randomPlayback) {
+        *reinterpret_cast<uint32_t *>(0x563864) = liveSlotRngIndex;
+        std::memcpy(reinterpret_cast<void *>(0x563868), liveSlotRngTable.data(), sizeof(liveSlotRngTable));
+    }
     return true;
 }
 } // namespace cccaster::game_interface

@@ -31,7 +31,7 @@
 #include "core_dll/ui/ScoreBroadcast.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include "core_dll/network/NetplayManager.hpp"
-#include "core_dll/hook/TimeHooks.hpp"
+#include "core_dll/mbaa_mem/NativeFrameWait.hpp"
 #include "core_dll/mbaa_mem/MbaaPatcher.hpp"
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/hook/DxHook.hpp"
@@ -45,6 +45,7 @@
 #include "core_dll/mbaa_mem/StartupProfile.hpp"
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
 #include "core_dll/mbaa_mem/StartupFileRead.hpp"
+#include "core_dll/mbaa_mem/StartupDirectEntry.hpp"
 #include "core_dll/mbaa_mem/StartupSystemInfo.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 
@@ -264,22 +265,18 @@ static DWORD InitializeCore(boot::Status &report) {
     if (!patches) return PatchFailed(report, patches);
 
     // ================================================================
-    // (3) Time API フック初期化
+    // (3) 本体のフレーム待機を直接バイパス。時計APIと他用途のSleepは実時間のまま。
     // ================================================================
-    HookLog("[InitThread] Initializing TimeHooks...");
+    HookLog("[InitThread] Configuring native frame wait bypass...");
     Stage(report, boot::Stage::Clock);
-    cccaster::core::hooks::TimeHooks::Initialize();
-    if (!cccaster::core::hooks::TimeHooks::s_initialized) {
-        HookLog("[InitThread] FAILED game timing imports unavailable");
-        return Fail(report, boot::Error::Clock);
-    }
-    // 起動高速化停止中はゲーム本来の時計・Sleepで素材準備とメニューを進める。
-    // キャラ選択到達後にSceneFastBootが既存の入力／同期用の設定へ引き継ぐ。
+    // 起動比較時だけ本体の待機を残し、キャラ選択到達後にゲームスレッドで適用する。
     const bool accelerateStartup = !cccaster::diagnostics::startup::Baseline();
-    cccaster::core::hooks::TimeHooks::SetTimeMultiplier(accelerateStartup ? 1000 : 1);
-    cccaster::core::hooks::TimeHooks::SetSleepBypass(accelerateStartup);
+    if (accelerateStartup) {
+        const auto frameWait = cccaster::game_memory::native_frame_wait::Enable();
+        if (!frameWait) return PatchFailed(report, frameWait);
+    }
     HookLog(accelerateStartup ? "[StartupPolicy] acceleration=on" :
-        "[StartupPolicy] acceleration=off gameClock=1 sleepBypass=0 originalAssets=1");
+        "[StartupPolicy] acceleration=off gameClock=1 nativeFrameWait=1 originalAssets=1");
 
     // ================================================================
     // (4) ネットプレイ通信初期化（UDPソケット生成・受信開始）
@@ -342,7 +339,10 @@ static DWORD InitializeCore(boot::Status &report) {
     Stage(report, boot::Stage::Assets);
     // 観戦もキャラ選択まではVersusと同じ起動経路。アプリの観戦mode=2をそのまま
     // 渡すと既存最適化の対象外になり、システム情報収集・素材変換を毎回待ってしまう。
-    const uint8_t startupMode = ctx.appMode == 2 ? uint8_t(0) : ctx.appMode;
+    // 観戦・標準REPも同じ起動資産を使う。一覧到達時に元の読込み経路へ復元する。
+    const uint8_t startupMode = ctx.appMode == 2 ||
+        (ctx.appMode == 4 && cccaster::game_memory::startup_direct_entry::ReplayEnabled())
+        ? uint8_t(0) : ctx.appMode;
     cccaster::game_memory::startup_system_info::Initialize(startupMode);
     cccaster::game_memory::startup_assets::Initialize(startupMode);
     cccaster::game_memory::startup_file_read::Initialize(startupMode);

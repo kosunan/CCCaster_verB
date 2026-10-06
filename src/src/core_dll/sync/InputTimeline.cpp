@@ -153,7 +153,7 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
         if (!missed) {
             const auto pollStart = stages ? platform::RealMonotonicUs() : 0;
             if (testing::IsScriptedInputEnabled()) {
-                value = testing::ScriptedInput(next_ - base_, host_);
+                value = testing::ScriptedInput(next_ - base_, host_, phase_ == game_interface::GamePhase::InGame);
                 // ロード入力の実機試験。未指定なら従来の無操作ロードを比較基準にする。
                 if (loading) {
                     value = 0;
@@ -206,6 +206,26 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
                 const char *settingsTest = std::getenv("CCCASTER_TEST_SETTINGS");
                 if (settingsTest && settingsTest[0] == '2')
                     value = 0; // UI確認用にキャラセレで待機。
+                if (std::getenv("CCCASTER_TEST_SELECTION_OPTIONS")) {
+                    // 新メニューを通常のローカル入力で操作してから対戦へ進む。
+                    // D・背景とHUD3モードを操作。HUDは双方で異なる値のまま戦闘へ進む。
+                    const auto f = next_ - base_;
+                    GameInput test{};
+                    if (f < 600) {
+                        if (host_) {
+                            if (f == 20 || f == 300) test.buttons = CC_BUTTON_START;
+                            if (f == 50 || f == 140 || f == 280) test.direction = 4;
+                            if (f == 80 || f == 170 || f == 230 || f == 260) test.direction = 6;
+                            if (f == 110 || f == 200) test.direction = 2;
+                        } else {
+                            if (f == 320 || f == 530) test.buttons = CC_BUTTON_START;
+                            if (f == 350 || f == 470 || f == 500) test.direction = 6;
+                            if (f == 380 || f == 440) test.direction = 2;
+                            if (f == 410) test.direction = 4;
+                        }
+                    } else if (f % 24 == 18) test.buttons = CC_BUTTON_CONFIRM;
+                    value = test.Pack();
+                }
             }
             lastValue_ = value;
             if (stages)

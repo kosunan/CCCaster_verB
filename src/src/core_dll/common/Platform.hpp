@@ -13,18 +13,9 @@
 //   このヘッダは `windows.h` を include しない。Win32 の型が漏れると、
 //   include した側が結局 Windows 専用になるため。実装は Platform.cpp に隠す。
 //
-// 【SleepMs と RealSleepMs の違い — 重要】
-//   実機の DLL では `TimeHooks` が MinHook で kernel32!Sleep 本体をインライン
-//   フックしており、`dllmain.cpp` が起動時に `SetSleepBypass(true)` を恒久設定
-//   している。その結果、**自分の DLL 内で呼んだ `Sleep(1)` すら `Sleep(0)` に
-//   化ける**（＝完全なビジースピン）。
-//
-//     SleepMs()     … DLLの通常Sleep。ゲーム限定IAT差し替えの影響は受けない。
-//                     既存の呼び出し箇所はこちらに対応する（現状維持）。
-//     RealSleepMs() … 実時間のSleep。CPU を返したい箇所はこちら。
-//
-//   harness には TimeHooks が入っていない（stub）ので、両者は同じ挙動になる。
-//   Linux では両者とも本物の待機。
+// SleepMs/RealSleepMsはともに実時間でCPUを休止する。
+// ゲームEXEのフレーム待機は命令分岐でバイパスし、OSの時計・Sleepを加工しない。
+// 周期の精密待機にはPreciseWaitUsと上位の絶対締切を使う。
 // ============================================================================
 
 #include <cstdint>
@@ -49,8 +40,7 @@ class TimingThread {
 
 // ── 時刻 ───────────────────────────────────────────────────
 /// 実時間の単調時刻 [μs]。
-/// Windows では TimeHooks にフックされる前の QPC を使うため、
-/// ゲーム側の 1000 倍速タイマーの影響を受けない。
+/// Windowsでは加工していないQPCを使う。
 int64_t RealMonotonicUs();
 // 1/60µs単位。QPCの分解能を整数µsへ落とさない。
 int64_t RealMonotonicTicks();
@@ -59,10 +49,10 @@ uint32_t ProcessId();
 uint32_t ThreadId();
 
 // ── 待機 ───────────────────────────────────────────────────
-/// フック後の Sleep（実機ではバイパスされて 0ms になりうる）。
+/// OSのSleep。
 void SleepMs(uint32_t ms);
 
-/// フック前の本物の Sleep。CPU を明示的に手放したい箇所で使う。
+/// 実時間のSleep。CPUを明示的に手放したい箇所で使う。
 void RealSleepMs(uint32_t ms);
 
 // 高分解能待機タイマーでCPUを返し、最後の短区間だけ実QPCで確認する。

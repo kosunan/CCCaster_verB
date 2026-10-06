@@ -9,6 +9,14 @@ add_executable(CCCaster_B
     network_wrapper/ConnectionHash.cpp
 )
 
+if(WIN32)
+    configure_file("${CMAKE_SOURCE_DIR}/src/gui_launcher/app_icon.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc" @ONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc" PROPERTIES OBJECT_DEPENDS
+        "${CMAKE_SOURCE_DIR}/src/gui_launcher/assets/app.ico")
+    target_sources(CCCaster_B PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc")
+endif()
+
 # Root include directory and ASIO
 target_include_directories(CCCaster_B PRIVATE 
     ${CMAKE_SOURCE_DIR}/src

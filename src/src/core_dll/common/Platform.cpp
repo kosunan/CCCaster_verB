@@ -11,7 +11,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <avrt.h>
-#include "core_dll/hook/TimeHooks.hpp"
 #else
 #include <ctime>
 #include <csignal>
@@ -205,8 +204,7 @@ int64_t RealMonotonicTicks() {
         return 0; // 取得失敗時のゼロ除算回避
 
     LARGE_INTEGER now;
-    // フック後の QPC は 1000 倍速になっているため、必ず Real 版を使う
-    cccaster::core::hooks::TimeHooks::RealQueryPerformanceCounter(&now);
+    QueryPerformanceCounter(&now);
 
     // 素直に `q * 1000000 / freq` と書くと int64 の乗算が先に溢れる。
     // QPC は起動時からの経過なので、10MHz なら **約 10.7 日で UB に入る**。
@@ -229,7 +227,6 @@ int64_t RealMonotonicTicks() {
 // ============================================================================
 void SleepMs(uint32_t ms) {
 #ifdef _WIN32
-    // 意図的にフック後の Sleep を呼ぶ。実機では 0ms に化ける（現状の挙動）。
     ::Sleep(static_cast<DWORD>(ms));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -238,7 +235,7 @@ void SleepMs(uint32_t ms) {
 
 void RealSleepMs(uint32_t ms) {
 #ifdef _WIN32
-    cccaster::core::hooks::TimeHooks::RealSleep(static_cast<DWORD>(ms));
+    ::Sleep(static_cast<DWORD>(ms));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 #endif

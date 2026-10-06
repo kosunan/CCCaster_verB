@@ -380,9 +380,9 @@ void GameFrameOrchestrator::RenderOverlay(LPDIRECT3DDEVICE9 pDevice) {
             auto &sync = cccaster::core::netplay::NetplaySession::GetInstance();
             float thetaMs = static_cast<float>(sync.GetThetaUs() - sync.GetBaselineTheta()) / 1000.0f;
 
-            cccaster::domain::ui::StateUiLogic::SetFps(cccaster::core::timer::FrameTiming::Get().displayFps);
+            cccaster::domain::ui::StateUiLogic::SetFps(cccaster::core::timer::FrameTiming::Simulation().gameFps);
             cccaster::domain::ui::StateUiLogic::SetFrameTimeUs(
-                cccaster::core::timer::FrameTiming::Get().last);
+                cccaster::core::timer::FrameTiming::Simulation().last);
             cccaster::domain::ui::StateUiLogic::SetTimeOffsetMs(thetaMs);
         }
 

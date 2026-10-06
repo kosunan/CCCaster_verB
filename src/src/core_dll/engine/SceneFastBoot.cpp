@@ -20,7 +20,7 @@
 #include "core_dll/mbaa_mem/StartupAssets.hpp"
 #include "core_dll/mbaa_mem/StartupFileRead.hpp"
 #include "core_dll/mbaa_mem/StartupDirectEntry.hpp"
-#include "core_dll/hook/TimeHooks.hpp"
+#include "core_dll/mbaa_mem/NativeFrameWait.hpp"
 
 #include <cstring>
 
@@ -115,6 +115,8 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // メニュー生成前に正規初期化へ接続。対戦は起動側、観戦は既存のP1起動を維持。
     const bool directEntry = s_targetMode == cccaster::public_api::IpcGameMode::Training
         ? cccaster::game_memory::startup_direct_entry::TryTraining(gameMode)
+        : s_targetMode == cccaster::public_api::IpcGameMode::Replay
+        ? cccaster::game_memory::startup_direct_entry::TryReplay(gameMode)
         : s_targetMode == cccaster::public_api::IpcGameMode::Versus &&
           cccaster::game_memory::startup_direct_entry::TryVersus(gameMode, isHost);
     if (directEntry) {
@@ -136,7 +138,7 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
         if (cccaster::diagnostics::startup::Enabled())
             DebugLog("[StartupFade] restored=1");
         s_complete = true;
-        cccaster::diagnostics::startup::Mark("chara_detect");
+        cccaster::diagnostics::startup::Mark(replay ? "replay_detect" : "chara_detect");
         if (cccaster::diagnostics::startup::Enabled()) {
             DebugLog("[StartupMode] target=%u mode=%u kind=%u versus=%u frames=%u",
                 static_cast<unsigned>(s_targetMode), gameMode,
@@ -147,9 +149,9 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
             for (unsigned i=0; i<20; ++i) nonzero += keys[i] != 0;
             DebugLog("[StartupKeys] nonzero=%u", nonzero);
         }
-        // 起動中だけ元のゲーム時計を使う。以後の60Hz待機・ロールバックは既存経路へ戻す。
-        cccaster::core::hooks::TimeHooks::SetTimeMultiplier(1000);
-        cccaster::core::hooks::TimeHooks::SetSleepBypass(true);
+        // 起動比較時に残した本体待機もここで外す。通常60Hzはツールの絶対締切で制御する。
+        if (!cccaster::game_memory::native_frame_wait::Enable())
+            ExitProcess(ERROR_WRITE_FAULT);
         DebugLog("[StartupPolicy] character selection reached; runtime pacing active");
         if (replay) DebugLog("[FastBoot] Replay reached (frame=%u).", s_frameCount);
         else DebugLog("[FastBoot] ★ CharaSelect reached! (frame=%u) Switching to NormalSpeed.", s_frameCount);
@@ -228,7 +230,9 @@ bool SceneFastBoot::ProcessFrame(bool isHost) {
     // ================================================================
     // ランチャーで選んだモードへ入るための分岐は維持する。
     // 速度・描画・暗転の短縮とは別で、通常入力だけでは別項目へ遷移し得る。
-    if (!s_forceGotoAttempted && (gameMode == 2 || gameMode == 3)) {
+    // Replayの5バイト分岐は直接入口の署名も変えるため、mode2の直接遷移を先に試す。
+    if (!s_forceGotoAttempted && (gameMode == 2 || gameMode == 3) &&
+        !(replay && cccaster::game_memory::startup_direct_entry::ReplayEntryPending(gameMode))) {
         s_forceGotoAttempted = true;
         uint8_t forcePatch[2] = {0xEB, 0x00};
 

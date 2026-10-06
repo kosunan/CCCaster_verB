@@ -10,12 +10,62 @@
 #include <cstdlib>
 #include <vector>
 
+// 診断専用。通常経路のC++検索トレースとは独立し、元の形状判定を実行する。
+extern "C" {
+uint32_t cc_loop_verify_entries = 0, cc_loop_verify_candidates[2]{}, cc_loop_verify_hits[2]{};
+__attribute__((naked)) void cc_loop_verify_entry() {
+    __asm__ __volatile__("pushfl\n\tincl _cc_loop_verify_entries\n\tpopfl\n\t"
+        "subl $0xd0,%esp\n\tjmp *1f\n\t.p2align 2\n\t1: .long 0x46f2f6\n\t");
+}
+__attribute__((naked)) void cc_loop_verify_candidate() {
+    // EBXは元関数の形状iterator。元の3引数を複製して同じネイティブ判定を呼ぶ。
+    __asm__ __volatile__("pushl 12(%esp)\n\tpushl 12(%esp)\n\tpushl 12(%esp)\n\t"
+        "call *3f\n\taddl $12,%esp\n\txorl %edx,%edx\n\t"
+        "cmpl $0x67bdec,8(%ebx)\n\tjb 1f\n\tcmpl $0x74604c,8(%ebx)\n\tjae 1f\n\tincl %edx\n\t"
+        "1: incl _cc_loop_verify_candidates(,%edx,4)\n\ttestl %eax,%eax\n\tje 2f\n\t"
+        "incl _cc_loop_verify_hits(,%edx,4)\n\t2: ret\n\t.p2align 2\n\t3: .long 0x46e5c0\n\t");
+}
+}
+
 namespace nl = cccaster::game_memory::native_loops;
 extern "C" { bool cc_loop_trace = false; }
 namespace {
 bool vectorSound = false;
 std::array<uint64_t, 8> calls{}, skipped{};
 unsigned frames = 0;
+void Verify() {
+    static const bool requested = std::getenv("CCCASTER_NATIVE_LOOP_VERIFY") != nullptr;
+    if (!requested) return;
+    static bool attempted = false, installed = false;
+    static unsigned sample = 0, maxLive = 0;
+    if (!attempted) {
+        attempted = true;
+        if (!cccaster::game_build::RuntimeValidated() || uintptr_t(GetModuleHandleW(nullptr)) != 0x400000) return;
+        constexpr uint8_t entry[]{0x81,0xec,0xd0,0,0,0}, call[]{0xe8,0x8e,0xf1,0xff,0xff};
+        std::array<uint8_t,6> jump{0xe9,0,0,0,0,0x90};
+        std::array<uint8_t,5> replacement{0xe8,0,0,0,0};
+        auto relative = uint32_t(uintptr_t(&cc_loop_verify_entry) - 0x46f2f5);
+        std::memcpy(jump.data()+1, &relative, 4);
+        relative = uint32_t(uintptr_t(&cc_loop_verify_candidate) - 0x46f432);
+        std::memcpy(replacement.data()+1, &relative, 4);
+        const std::array<cccaster::patch::Spec,2> specs{{
+            {"verify_collision_entry",0x46f2f0,entry,jump},
+            {"verify_collision_candidate",0x46f42d,call,replacement}}};
+        const auto result = cccaster::patch::Apply(specs);
+        installed = bool(result);
+        cccaster::domain::session::DebugLog("[NativeVerifyInstall] enabled=%u error=%s", unsigned(installed), cccaster::patch::Name(result.error));
+        if (result.rollbackFailed) ExitProcess(ERROR_WRITE_FAULT);
+    }
+    if (!installed) return;
+    unsigned live = 0;
+    for (unsigned i = 0; i < nl::ObjectCount; ++i)
+        live += reinterpret_cast<const uint8_t*>(0x67bde8)[i*nl::ObjectStride] != 0;
+    maxLive = (std::max)(maxLive, live);
+    if (++sample % 120 == 0)
+        cccaster::domain::session::DebugLog("[NativeVerify] sample=%u entries=%u players=%u objects=%u playerHits=%u objectHits=%u live=%u maxLive=%u",
+            sample, cc_loop_verify_entries, cc_loop_verify_candidates[0], cc_loop_verify_candidates[1],
+            cc_loop_verify_hits[0], cc_loop_verify_hits[1], live, maxLive);
+}
 void Count(unsigned group, uint32_t amount = 0) {
     if (cc_loop_trace) { ++calls[group]; skipped[group] += amount; }
 }
@@ -160,7 +210,16 @@ void Install() {
     std::vector<patch::Spec> specs;
     // ScenePairMergeが命令照合できた場合だけ、既存の統合を呼出し元側へまとめる。
     const bool scene = game_interface::scene_pair_merge::endCaller == 0x4be35a;
+    // 試験専用の5群選択。未指定は従来どおり全群。速度比較で役割を交代できる。
+    unsigned mask = 31;
+    if (const char* value = std::getenv("CCCASTER_TEST_NATIVE_MASK")) {
+        char* end = nullptr;
+        const auto parsed = std::strtoul(value, &end, 10);
+        if (end != value && *end == '\0' && parsed <= 31) mask = unsigned(parsed);
+    }
+    constexpr unsigned bits[]{1,2,4,4,4,4,8,16};
     for (size_t i = 0; i < targets.size(); ++i) {
+        if (!(mask & bits[i])) continue;
         if (i == 1 && !scene) continue;
         const auto& site = signatures::Sites[i];
         replacement[i].assign(site.original.size(), 0x90);
@@ -174,8 +233,10 @@ void Install() {
         unsigned(bool(result)), unsigned(scene), unsigned(vectorSound), result.name,
         patch::Name(result.error), unsigned(result.rollbackFailed));
     if (result.rollbackFailed) ExitProcess(ERROR_WRITE_FAULT);
+    domain::session::DebugLog("[NativeLoopMask] requested=%u applied=%u", mask, result ? mask & (scene ? 31u : 29u) : 0u);
 }
 void Trace() {
+    Verify();
     if (!cc_loop_trace || ++frames % 300 != 0) return;
     for (unsigned i = 0; i < calls.size(); ++i)
         domain::session::DebugLog("[NativeLoopCount] group=%u calls=%llu skipped=%llu", i,

@@ -32,10 +32,10 @@ foreach(preset IN LISTS EMBLEM_PRESETS)
 endforeach()
 configure_file(rml_resources.rc.in "${CMAKE_CURRENT_BINARY_DIR}/rml_resources.rc" @ONLY)
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rml_resources.rc" PROPERTIES OBJECT_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/ui/launcher.rml;${CMAKE_CURRENT_SOURCE_DIR}/ui/launcher.rcss;${CMAKE_CURRENT_SOURCE_DIR}/assets/app.manifest;${CCCASTER_GUI_DEPS}/NotoSansJP.ttf;${EMBLEM_PRESETS}")
+    "${CMAKE_CURRENT_SOURCE_DIR}/ui/launcher.rml;${CMAKE_CURRENT_SOURCE_DIR}/ui/launcher.rcss;${CMAKE_CURRENT_SOURCE_DIR}/assets/app.manifest;${CMAKE_CURRENT_SOURCE_DIR}/assets/app.ico;${CCCASTER_GUI_DEPS}/NotoSansJP.ttf;${EMBLEM_PRESETS}")
 add_executable(CCCaster_B_GUI WIN32
     "${CMAKE_CURRENT_BINARY_DIR}/rml_resources.rc"
-    main.cpp RmlHost.cpp RmlView.cpp Worker.cpp LauncherModel.cpp
+    main.cpp RmlHost.cpp RmlView.cpp Worker.cpp LauncherModel.cpp ControllerSettings.cpp
     "${RMLUI_SOURCE}/Backends/RmlUi_Platform_Win32.cpp"
     "${RMLUI_SOURCE}/Backends/RmlUi_Renderer_DX11.cpp"
     ../cli_launcher/ConfigManager.cpp
@@ -54,6 +54,7 @@ target_include_directories(CCCaster_B_GUI PRIVATE ${CMAKE_SOURCE_DIR}/src ${asio
 target_include_directories(CCCaster_B_GUI SYSTEM PRIVATE "${RMLUI_SOURCE}/Backends")
 target_link_libraries(CCCaster_B_GUI PRIVATE launcher cccaster_p2p cccaster_transport RmlUi::Core d3d11 dxgi d3dcompiler imm32 shell32 shlwapi comdlg32 ws2_32 wsock32 wininet winmm windowscodecs ole32 uuid advapi32)
 target_compile_definitions(CCCaster_B_GUI PRIVATE UNICODE _UNICODE)
+target_link_libraries(CCCaster_B_GUI PRIVATE dinput8 dxguid)
 if(MSVC)
     target_compile_options(CCCaster_B_GUI PRIVATE /W4 /utf-8)
     set_property(TARGET CCCaster_B_GUI PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

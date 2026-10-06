@@ -58,6 +58,9 @@ class IGameMemory {
     virtual bool RestartTrainingRecording() { return false; }
     virtual bool ConfigureTrainingMenu() { return true; }
     virtual bool StepTrainingMenu(GameInput&, GameInput&, bool) { return false; }
+    virtual int StageAnimation() const { return -1; } // -1:未対応、0:OFF、1:ON
+    virtual bool SetStageAnimation(bool) { return false; }
+    virtual bool SelectionDelayEditable(bool) const { return true; }
 
     // ── 書き込み ──
     virtual void WriteInput(GameInput p1, GameInput p2) = 0;
@@ -68,7 +71,7 @@ class IGameMemory {
         return true;
     }
     virtual bool ConfigureRandomStages() { return true; }
-    virtual uint32_t DrawRandomStage() { return 0; }
+    virtual uint32_t DrawRandomStage(uint32_t previousStage) { return 0; }
     virtual void SetRetryTarget(int) {}
     virtual bool SetStageRematchFastPath(bool) { return true; }
     virtual bool CommitStageRematch(uint32_t) { return false; }

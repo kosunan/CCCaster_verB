@@ -159,7 +159,9 @@ class Trace:
         key = (tid, pid)
         if key in self.schedule_cache:
             return self.schedule_cache[key]
-        events = sorted(self.switches[tid], key=lambda r: (r[0], r[1]))
+        # old_tid == new_tid のCSwitchもある。退出→入場として扱い、
+        # 同時刻の自己切替の前後に架空の観測欠落を作らない。
+        events = sorted(self.switches[tid], key=lambda r: (r[0], 0 if r[1] == "old" else 1))
         pieces = []
         for left, right in zip(events, events[1:]):
             a, role_a, cpu_a, pid_a = left

@@ -1,5 +1,6 @@
 #include <windows.h>
 1 RT_MANIFEST "@CMAKE_CURRENT_SOURCE_DIR@/assets/app.manifest"
+101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/app.ico"
 201 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/ui/launcher.rml"
 202 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/ui/launcher.rcss"
 204 RCDATA "@CCCASTER_GUI_DEPS@/NotoSansJP.ttf"

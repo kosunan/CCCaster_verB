@@ -11,7 +11,8 @@
     <button class="nav-item" data-page="spectate" id="nav-spectate"><span class="nav-number">02</span><span data-en="Spectate">観戦</span></button>
     <button class="nav-item" data-page="training" id="nav-training"><span class="nav-number">03</span><span data-en="Training">トレーニング</span></button>
     <button class="nav-item" data-page="replay" id="nav-replay"><span class="nav-number">04</span><span data-en="Replay">リプレイ観戦</span></button>
-    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">05</span><span data-en="How to play">操作ガイド</span></button>
+    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">05</span><span data-en="Controllers">コントローラ設定</span></button>
+    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">06</span><span data-en="How to play">操作ガイド</span></button>
     <div class="nav-bottom"><button id="language" class="quiet">English</button></div>
   </nav>
   <main id="content">
@@ -40,7 +41,7 @@
             <h3 id="standby-title">公開で対戦を待つ</h3>
             <div class="standby-profile"><span id="matching-profile-image" class="profile-mark"><img id="matching-emblem" class="hidden" width="48" height="24" aria-label="プレイヤー画像" src="emblem:0" /><span id="matching-emblem-placeholder">P</span></span><div class="standby-profile-details"><div class="profile-name-row"><strong id="matching-name"></strong><button id="profile-settings" data-page="settings" class="quiet" data-en="Profile &amp; settings">プロフィール・設定</button></div><p id="matching-status" class="subtle" role="status"></p></div></div>
             <p id="visibility-help" class="subtle"></p>
-            <div id="registration-start"><button id="start-matching" class="primary standby-start">公開マッチング待機開始</button><details id="matching-options"><summary id="matching-options-toggle" class="summary" data-en="Connection options">接続オプション</summary><label><span data-en="UDP port">接続ポート</span><input id="matching-port" type="text" min="1" max="65535" value="7500" /></label></details></div>
+            <div id="registration-start"><label class="check"><input id="training-standby" type="checkbox" /><span data-en="Train while waiting">トレーニング待ち受け</span></label><button id="start-matching" class="primary standby-start">公開マッチング待機開始</button><details id="matching-options"><summary id="matching-options-toggle" class="summary" data-en="Connection options">接続オプション</summary><label><span data-en="UDP port">接続ポート</span><input id="matching-port" type="text" min="1" max="65535" value="7500" /></label></details></div>
             <div id="registration-active" class="hidden"><span id="registration-visibility" class="pill"></span><div class="code-line"><strong id="matching-code" class="code"></strong><button id="copy-matching" data-en="Copy code">コードをコピー</button></div><p class="subtle" data-en="Share this code for matches or spectating.">対戦・観戦に使えるコードです。</p><label class="check"><input id="pause-matching" type="checkbox" /><span data-en="Pause incoming requests">受付を一時停止</span></label><button id="switch-visibility" class="standby-switch hidden"></button><button id="stop-matching" class="quiet standby-stop" data-en="End standby">待機を終了</button></div>
             <p id="other-mode" class="subtle hidden" data-en="Incoming matches are paused while another mode is running.">別モードの実行中は対戦の受付を休止しています。</p>
             <button id="retry-cleanup" class="quiet hidden" data-en="Cancel leftover listings">残った自分の募集を取り消す</button>
@@ -79,6 +80,22 @@
       </div>
     </section>
 
+    <section class="page hidden" id="page-controller">
+      <div class="page-heading"><h2 data-en="Controller settings">コントローラ設定</h2></div>
+      <p id="controller-game-hint" class="subtle" data-en="You can also configure controls in-game with F4.">ゲーム内でも F4 でコントローラを設定できます。</p>
+      <div class="card controller-card">
+        <p id="controller-locked" class="subtle hidden" data-en="End the connection or game to edit here. Use F4 while in-game.">ここで変更するには接続・ゲームを終了してください。ゲーム内では F4 で設定できます。</p>
+        <fieldset id="controller-fields">
+          <div class="tabs" role="tablist"><button id="controller-p1" role="tab" aria-selected="true" class="active">1P</button><button id="controller-p2" role="tab" aria-selected="false">2P</button></div>
+          <div class="row"><label class="grow"><span data-en="Input device">使用する機器</span><select id="controller-device"><option value="">--</option></select></label><button id="controller-refresh" class="quiet" data-en="Refresh devices">機器を再検出</button></div>
+          <p id="controller-status" class="subtle" role="status"></p>
+          <p class="subtle" data-en="Click a binding, then press a key or press and release a controller input. Changes are saved automatically. Reusing an input clears its previous binding.">割当欄をクリックして、キーを押すかパッドの入力を押して離してください。変更は自動保存され、同じ入力の以前の割当は解除されます。</p>
+          <p id="controller-disconnected" class="error-text hidden" data-en="Connect your device and refresh. The saved bindings are kept.">機器を接続して再検出してください。保存済みの割当は保持されています。</p>
+          <div id="controller-bindings"></div>
+        </fieldset>
+        <div class="controller-feedback"><p id="controller-capture-hint" class="subtle hidden" data-en="Release all inputs first. Esc cancels. F1 / F3 / F4 / F8 are reserved.">いったんすべての入力を離してください。Escで中止。F1 / F3 / F4 / F8 は操作用です。</p><button id="controller-cancel" class="quiet hidden" data-en="Cancel input">入力を中止</button></div>
+      </div>
+    </section>
     <section class="page hidden" id="page-settings"><div class="page-heading settings-heading"><h2 data-en="Profile &amp; settings">プロフィール・設定</h2><button id="settings-back" data-page="matching" class="quiet" data-en="Back to matching">マッチングに戻る</button></div>
       <div class="card"><h3 data-en="Player profile">プレイヤー情報</h3><p id="profile-locked" class="subtle hidden" data-en="End standby and any connection to change your name or image.">名前と画像を変えるには、待機・接続を終了してください。</p><fieldset id="profile-fields"><label><span data-en="Player name">プレイヤー名</span><input id="player-name" maxlength="31" autocomplete="off" /></label><p class="subtle" data-en="Up to 31 ASCII characters. Saved when you leave the field.">半角英数字・記号31文字まで。入力欄を離れると保存します。</p><div class="row"><img id="emblem" width="96" height="48" aria-label="エンブレム" src="emblem:0" /><div class="grow"><button id="emblem-choose" data-en="Choose image">画像を選ぶ</button><button id="emblem-remove" class="quiet" data-en="Remove image">画像を削除</button><p class="subtle" data-en="24 x 12 px, 24-bit uncompressed BMP. Saved automatically.">24×12px・24bit・非圧縮BMP。選ぶと自動保存します。</p></div></div><details id="emblem-preset-details"><summary id="emblem-preset-toggle" data-en="Flag presets (24)">国旗プリセット（24種類）</summary><div class="details-body"><p class="subtle" data-en="Select a flag to use it as your player image.">選んだ国旗をプレイヤー画像にします。</p><div id="emblem-presets"></div></div></details></fieldset><p id="profile-error" class="error-text hidden" data-en="Could not load the saved emblem.">保存済みエンブレムを読み込めませんでした。</p></div>
       <div class="card"><h3 data-en="Connection">接続</h3><label><span data-en="Connection priority">接続方式の優先</span><select id="connection-preference"><option value="0" data-en="Automatic (LAN / IPv6 / IPv4)">自動（LAN／IPv6／IPv4）</option><option value="1" data-en="Prefer IPv4">IPv4優先</option><option value="2" data-en="Prefer IPv6">IPv6優先</option></select></label><label class="check"><input id="allow-spectators" type="checkbox" /><span data-en="Allow spectators">観戦を許可する</span></label><p class="subtle" data-en="Both players must allow watching. Change this before requesting a match.">観戦には双方の許可が必要です。申し込み前に変更してください。</p><details><summary data-en="Notification service" class="summary">通知サービス</summary><label><span>ntfy</span><input id="ntfy-server" type="text" maxlength="255" /></label><button id="save-server" data-en="Save server">通知先を保存</button></details></div>

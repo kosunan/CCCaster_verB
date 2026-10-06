@@ -13,12 +13,34 @@
         <Keyword Value="ReadyThread" />
         <Keyword Value="DPC" />
         <Keyword Value="Interrupt" />
+        <Keyword Value="SampledProfile" />
+      </Keywords>
+      <Stacks>
+        <Stack Value="SampledProfile" />
+        <Stack Value="CSwitch" />
+      </Stacks>
+    </SystemProvider>
+    <SystemProvider Id="SchedulerOnlySystem">
+      <Keywords>
+        <Keyword Value="ProcessThread" />
+        <Keyword Value="Loader" />
+        <Keyword Value="CSwitch" />
+        <Keyword Value="ReadyThread" />
+        <Keyword Value="DPC" />
+        <Keyword Value="Interrupt" />
       </Keywords>
     </SystemProvider>
     <Profile Id="SpinScheduler.Verbose.File" Name="SpinScheduler" Description="Scheduler, DPC and ISR attribution for game spin gaps" LoggingMode="File" DetailLevel="Verbose">
       <Collectors>
         <SystemCollectorId Value="SpinCollector">
           <SystemProviderId Value="SpinSystem" />
+        </SystemCollectorId>
+      </Collectors>
+    </Profile>
+    <Profile Id="SchedulerOnly.Verbose.File" Name="SchedulerOnly" Description="Scheduler, DPC and ISR without sampled profile or stacks" LoggingMode="File" DetailLevel="Verbose">
+      <Collectors>
+        <SystemCollectorId Value="SpinCollector">
+          <SystemProviderId Value="SchedulerOnlySystem" />
         </SystemCollectorId>
       </Collectors>
     </Profile>

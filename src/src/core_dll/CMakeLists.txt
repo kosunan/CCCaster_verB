@@ -14,6 +14,7 @@ add_library(cccaster_hook SHARED
     # === mbaa_mem/ — MBAA メモリ操作・検出 ===
     mbaa_mem/dllmain.cpp
     mbaa_mem/MbaaPatcher.cpp
+    mbaa_mem/NativeFrameWait.cpp
     mbaa_mem/NativeLoopOptimization.cpp
     mbaa_mem/PhaseMonitor.cpp
     mbaa_mem/GameMemory.cpp
@@ -33,7 +34,6 @@ add_library(cccaster_hook SHARED
     hook/DxHook.cpp
     hook/BorderlessDisplay.cpp
     hook/MonitorPresent.cpp
-    hook/TimeHooks.cpp
     hook/DirectInputHook.cpp
     hook/WndProcHook.cpp
 
@@ -65,6 +65,7 @@ add_library(cccaster_hook SHARED
     ui/HudResources.cpp
     ui/StartupFontCache.cpp
     ui/TrainingCharacterView.cpp
+    ui/TrainingStandbyView.cpp
     ui/State_Ui_Logic.cpp
     ui/ScoreBroadcast.cpp
     ui/LearningOverlay.cpp

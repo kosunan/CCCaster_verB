@@ -5,6 +5,24 @@ from analyze_spin_probe import analyze
 
 
 class SpinDecompositionTest(unittest.TestCase):
+    def test_all_play_without_rollback_does_not_join_epochs(self):
+        lines = []
+        for frame in (65535, 65536, 65537):
+            tick = frame * 1000000
+            lines.extend([
+                f'[SpinProbe] f={frame} play=1 due={tick} ready={tick-100} reads=1 gap=0 read=6 between=0 gapLate=0 exitLate=0',
+                f'[SpinGap] f={frame} gapRead=0 gapBetween=0 exitGap=0 exitRead=6 exitBetween=0',
+                '[SpinTail] f=' + str(frame) + ' ' + ' '.join(f'{k}={tick}' for k in
+                    ('spin','bounded','wait','begin','input','trace','commit','step','game'))])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'game.log'
+            path.write_text('\n'.join(lines), encoding='utf-8')
+            self.assertIn('error', analyze(path))
+            report = analyze(path, all_play=True)
+        self.assertEqual(report['samples'], 3)
+        self.assertIsNone(report['first_recovery'])
+        self.assertEqual([r['frame'] for r in report['intervals']], [65537])
+
     def test_scheduled_change_and_late_tail_are_separate(self):
         lines = ['[Rollback] BEGIN frame=99 target=100']
         # ticks: 第2Fは予定+600、終了遅れ+120、末尾処理+60、時計換算差+30。

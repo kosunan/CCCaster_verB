@@ -42,6 +42,7 @@ bool LauncherModel::Occupied() const {
 void LauncherModel::Poll() {
     session_.Poll();
     matching_.Poll(session_);
+    PollController();
     if(codeLookup_.valid() && codeLookup_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
         try {
             const bool registeredCode=codeLookup_.get();
@@ -65,7 +66,9 @@ void LauncherModel::Command(const Json& c) {
     try {
         if (!c.is_object() || c.size() > 8) throw std::invalid_argument("invalid message");
         const auto type = String(c, "type", 32);
-        if (type == "language") {
+        if (type == "controller") {
+            controllers_.Command(c,Occupied());
+        } else if (type == "language") {
             const auto lang = String(c, "value", 2);
             if (lang != "ja" && lang != "en") throw std::invalid_argument("language");
             SaveString("GUI", "Language", lang); japanese = lang == "ja";
@@ -79,6 +82,9 @@ void LauncherModel::Command(const Json& c) {
                 SaveInt("GUI", "SoftwareRendering", Boolean(c, "value"));
             } else if (key == "ConnectionPreference") {
                 SaveInt("GUI", "ConnectionPreference", Integer(c, "value", 0, 2));
+            } else if (key == "TrainingStandby") {
+                if (Occupied() || matching_.view.registered) throw std::invalid_argument("occupied");
+                SaveInt("Matching", "TrainingStandby", Boolean(c, "value"));
             } else if (key == "AllowSpectators") {
                 if (Occupied() || !matching_.view.incoming.empty() || !matching_.view.outgoing.id.empty())
                     throw std::runtime_error(Text("Change this before requesting a match.", "申し込み前に変更してください。"));
@@ -211,6 +217,7 @@ void LauncherModel::Command(const Json& c) {
                 std::snprintf(matching_.comment,sizeof(matching_.comment),"%s",comment.c_str());
                 const bool published = Boolean(c,"public");
                 SaveInt("Matching","Public",published); SaveInt("Matching","Port",matching_.port);
+                matching_.trainingEnabled = matching_.trainingOnWait = ConfigManager::GetInt("Matching","TrainingStandby",0) != 0;
                 matching_.Start(published);
             } else if (type == "matching_invite") {
                 if (Occupied() || matching_.view.paused || !matching_.view.outgoing.id.empty()) throw std::invalid_argument("occupied");
@@ -221,7 +228,10 @@ void LauncherModel::Command(const Json& c) {
                 const bool value = Boolean(c,"public"); SaveInt("Matching","Public",value);
                 if (matching_.view.registered) matching_.client->Command({{"type","visibility"},{"public",value}});
             } else if (type == "matching_pause") matching_.client->Command({{"type","pause"},{"paused",Boolean(c,"paused")}});
-            else if (type == "matching_stop") matching_.client->Command({{"type","stop"}});
+            else if (type == "matching_stop") {
+                matching_.StopTrainingStandby(session_);
+                matching_.client->Command({{"type","stop"}});
+            }
             else if (type == "matching_cleanup") {
                 if (Occupied() || !matching_.view.outgoing.id.empty()) throw std::invalid_argument("occupied");
                 matching_.client->Command({{"type","cleanup"}});
@@ -229,11 +239,11 @@ void LauncherModel::Command(const Json& c) {
             else if (type == "matching_cancel") matching_.client->Command({{"type","cancel"}});
             else if (type == "matching_cancel_pairing") matching_.client->Command({{"type","cancel_match"}});
             else if (type == "matching_accept" || type == "matching_reject") {
-                if (type == "matching_accept" && (Occupied() || matching_.view.paused)) throw std::invalid_argument("occupied");
+                if (type == "matching_accept" && (codeLookup_.valid() || !matching_.CanAccept(session_))) throw std::invalid_argument("occupied");
                 const auto id = String(c,"request",32);
                 if (std::none_of(matching_.view.incoming.begin(),matching_.view.incoming.end(),[&](const auto& r){ return r.id == id; }))
                     throw std::invalid_argument("request expired");
-                matching_.client->Command({{"type",type == "matching_accept" ? "accept" : "reject"},{"request",id}}); ClearNotice();
+                matching_.Reply(session_,id,type == "matching_accept"); ClearNotice();
             } else throw std::invalid_argument("command");
         } else throw std::invalid_argument("command");
     } catch (const std::invalid_argument&) { error_ = Text("Check the input and current session state.", "入力内容と現在の接続状態を確認してください。"); }
@@ -252,6 +262,7 @@ Json LauncherModel::State(bool includeLog) const {
     for (const char* key : {"Sound","FlashTaskbar","DesktopPopup"}) settings[key] = ConfigManager::GetInt("Notifications",key,1) != 0;
     settings["ConnectionPreference"] = std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2);
     settings["AllowSpectators"] = ConfigManager::GetInt("Connection","AllowSpectators",1) != 0;
+    settings["TrainingStandby"] = ConfigManager::GetInt("Matching","TrainingStandby",0) != 0;
     settings["SoftwareRendering"] = ConfigManager::GetInt("GUI","SoftwareRendering",0) != 0;
     settings["NtfyServer"] = ConfigManager::GetString("Connection","NtfyServer","https://ntfy.sh");
     settings["public"] = ConfigManager::GetInt("Matching","Public",0) != 0;
@@ -261,11 +272,13 @@ Json LauncherModel::State(bool includeLog) const {
     Json routes = Json::array();
     for (const auto& route : session_.ipResults) routes.push_back(route.empty() ? "" : IpResultText(route).c_str());
     return {{"protocol",1},{"version",CCCASTER_VERSION},{"language",japanese?"ja":"en"},{"settings",settings},
+        {"controller",controllers_.State(Occupied())},
         {"profile",{{"name",ConfigManager::GetString("Player","Name","")},{"emblemId",emblem_.id},{"pixels",emblemData_},{"error",profileError_}}},
         {"error",error_},{"connectionLookup",codeLookup_.valid()},{"session",{{"running",session_.Running()},{"game",GameRunning()},{"failed",session_.failed},{"cancelling",session_.cancelling},
           {"spectating",session_.spectating},{"status",session_.status.c_str()},{"code",session_.code},{"watchCode",session_.watchCode},
           {"manualCode",session_.manualCode},{"incomingNotice",session_.incomingNotice},{"routes",routes},{"log",includeLog?session_.log:""}}},
         {"matching",{{"registered",v.registered},{"public",v.publicVisible},{"paused",v.paused},{"code",v.code},{"state",v.state},{"port",matching_.port},
+          {"canAccept",!codeLookup_.valid() && matching_.CanAccept(session_)},{"trainingStandby",matching_.TrainingRunning(session_)},
           {"status",MatchingController::Status((v.paused||matching_.otherMode)&&v.state=="waiting"?"paused":v.state)},
           {"notice",v.notice.empty()?"":MatchingController::Status(v.notice)},{"error",v.error.empty()?"":MatchingController::Status(v.error)},
           {"service",MatchingController::Status(v.service)},{"incomplete",v.incomplete},{"busy",Occupied()},{"otherMode",matching_.otherMode},

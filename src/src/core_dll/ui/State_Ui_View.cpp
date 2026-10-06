@@ -4,6 +4,7 @@
 #include "core_dll/timing/FrameTiming.hpp"
 #include "core_dll/timing/WasapiClock.hpp"
 #include "core_dll/engine/SceneRunner.hpp"
+#include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/ui/HudResources.hpp"
 #include "core_dll/ui/HudTheme.hpp"
 #include <string>
@@ -27,7 +28,7 @@ LatencyWarningSnapshot ReadLatencyWarning(int delay, int rollback) {
     return cached;
 }
 
-void DrawBattleIdentity(int delay, bool namesOnly = false) {
+void DrawBattleIdentity(int delay, bool namesOnly = false, bool showDelay = true) {
     using namespace cccaster::hud;
     const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
     const auto score = cccaster::domain::session::SceneRunner::Score();
@@ -61,7 +62,7 @@ void DrawBattleIdentity(int delay, bool namesOnly = false) {
             c.draw->AddText(font,c.S(18),{c.At(wins.x+wins.width/2,wins.y-1).x-width/2,c.At(0,wins.y-1).y},White,value);
         }
     }
-    if (!namesOnly) {
+    if (!namesOnly && showDelay) {
         char settings[16]; FormatDelayLabel(settings,sizeof(settings),delay);
         const auto r = Layout::Settings;
         c.Plate(r,Blue,true);
@@ -138,16 +139,13 @@ void DrawBattleLatencyWarning(const LatencyWarningSnapshot &latency) {
 // 英語の短い案内。上部と同じ実ビューポート・フォント倍率を使う。
 void DrawSelectionGuidance(int delay, const char* notice = nullptr) {
     using namespace cccaster::hud;
-    (void)delay; // 現在値は共通ヘッダーに一度だけ表示する。
     const Canvas c;
     const auto r = Layout::SelectionGuide;
     c.Plate(r,Blue,true);
     c.Key(18,r.y+6,24,"F4");
     c.Text(50,r.y+7,"CONTROLLER SETUP",10,White);
-    c.Key(242,r.y+6,64,"Ctrl+0-8");
-    c.Text(314,r.y+7,"INPUT DELAY",10,White);
-    c.Key(486,r.y+6,24,"F1");
-    c.Text(518,r.y+7,"HUD MODE",10,White);
+    c.Key(350,r.y+6,84,"START / F1");
+    c.Text(446,r.y+7,cccaster::domain::scene::selection_options::menu.open ? "CLOSE MENU" : "OPEN MENU",10,White);
     // 常設の補助文を除き、保存直後や通信上の通知だけ一時表示する。
     const char* message = notice ? notice :
         HudDisplay::Detailed() && StateUiLogic::IsControllerConfirmationActive() ? "CONTROLLER READY" : nullptr;
@@ -160,7 +158,7 @@ void DrawSelectionGuidance(int delay, const char* notice = nullptr) {
         char metrics[128];
         FormatBattleHudLine(metrics,sizeof(metrics),online && net.available,net.stale,
             net.latestRttMs,online && net.jitterAvailable,net.jitterMs,delay,0,
-            cccaster::core::timer::FrameTiming::Get().last,false);
+            cccaster::core::timer::FrameTiming::Simulation().last,false);
         c.Text(622,r.y-17,metrics,9,White,3,348,true);
     }
 }
@@ -224,7 +222,7 @@ void DrawHud(bool selection) {
     if (appMode != 0 && appMode != 1) return;
     const bool training = appMode == 1;
     const int d = !training && selection ? Settings::delay.load() : StateUiLogic::GetDelay();
-    if (HudDisplay::Visible()) DrawBattleIdentity(d);
+    if (HudDisplay::Visible()) DrawBattleIdentity(d, false, !selection);
     if (selection && !HudDisplay::Detailed()) {
         DrawSelectionGuidance(d);
         return;
@@ -240,17 +238,13 @@ void DrawHud(bool selection) {
     const int r = selection ? Settings::rollback.load() : StateUiLogic::GetRollback();
     const auto latency = ReadLatencyWarning(d, r);
     if (selection) {
-        const char* notice = nullptr;
-        if (Settings::pending.load()) notice = "SYNCING DELAY...";
-        else if (Settings::notice.load() == 1) notice = "DELAY: 0-8";
-        else if (Settings::notice.load() == 3) notice = "DELAY: NOT APPLIED";
-        else if (Settings::notice.load() == 4) notice = "USE CTRL+0-8 FOR DELAY";
-        DrawSelectionGuidance(d, notice ? notice : fallback ? "CLOCK: QPC FALLBACK" :
+        DrawSelectionGuidance(d, fallback ? "CLOCK: QPC FALLBACK" :
             latency.severity != LatencyWarningSeverity::None ? "RTT SPIKE: CHECK CONNECTION" : nullptr);
         return;
     }
     const auto net = StateUiLogic::GetNetworkMetrics();
-    const auto &timing = cccaster::core::timer::FrameTiming::Get();
+    // 同じ完成画像の再提示間隔ではなく、通常ゲーム更新の実QPC間隔を表示する。
+    const auto &timing = cccaster::core::timer::FrameTiming::Simulation();
     DrawBattleLatencyWarning(latency);
     DrawBattleMetrics(FormatHudFixedValues(net.available, net.stale, net.latestRttMs,
                                             net.jitterAvailable, net.jitterMs, d, r,

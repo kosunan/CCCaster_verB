@@ -19,6 +19,7 @@ file(GLOB_RECURSE CCCASTER_ID_INPUTS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/CMakeLists.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/ui/*" "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/*.rc.in" "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/assets/app.manifest"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/gui_launcher/assets/*.ico"
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/GRP/*.dds"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/*")
 list(APPEND CCCASTER_ID_INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
@@ -88,6 +89,7 @@ FetchContent_MakeAvailable(asio)
 # （MinHook は x86 命令長デコーダ、ImGui バックエンドは win32/dx9）。
 # 非 Windows では取得も定義もしない。
 if(WIN32)
+enable_language(RC)
 
 # Fetch MinHook (Used by DLL Layer)
 FetchContent_Declare(

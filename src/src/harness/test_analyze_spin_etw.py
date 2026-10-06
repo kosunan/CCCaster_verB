@@ -53,6 +53,15 @@ def window(begin=100, end=400):
 
 
 class SpinEtwTests(unittest.TestCase):
+    def test_self_switch_keeps_on_cpu_coverage_and_interrupts(self):
+        data = trace(switch(0, 0, 0, 7), switch(250, 0, 7, 7), switch(500, 0, 7, 0),
+                     interrupt("dpc", 200, 300))
+        result = data.attribute(window())
+        self.assertEqual(result["status"], "observed")
+        self.assertEqual(result["scheduler_unknown_us"], 0)
+        self.assertEqual(result["off_cpu_us"], 0)
+        self.assertEqual(result["interrupt_us"], 100/60)
+
     def test_union_nested_and_boundary(self):
         self.assertEqual(union_length([(10, 30), (15, 20), (30, 40), (80, 90)]), 40)
 

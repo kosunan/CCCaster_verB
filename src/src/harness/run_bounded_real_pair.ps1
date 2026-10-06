@@ -1,4 +1,4 @@
-param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct1='05C4054C', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct2='09CC054C')
+param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct1='05C4054C', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct2='09CC054C', [string]$BuildManifest='')
 $taskDebugStarted=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
@@ -7,6 +7,8 @@ if($TestRoot){$taskTest=(Resolve-Path -LiteralPath $TestRoot).Path}
 $taskOut=Join-Path $taskRoot ('test/logs/bounded_real_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
 if($OutputDirectory){$taskOut=[IO.Path]::GetFullPath($OutputDirectory)}
 New-Item -ItemType Directory -Force $taskOut | Out-Null
+# 反復測定は配置直後に採った3点のSHA-256へ固定できる。バイナリの再配置はしない。
+$taskBuildHashes=if($BuildManifest){Get-Content -LiteralPath $BuildManifest -Raw | ConvertFrom-Json -AsHashtable}else{$null}
 $taskLaunchers=@();$taskGames=@();$taskStartedSides=@()
 $taskMonitor=$null
 $taskMeasured=[Diagnostics.Stopwatch]::StartNew()
@@ -24,10 +26,11 @@ foreach($taskSide in $taskVerifySides) {
 }
 $taskOldSceneMerge=$env:CCCASTER_DISABLE_SCENE_MERGE
 $taskOldNativeLoops=$env:CCCASTER_DISABLE_NATIVE_LOOPS
+$taskOldNativeMask=$env:CCCASTER_TEST_NATIVE_MASK
 $taskOldCpuGuard=$env:CCCASTER_DISABLE_GAME_CPU_GUARD
 $taskOldSoundPrewarm=$env:CCCASTER_DISABLE_SOUND_PREWARM
 $taskOldCpuPin=$env:CCCASTER_GAME_CPU_PIN
-$taskOldGameTimer=$env:CCCASTER_LEGACY_GAME_TIMER
+if($env:CCCASTER_TEST_BASELINE_HOST_GAME_TIMER){throw '旧1000倍時計は撤去済みのため、この比較条件は使用できません。'}
 $taskOldReplaySaves=$env:CCCASTER_KEEP_CONFIRMED_REPLAY_SNAPSHOTS
 $taskOldStartupSeconds=$env:CCCASTER_STARTUP_SECONDS_BASELINE
 $taskOldStartupAssets=$env:CCCASTER_STARTUP_ASSETS_BASELINE
@@ -43,8 +46,10 @@ try {
         foreach($taskFile in 'CCCaster_B.exe','CCCaster_B_GUI.exe','libcccaster_hook.dll') {
             $taskDest=Join-Path $taskDir $taskFile
             $taskSource=Join-Path $taskRoot "build\bin\$taskFile"
+            $taskExpectedHash=if($taskBuildHashes){$taskBuildHashes[$taskFile]}else{(Get-FileHash -LiteralPath $taskSource).Hash}
+            if($taskExpectedHash -notmatch '^[0-9A-Fa-f]{64}$'){throw "比較ビルドのSHA-256が不正: $taskFile"}
             if(!(Test-Path -LiteralPath $taskDest) -or
-                (Get-FileHash -LiteralPath $taskDest).Hash -ne (Get-FileHash -LiteralPath $taskSource).Hash) {
+                (Get-FileHash -LiteralPath $taskDest).Hash -ne $taskExpectedHash) {
                 throw '最新版3点が未配置。ルートdeploy.batを実行してから試験してください。'
             }
         }
@@ -99,6 +104,10 @@ try {
         if($env:CCCASTER_TEST_BASELINE_HOST_NATIVE_LOOPS) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_NATIVE_LOOPS='1'}else{Remove-Item Env:CCCASTER_DISABLE_NATIVE_LOOPS -ErrorAction SilentlyContinue}
         }
+        $taskNativeMask=[Environment]::GetEnvironmentVariable("CCCASTER_TEST_NATIVE_MASK_$taskSide",'Process')
+        if($null -ne $taskNativeMask){$env:CCCASTER_TEST_NATIVE_MASK=$taskNativeMask}
+        elseif($null -eq $taskOldNativeMask){Remove-Item Env:CCCASTER_TEST_NATIVE_MASK -ErrorAction SilentlyContinue}
+        else{$env:CCCASTER_TEST_NATIVE_MASK=$taskOldNativeMask}
         if($env:CCCASTER_TEST_BASELINE_HOST_CPU_GUARD) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_GAME_CPU_GUARD='1'}else{Remove-Item Env:CCCASTER_DISABLE_GAME_CPU_GUARD -ErrorAction SilentlyContinue}
         }
@@ -120,9 +129,6 @@ try {
         else{$env:CCCASTER_GAME_CPU_PIN=$taskOldCpuPin}
         if($env:CCCASTER_TEST_BASELINE_HOST_REPLAY_SAVES){
             if($taskSide -eq 1){$env:CCCASTER_KEEP_CONFIRMED_REPLAY_SNAPSHOTS='1'}else{Remove-Item Env:CCCASTER_KEEP_CONFIRMED_REPLAY_SNAPSHOTS -ErrorAction SilentlyContinue}
-        }
-        if($env:CCCASTER_TEST_BASELINE_HOST_GAME_TIMER){
-            if($taskSide -eq 1){$env:CCCASTER_LEGACY_GAME_TIMER='1'}else{Remove-Item Env:CCCASTER_LEGACY_GAME_TIMER -ErrorAction SilentlyContinue}
         }
         $taskLaunchers+=Start-Process (Join-Path $taskDir 'CCCaster_B.exe') -WindowStyle Hidden -PassThru -WorkingDirectory $taskDir -ArgumentList $taskArgs -RedirectStandardOutput (Join-Path $taskOut "launcher_$taskSide.log") -RedirectStandardError (Join-Path $taskOut "launcher_$taskSide.err")
         $taskStartedSides+=$taskSide
@@ -183,7 +189,6 @@ try {
     $taskChildren=@(Get-CimInstance Win32_Process -Filter "Name='MBAA.exe'" | Where-Object {$_.ParentProcessId -in $taskLaunchers.Id})
     foreach($taskChild in $taskChildren){if($taskChild.ProcessId -notin $taskGames){$taskGames+=$taskChild.ProcessId}}
     if($null -eq $taskOldReplaySaves){Remove-Item Env:CCCASTER_KEEP_CONFIRMED_REPLAY_SNAPSHOTS -ErrorAction SilentlyContinue}else{$env:CCCASTER_KEEP_CONFIRMED_REPLAY_SNAPSHOTS=$taskOldReplaySaves}
-    if($null -eq $taskOldGameTimer){Remove-Item Env:CCCASTER_LEGACY_GAME_TIMER -ErrorAction SilentlyContinue}else{$env:CCCASTER_LEGACY_GAME_TIMER=$taskOldGameTimer}
     if($null -eq $taskOldStartupFirst){Remove-Item Env:CCCASTER_STARTUP_FIRST_BASELINE -ErrorAction SilentlyContinue}else{$env:CCCASTER_STARTUP_FIRST_BASELINE=$taskOldStartupFirst}
     if($null -eq $taskOldStartupAssets){Remove-Item Env:CCCASTER_STARTUP_ASSETS_BASELINE -ErrorAction SilentlyContinue}else{$env:CCCASTER_STARTUP_ASSETS_BASELINE=$taskOldStartupAssets}
     if($null -eq $taskOldStartupSeconds){Remove-Item Env:CCCASTER_STARTUP_SECONDS_BASELINE -ErrorAction SilentlyContinue}else{$env:CCCASTER_STARTUP_SECONDS_BASELINE=$taskOldStartupSeconds}
@@ -192,6 +197,7 @@ try {
     if($null -eq $taskOldCpuGuard){Remove-Item Env:CCCASTER_DISABLE_GAME_CPU_GUARD -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_GAME_CPU_GUARD=$taskOldCpuGuard}
     if($null -eq $taskOldSceneMerge){Remove-Item Env:CCCASTER_DISABLE_SCENE_MERGE -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_SCENE_MERGE=$taskOldSceneMerge}
     if($null -eq $taskOldNativeLoops){Remove-Item Env:CCCASTER_DISABLE_NATIVE_LOOPS -ErrorAction SilentlyContinue}else{$env:CCCASTER_DISABLE_NATIVE_LOOPS=$taskOldNativeLoops}
+    if($null -eq $taskOldNativeMask){Remove-Item Env:CCCASTER_TEST_NATIVE_MASK -ErrorAction SilentlyContinue}else{$env:CCCASTER_TEST_NATIVE_MASK=$taskOldNativeMask}
     foreach($taskGame in $taskGames){Stop-Process -Id $taskGame -Force -ErrorAction SilentlyContinue}
     foreach($taskLauncher in $taskLaunchers){
         if($DebugSpikes -and !$taskLauncher.HasExited){$null=$taskLauncher.WaitForExit(2000)}

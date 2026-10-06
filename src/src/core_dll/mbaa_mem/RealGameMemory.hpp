@@ -26,12 +26,15 @@ class RealGameMemory final : public IGameMemory {
     bool RestartTrainingRecording() override;
     bool ConfigureTrainingMenu() override;
     bool StepTrainingMenu(GameInput&, GameInput&, bool) override;
+    int StageAnimation() const override;
+    bool SetStageAnimation(bool) override;
+    bool SelectionDelayEditable(bool) const override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
     void PlaceTrainingCorner(int direction, int player) override;
     bool ConfigureNetplayMenu() override;
     bool ConfigureRandomStages() override;
-    uint32_t DrawRandomStage() override;
+    uint32_t DrawRandomStage(uint32_t previousStage) override;
     std::string ReplayFilePath() const override;
     bool SaveReplay(const char *p1, const char *p2, int winner) override;
     void SetRetryTarget(int) override;

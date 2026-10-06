@@ -11,6 +11,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include "shared_contracts/ResourceIds.h"
 #endif
 
 #include <string>
@@ -19,6 +20,12 @@
 int main(int argc, char *argv[]) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
+    if (const HWND console = GetConsoleWindow()) {
+        if (const auto icon = LoadIconW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(CCCASTER_APP_ICON))) {
+            SendMessageW(console,WM_SETICON,ICON_BIG,reinterpret_cast<LPARAM>(icon));
+            SendMessageW(console,WM_SETICON,ICON_SMALL,reinterpret_cast<LPARAM>(icon));
+        }
+    }
 #endif
 
     // ゲーム起動前にINI設定を読み込む（Rollback設定その他の自動引渡しに使用）

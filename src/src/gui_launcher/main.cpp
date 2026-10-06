@@ -2,6 +2,7 @@
 #include "LauncherModel.hpp"
 #include "RmlHost.hpp"
 #include "ProductVersion.hpp"
+#include "shared_contracts/ResourceIds.h"
 #include "shared_contracts/NativePath.hpp"
 #include "p2p/MatchingCleanup.hpp"
 #include <shellapi.h>
@@ -14,10 +15,11 @@ struct Application {
     RmlHost display;
     std::deque<Json> pending;
     bool includeLog=false, handling=false;
+    bool testMode=false;
     UINT interval=0;
     explicit Application(HWND window,const std::filesystem::path& testDirectory) : display(window,[this,window](Json message){
         if(pending.size()<128){pending.push_back(std::move(message));PostMessageW(window,UiCommandMessage,0,0);}
-    },testDirectory) {}
+    },testDirectory),testMode(!testDirectory.empty()) {}
     void Tick() {
         if(handling)return;
         handling=true;
@@ -32,9 +34,9 @@ struct Application {
             const bool game=model.GameRunning();
             const bool visible=!IsIconic(guiWindow) && (!game || GetForegroundWindow()==guiWindow);
             display.Visibility(visible);
-            const UINT desired=game?1000:(visible?250:500);
+            const UINT desired=model.TrainingStandbyRunning()?100:game?1000:(visible?250:500);
             if(interval!=desired){interval=desired;SetTimer(guiWindow,1,interval,nullptr);}
-            if(display.Ready() && visible) {
+            if(display.Ready() && (visible || testMode)) {
                 auto state=model.State(includeLog);state["display"]={{"software",display.Software()},{"throttled",game}};
                 display.Send(state);
             }
@@ -44,11 +46,12 @@ struct Application {
 };
 LRESULT CALLBACK WindowProc(HWND window,UINT message,WPARAM w,LPARAM l) {
     auto app=reinterpret_cast<Application*>(GetWindowLongPtrW(window,GWLP_USERDATA));
+    if(app && app->model.ControllerKey(message,w,l)){app->Tick();return 0;}
     if(app && app->display.Message(message,w,l))return 0;
     switch(message) {
     case WM_SIZE: if(app){app->display.Resize();app->Tick();}return 0;
     case WM_ACTIVATE: if(app)app->Tick();break;
-    case WM_TIMER: if(app){if(w==2)app->display.Frame();else app->Tick();}return 0;
+    case WM_TIMER: if(app){if(w==2){app->model.PollController();app->display.Frame();}else app->Tick();}return 0;
     case UiCommandMessage: if(app)app->Tick();return 0;
     case DisplayErrorMessage: if(app)app->display.ShowError();return 0;
     case WM_COMMAND:
@@ -91,6 +94,10 @@ int WINAPI WinMain(HINSTANCE instance,HINSTANCE,LPSTR,int) {
     const auto com=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
     if(FAILED(com))return 1;
     WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);wc.lpfnWndProc=WindowProc;wc.hInstance=instance;
+    wc.hIcon=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(CCCASTER_APP_ICON),IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON),GetSystemMetrics(SM_CYICON),LR_DEFAULTCOLOR));
+    wc.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(CCCASTER_APP_ICON),IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON),GetSystemMetrics(SM_CYSMICON),LR_DEFAULTCOLOR));
     wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hbrBackground=static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wc.lpszClassName=L"CCCasterRmlGui";RegisterClassExW(&wc);
     const auto menu=CreateMenu(),render=CreatePopupMenu();
@@ -121,5 +128,8 @@ int WINAPI WinMain(HINSTANCE instance,HINSTANCE,LPSTR,int) {
         exitCode=1;
     }
     if(IsWindow(guiWindow))DestroyWindow(guiWindow);
-    guiWindow=nullptr;CoUninitialize();return exitCode;
+    guiWindow=nullptr;UnregisterClassW(wc.lpszClassName,instance);
+    if(wc.hIcon)DestroyIcon(wc.hIcon);
+    if(wc.hIconSm)DestroyIcon(wc.hIconSm);
+    CoUninitialize();return exitCode;
 }

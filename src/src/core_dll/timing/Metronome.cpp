@@ -61,11 +61,13 @@ void Metronome::SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinG
     timer::OfflinePacing::sleepRemaining = 0;
     while (true) {
         int64_t remain = targetTicks - timer::WasapiClock::GetTimeTicks();
-        timer::IdlePresentation::Pump(remain / 60);
-        remain = targetTicks - timer::WasapiClock::GetTimeTicks();
         if (remain <= 0)
             break;
         if (remain > spinGuardUs * 60) {
+            timer::IdlePresentation::Pump(remain / 60, spinGuardUs);
+            // 提示の所要時間を引き直す。スピンに入る時刻を過ぎたら眠らず再判定する。
+            remain = targetTicks - timer::WasapiClock::GetTimeTicks();
+            if (remain <= spinGuardUs * 60) continue;
             // ゲーム用フックを通さず実時間で待機する。
             timer::OfflinePacing::BeforeSleep(remain);
             // Sleep(1)の復帰遅延を締切直前へ持ち込まない。既存の高分解能

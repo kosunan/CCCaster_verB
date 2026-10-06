@@ -3,6 +3,7 @@
 #include "cli_launcher/ConfigManager.hpp"
 #include "cli_launcher/controller/MainController.hpp"
 #include "shared_contracts/NetplaySettings.hpp"
+#include "shared_contracts/TrainingStandby.hpp"
 #include <shellapi.h>
 #include <iostream>
 namespace cccaster::gui {
@@ -18,6 +19,7 @@ int RunWorker(int argc, wchar_t** argv) {
         std::cerr.rdbuf(std::cout.rdbuf());
         const bool replay = wcscmp(argv[4], L"replay") == 0;
         const bool training = wcscmp(argv[4], L"training") == 0;
+        SetEnvironmentVariableW(training_standby::Environment, training && argc == 7 ? argv[6] : nullptr);
         const bool spectator = wcscmp(argv[4], L"spectate") == 0;
         const bool host = training || replay || wcscmp(argv[4], L"host") == 0;
         const std::wstring value = argv[5];

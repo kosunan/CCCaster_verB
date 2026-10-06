@@ -1,4 +1,5 @@
 #include "core_dll/hook/WndProcHook.hpp"
+#include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/hook/MonitorPresent.hpp"
 #include "core_dll/ui/UIManager.hpp"
@@ -105,7 +106,9 @@ bool WndProcHook::Initialize(HWND hwnd) {
 }
 
 bool WndProcHook::BlocksEscapeExit() {
-    return drag.active || drag.escapeHeld;
+    namespace options = cccaster::domain::scene::selection_options;
+    return drag.active || drag.escapeHeld || options::active.load() ||
+        (options::heldKeys.load() & options::KeyMask(VK_ESCAPE));
 }
 
 void WndProcHook::PumpMessages() {
@@ -205,6 +208,7 @@ LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wPar
         RequestLocalGameExit(SessionExitReason::CloseButton)) return 0;
     if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
         !cccaster::domain::ui::UIManager::IsMappingWindowOpen() &&
+        !BlocksEscapeExit() &&
         RequestLocalGameExit(SessionExitReason::Escape)) return 0;
     // UI 側に処理を委譲
     int result = cccaster::domain::ui::UIManager::HandleWndProcMessage(hWnd, uMsg, wParam, lParam);

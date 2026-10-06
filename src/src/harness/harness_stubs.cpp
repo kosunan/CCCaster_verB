@@ -5,7 +5,6 @@
 //   HookLog          — 本来 dllmain.cpp。DLL のログファイルパス解決が要らない
 //   DirectInputHook  — dinput / ConfigManager / ImGui を引き込むため
 //   StateUiLogic     — OverlayRenderer(ImGui) を引き込むため
-//   TimeHooks        — MinHook を引き込むため。実 QPC をそのまま返す
 //   MbaaMemTrace     — 実アドレスを直接読む観測モジュール。harness には
 //                      実ゲームのメモリが無いので何もしない。
 //   SceneFastBoot    — seam の外に置いた3アドレス (CC_GAME_STATE_ADDR /
@@ -18,8 +17,8 @@
 // ============================================================================
 
 #include "core_dll/hook/DirectInputHook.hpp"
+#include "core_dll/ui/TrainingStandbyView.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
-#include "core_dll/hook/TimeHooks.hpp"
 #ifdef _WIN32
 #include "core_dll/hook/WndProcHook.hpp"
 #endif
@@ -219,41 +218,14 @@ bool MbaaMemTrace::IsEnabled() {
 void MbaaMemTrace::Sample(uint32_t) {}
 } // namespace cccaster::game_memory
 
-// ── TimeHooks ──────────────────────────────────────────────
-// ハーネスは時間を加速しない。実 QPC をそのまま返す。
-//
-// Linux では TimeHooks クラスそのものが存在しない（Windows の MinHook 前提のため
-// TimeHooks.hpp 全体が _WIN32 で囲まれている）。同期ロジック側は Platform 経由で
-// 時刻・待機を取るようになっているので、Linux ではこのスタブ自体が不要。
 #ifdef _WIN32
 namespace cccaster::game_interface {
 // harnessは実ウィンドウを持たない。移動中の契約はtest_window_dragで検査する。
 bool WndProcHook::BlocksEscapeExit() { return false; }
 void WndProcHook::PumpMessages() {} // harnessにはゲーム窓がない。
 }
-namespace cccaster::core::hooks {
-
-bool TimeHooks::s_initialized = false;
-std::atomic<uint32_t> TimeHooks::s_multiplier{1};
-std::atomic<bool> TimeHooks::s_sleepBypass{false};
-
-void TimeHooks::Initialize() {}
-void TimeHooks::Shutdown() {}
-void TimeHooks::SetTimeMultiplier(uint32_t) {}
-void TimeHooks::SetSleepBypass(bool) {}
-
-void TimeHooks::RealQueryPerformanceCounter(LARGE_INTEGER *out) {
-    QueryPerformanceCounter(out);
-}
-DWORD TimeHooks::RealGetTickCount() {
-    return GetTickCount();
-}
-DWORD TimeHooks::RealTimeGetTime() {
-    return timeGetTime();
-}
-void TimeHooks::RealSleep(DWORD ms) {
-    Sleep(ms);
-}
-
-} // namespace cccaster::core::hooks
 #endif // _WIN32
+
+namespace cccaster::domain::ui::training_standby_view {
+bool Step(game_interface::GameInput) { return false; }
+}

@@ -174,6 +174,22 @@ selection { background-color:#87466f; color:white; }
 @media (max-width:940dp) { .matching-tabs button { padding:9dp 11dp; } .player-row { padding:6dp 4dp; } }
 @media (max-width:820dp) { .matching-layout { flex-direction:column; gap:0; } .directory-card, .matching-layout .registration { flex:none; width:100%; } }
 /* 状態による非表示はレイアウト指定よりも優先する。 */
+#page-controller { max-width:870dp; }
+#page-controller .page-heading { margin-bottom:4dp; }
+#controller-game-hint { font-size:11dp; margin:0 0 18dp; }
+.controller-card .row { gap:8dp; align-items:center; }
+.controller-card .row > * { margin-right:0; }
+.controller-card .grow { min-width:180dp; }
+#controller-refresh { font-size:11dp; }
+#controller-bindings { display:flex; flex-wrap:wrap; gap:0 20dp; }
+.binding-row { display:flex; align-items:center; gap:8dp; width:100%; border-bottom:1dp #403044; padding:7dp 0; }
+.binding-label { flex:1; min-width:0; font-size:12dp; }
+.binding-value { width:210dp; padding:6dp 10dp; font-size:12dp; }
+.binding-clear { font-size:11dp; padding:6dp 9dp; }
+.binding-value.capturing { background-color:#633353; border-color:#e3b9f5; }
+.controller-feedback { margin-top:12dp; }
+@media (max-width:820dp) { .binding-value { width:145dp; } }
+@media (max-width:620dp) { .binding-row { flex-wrap:wrap; } .binding-label { width:100%; flex:auto; } .binding-value { flex:1; } }
 .hidden, details.open > .hidden { display:none; }
 .registration .standby-switch.hidden { display:none; }
 

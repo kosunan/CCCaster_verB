@@ -4,7 +4,7 @@
  * @brief 描画スキップ + ティックバイパスの2フラグ
  *
  * 【速度制御の全体像】
- *   1. TimeHooks が QPC/GTC/TGT/Sleep を hook し、時間を1000倍速に進める（初期化時に1回設定）
+ *   1. NativeFrameWait が本体のフレーム待機だけを直接バイパス。時計APIは実時間のまま。
  *   2. RenderSkip=true  → DxHook::EndScene 内の ImGui 描画をスキップ
  *   3. TickBypass=true   → DLLスレッドが通信スレッドのポーリングをスキップ
  *

@@ -17,9 +17,9 @@ int retryChoice = -1, retryCursor = -1;
 bool selectActive = false, selectHost = false, stageChosen = false, selectRelease = false;
 uint32_t chosenStage = 0, agreedStage = 0;
 bool chosenRandom = false;
-uint32_t DrawStage() {
+uint32_t DrawStage(uint32_t previousStage = 0) {
     const cccaster::game_memory::stages::RandomPool pool(
-        std::span<const uint32_t>(reinterpret_cast<const uint32_t *>(0x74FC08), 60));
+        std::span<const uint32_t>(reinterpret_cast<const uint32_t *>(0x74FC08), 60), previousStage);
     uint32_t random = 0, stage = 0;
     if (pool.count) {
         do {
@@ -27,7 +27,8 @@ uint32_t DrawStage() {
                                 BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) return 0;
         } while (!pool.Pick(random, stage));
     }
-    if (stage) cccaster::domain::session::DebugLog("[Select] RANDOM resolved=%u candidates=%u", stage, pool.count);
+    if (stage) cccaster::domain::session::DebugLog("[Select] RANDOM resolved=%u candidates=%u excluded=%u",
+        stage, pool.count, previousStage);
     return stage;
 }
 }
@@ -137,7 +138,7 @@ bool RealGameMemory::ConfigureRandomStages() {
     installed = true;
     return true;
 }
-uint32_t RealGameMemory::DrawRandomStage() { return DrawStage(); }
+uint32_t RealGameMemory::DrawRandomStage(uint32_t previousStage) { return DrawStage(previousStage); }
 std::array<uint32_t, 3> RealGameMemory::SpectatorRules() const {
     return {*CC_WIN_COUNT_VS_ADDR, *CC_DAMAGE_LEVEL_ADDR, *CC_TIMER_SPEED_ADDR};
 }

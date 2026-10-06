@@ -7,6 +7,7 @@
 #include "shared_contracts/ConfigPath.hpp"
 #include "shared_contracts/NetplaySettings.hpp"
 #include "shared_contracts/IncomingRequest.hpp"
+#include "shared_contracts/TrainingStandby.hpp"
 #include "launcher/RequestNotification.hpp"
 #include <fstream>
 #include <algorithm>
@@ -37,6 +38,8 @@ inline Message IpResultText(const std::string& state) {
 }
 
 struct Session {
+    training_standby::Channel standby;
+    bool standbyTraining = false;
     HANDLE process = nullptr, cancel = nullptr;
     std::filesystem::path logPath;
     std::string log, code, connectionStage;
@@ -218,8 +221,9 @@ struct Session {
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
     void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false, int preference = 0, bool replayMode = false,
-               const cccaster::matching::Event* matched = nullptr) {
+               const cccaster::matching::Event* matched = nullptr, bool trainingStandby = false) {
         if (Running()) return;
+        standby.Close(); standbyTraining = false;
         failed = true; // 準備段階の失敗もメイン画面で強調する。
         if (!offline && !cccaster::public_api::NetplaySettings::IsValid(
                 ConfigManager::GetInt("Netplay", "DefaultDelay", 2),
@@ -256,6 +260,13 @@ struct Session {
         if(host&&!offline) args += L" " + std::to_wstring(preference);
         else if(!host&&!watch) args += L" " + std::to_wstring(port);
         if (matched) args += matched->allowSpectators ? L" matched 1" : L" matched 0";
+        if (trainingStandby) {
+            if (!offline || replayMode || !standby.Create()) {
+                status = {"Could not prepare training standby.", "トレーニング待受の準備に失敗しました。"};
+                CloseHandle(cancel); cancel = nullptr; return;
+            }
+            args += L" \"" + standby.name + L"\"";
+        }
         // 3窓目のゲーム初期化もCLIの検証済み経路に揃える。コンソールは表示しない。
         STARTUPINFOW startup{}; startup.cb = sizeof(startup);
         startup.dwFlags = STARTF_USESHOWWINDOW; startup.wShowWindow = SW_HIDE;
@@ -267,6 +278,7 @@ struct Session {
             CloseHandle(cancel); cancel = nullptr; return;
         }
         CloseHandle(info.hThread); process = info.hProcess;
+        standbyTraining = trainingStandby;
         hosting = host && !offline && !watch && !replayMode && !matched;
         matchId = matched ? matched->match : std::string{};
         incomingRequests.Reset(); incomingNotice = false; lastIncomingSound = 0;

@@ -10,18 +10,27 @@ uint64_t Hash(uintptr_t address, size_t size) {
     for (size_t i = 0; i < size; ++i) value = (value ^ bytes[i]) * 1099511628211ull;
     return value;
 }
-bool Compatible(bool training) {
+enum class EntryMode { Versus, Training, Replay };
+bool MenuBoundary() {
+    return *reinterpret_cast<const uint32_t*>(0x55D1D0) == 25 &&
+        *reinterpret_cast<const uint8_t*>(0x55DEC3) == 1 &&
+        *reinterpret_cast<const uint32_t*>(0x76E6D4) == 0;
+}
+bool Compatible(EntryMode mode) {
     constexpr uint8_t menuReset[]{0xC7,0x05,0xF4,0x85,0x55,0,0,0,0,0,0xE8,0xA0,0xFE,0xFF,0xFF};
     return cccaster::game_memory::startup::MatchesMenuCode() &&
-        (training ? Hash(0x42A160, 70) == 0xada8a411ba956e3eull
-                  : Hash(0x42A1B0, 76) == 0x6718fca7d61c3c99ull) && // 選んだモードの正規初期化
+        (mode == EntryMode::Replay
+            ? Hash(0x42A300, 76) == 0xc2f50ab875389d2aull &&
+              Hash(0x42B541, 42) == 0xd941fede749860b6ull // ReplayVS初期化・mode26予約・復帰
+            : mode == EntryMode::Training ? Hash(0x42A160, 70) == 0xada8a411ba956e3eull
+                                         : Hash(0x42A1B0, 76) == 0x6718fca7d61c3c99ull) &&
         Hash(0x42B6B0, 302) == 0x860cf44ca2ba6a75ull && // 旧シーンの解放・共通リセット
         Hash(0x42B870, 15) == 0xbd7777fe3cd3c94cull &&
         Hash(0x42B519, 26) == 0x9cd8c2f5c3115e58ull && // 次モード予約とcallee-saved復帰
         std::memcmp(reinterpret_cast<void*>(0x42B801), menuReset, sizeof(menuReset)) == 0;
 }
 // 42B860/42B7E0の共通準備のみ実行し、CTitleMenuManagerの生成は省略。
-// 42B499/42B4B6から元のTraining/Versus初期化→42B519の正規遷移予約を実行する。
+// 42B499/42B4B6/42B541から元のTraining/Versus/Replay初期化と正規遷移予約を実行する。
 // 現在mode(54EEE8)を直書きせず、次回のゲーム更新に反映を任せる。
 __attribute__((naked, cdecl)) void Enter(uintptr_t, uint32_t) {
     __asm__ __volatile__(
@@ -37,27 +46,37 @@ __attribute__((naked, cdecl)) void Enter(uintptr_t, uint32_t) {
 }
 }
 namespace cccaster::game_memory::startup_direct_entry {
-static bool Try(uint32_t currentMode, bool training, uint32_t side) {
+static bool Try(uint32_t currentMode, EntryMode mode, uint32_t side) {
     static bool attempted = false;
     if (attempted || currentMode != 2 || !diagnostics::startup::HasGate() || diagnostics::startup::Baseline() ||
         std::getenv("CCCASTER_STARTUP_ENTRY_BASELINE")) return false;
     // タイトル側の正規処理が完了して、まだメニューが一度も作られていない境界に限定。
-    if (*reinterpret_cast<const uint32_t*>(0x55D1D0) != 25 ||
-        *reinterpret_cast<const uint8_t*>(0x55DEC3) != 1 ||
-        *reinterpret_cast<const uint32_t*>(0x76E6D4) != 0) return false;
+    if (!MenuBoundary()) return false;
     attempted = true;
-    if (!Compatible(training)) {
+    if (!Compatible(mode)) {
         domain::session::DebugLog("[StartupDirectEntry] rejected=signature; normal menu retained");
         return false;
     }
-    Enter(training ? 0x42B499 : 0x42B4B6, side);
-    domain::session::DebugLog("[StartupDirectEntry] training=%u current=%u next=%u kind=%u side=%u menu=%08X versus=%u",
-        unsigned(training), currentMode, *reinterpret_cast<const uint32_t*>(0x55D1D0),
+    Enter(mode == EntryMode::Replay ? 0x42B541 : mode == EntryMode::Training ? 0x42B499 : 0x42B4B6, side);
+    domain::session::DebugLog("[StartupDirectEntry] training=%u current=%u next=%u kind=%u side=%u menu=%08X versus=%u replay=%u",
+        unsigned(mode == EntryMode::Training), currentMode, *reinterpret_cast<const uint32_t*>(0x55D1D0),
         *reinterpret_cast<const uint32_t*>(0x562A74), *reinterpret_cast<const uint32_t*>(0x77BFF4),
-        *reinterpret_cast<const uint32_t*>(0x76E6D4), *reinterpret_cast<const uint32_t*>(0x77BF2C));
-    diagnostics::startup::Mark(training ? "direct_training_entry" : "direct_versus_entry");
+        *reinterpret_cast<const uint32_t*>(0x76E6D4), *reinterpret_cast<const uint32_t*>(0x77BF2C),
+        unsigned(mode == EntryMode::Replay));
+    diagnostics::startup::Mark(mode == EntryMode::Replay ? "direct_replay_entry" :
+        mode == EntryMode::Training ? "direct_training_entry" : "direct_versus_entry");
     return true;
 }
-bool TryTraining(uint32_t currentMode) { return Try(currentMode, true, 0); }
-bool TryVersus(uint32_t currentMode, bool isHost) { return Try(currentMode, false, isHost ? 0 : 1); }
+bool TryTraining(uint32_t currentMode) { return Try(currentMode, EntryMode::Training, 0); }
+bool TryVersus(uint32_t currentMode, bool isHost) { return Try(currentMode, EntryMode::Versus, isHost ? 0 : 1); }
+bool ReplayEnabled() {
+    return diagnostics::startup::HasGate() && !diagnostics::startup::Baseline() &&
+        !std::getenv("CCCASTER_STARTUP_REPLAY_BASELINE");
+}
+bool TryReplay(uint32_t currentMode) {
+    return ReplayEnabled() && Try(currentMode, EntryMode::Replay, 0);
+}
+bool ReplayEntryPending(uint32_t currentMode) {
+    return ReplayEnabled() && (currentMode != 2 || !MenuBoundary());
+}
 }

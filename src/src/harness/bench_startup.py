@@ -14,7 +14,7 @@ import time
 
 def protected_files(sides):
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest()
-            for side in sides for p in [side / 'MBAA.exe', *side.rglob('*.ini')]}
+            for side in sides for p in [side / 'MBAA.exe', *side.rglob('*.ini'), *side.rglob('*.rep')]}
 
 
 def diagnostic_environment(args):
@@ -23,7 +23,7 @@ def diagnostic_environment(args):
     env['CCCASTER_STARTUP_TRACE'] = '1'
     comparisons = {'system-info': ['SECONDS'], 'assets': ['ASSETS'], 'first': ['FIRST'],
                    'io': ['IO'], 'fonts': ['FONTS'], 'remaining': ['IO', 'FONTS'],
-                   'restore': ['RESTORE'], 'entry': ['ENTRY'], 'all': ['']}
+                   'restore': ['RESTORE'], 'entry': ['ENTRY'], 'replay': ['REPLAY'], 'all': ['']}
     if args.variant == 'baseline':
         for key in comparisons[args.comparison]:
             env['CCCASTER_STARTUP_' + (key + '_' if key else '') + 'BASELINE'] = '1'
@@ -36,12 +36,14 @@ def diagnostic_environment(args):
 
 def readiness(content, mode):
     """表示・入力経路・選択モードを独立して確認する。"""
-    expected = dict(target=1, mode=20, kind=4112, versus=0) if mode == 'training' else dict(
+    expected = dict(target=4, mode=26, kind=1, versus=2) if mode == 'replay' else dict(
+        target=1, mode=20, kind=4112, versus=0) if mode == 'training' else dict(
         target=0, mode=20, kind=1, versus=1)
     records = [dict(zip(('target', 'mode', 'kind', 'versus'), map(int, match)))
                for match in re.findall(r'\[StartupMode\]\s+target=(\d+)\s+mode=(\d+)\s+kind=(\d+)\s+versus=(\d+)', content)]
-    present = bool(re.search(r'\[Startup\]\s+event=chara_present\b', content))
-    input_ready = bool(re.search(r'\[Startup\]\s+event=chara_input\b', content))
+    prefix = 'replay' if mode == 'replay' else 'chara'
+    present = bool(re.search(r'\[Startup\]\s+event=' + prefix + r'_present\b', content))
+    input_ready = bool(re.search(r'\[Startup\]\s+event=' + prefix + r'_input\b', content))
     return {'charaPresent': present, 'charaInput': input_ready, 'expectedMode': expected,
             'observedModes': records, 'modeMatches': bool(records) and all(r == expected for r in records),
             'ready': present and input_ready and bool(records) and all(r == expected for r in records)}
@@ -97,9 +99,9 @@ def measure_idle_cpu(pid, seconds, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=['training', 'versus'], required=True)
+    parser.add_argument('--mode', choices=['training', 'versus', 'replay'], required=True)
     parser.add_argument('--variant', choices=['baseline', 'fast'], required=True)
-    parser.add_argument('--comparison', choices=['all', 'system-info', 'assets', 'first', 'io', 'fonts', 'remaining', 'restore', 'entry'], default='all',
+    parser.add_argument('--comparison', choices=['all', 'system-info', 'assets', 'first', 'io', 'fonts', 'remaining', 'restore', 'entry', 'replay'], default='all',
                         help='他の高速化を維持し、system-info は情報収集省略、assets は素材キャッシュだけを比較する')
     parser.add_argument('--empty-cache', action='store_true',
                         help='試行出力内の未作成・各側独立キャッシュを指定する。既存キャッシュは変更しない')
@@ -127,7 +129,7 @@ def main():
         parser.error('empty-cacheとrestore-cacheは同時指定できません')
     if args.idle_cpu_seconds and (args.mode != 'training' or args.idle_cpu_seconds < 1):
         parser.error('CPU待機測定はTrainingかつ正の秒数のみ')
-    args.instances = args.instances if args.instances is not None else (1 if args.mode == 'training' else 2)
+    args.instances = args.instances if args.instances is not None else (2 if args.mode == 'versus' else 1)
     if args.idle_cpu_seconds and args.instances != 1:
         parser.error('CPU待機測定は他窓の干渉を避けるため --instances 1 のみ')
     if args.mode == 'versus' and args.instances != 2:
@@ -189,7 +191,7 @@ def main():
     root, out = args.root.resolve(), args.out.resolve()
     sides = [root / f'MBAACC_{side}' for side in range(1, args.instances + 1)]
     exe_name = 'CCCaster_B.exe'
-    if args.mode == 'training':
+    if args.mode in ('training', 'replay'):
         exe_name = 'CCCaster_B_GUI.exe'
     game_paths = {(side / 'MBAA.exe').resolve() for side in sides}
     if len(game_paths) != args.instances:
@@ -254,14 +256,14 @@ def main():
         deadline = time.monotonic() + 30 + args.ready_hold_seconds
         for index, side in enumerate(sides, 1):
             launcher_log = out / f'launcher_{index}.log'
-            if args.mode == 'training':
+            if args.mode in ('training', 'replay'):
                 name = f'Local\\CCCasterStartup_{os.getpid()}_{index}'
                 cancel = event(None, True, False, name)
                 if not cancel:
                     raise C.WinError(C.get_last_error())
                 events.append(cancel)
                 command = [str(side / args.caster_dir / exe_name), '--worker', name,
-                           str(launcher_log), 'training', '0']
+                           str(launcher_log), args.mode, '0']
                 stdout = subprocess.DEVNULL
             else:
                 command = [str(side / args.caster_dir / exe_name), '--headless']

@@ -29,6 +29,11 @@ def evaluate(folder, config):
             return dict(passed=False, fatal_error=f'game_{side}.log: 複数ゲームの初期化記録が混入')
     result = dict(sync=compare(folder))  # 最低1000F・RB発生を維持する。
     result['passed'] = result['sync']['passed']
+    if config.get('selection_options'):
+        from verify_selection_options import verify
+        result['selection_options'] = verify([
+            (folder / f'game_{side}.log').read_text(encoding='utf-8') for side in (1, 2)])
+        result['passed'] &= result['selection_options']['passed']
     if config.get('scenario'):
         from run_stage_rematch import evaluate_behavior
         result.update(evaluate_behavior(folder, config))

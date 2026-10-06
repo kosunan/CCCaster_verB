@@ -26,11 +26,15 @@ def run_real(args, output):
     if args.monitor_hz:
         env['CCCASTER_TEST_MONITOR_HZ'] = str(args.monitor_hz)
     config = dict(spectator=args.standby_spectator and not args.no_spectators)
+    if args.selection_options:
+        env.update(CCCASTER_TEST_SELECTION_OPTIONS='1', CCCASTER_TEST_FIXED_STAGE='59')
+        config['selection_options'] = True
     config_path = output / 'checkpoint_config.json'
     config_path.write_text(json.dumps(config), encoding='utf-8')
     command = [shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                str(ROOT / 'src/src/harness/run_bounded_real_pair.ps1'),
-               '-Seconds', str(args.seconds), '-Port', str(free_match_port()), '-Network', '15,25,5',
+               '-Seconds', str(args.seconds), '-Port', str(free_match_port()),
+               '-Network', '65,85,5' if args.selection_options else '15,25,5',
                '-UseConnectionCode', '-CloseSide', '1', '-OutputDirectory', str(output)]
     if not args.fixed_duration:
         command += ['-CheckpointConfig', str(config_path), '-Python', sys.executable]
@@ -70,6 +74,7 @@ def main():
     parser.add_argument("--no-spectators", action="store_true", help="観戦拒否と実ゲームのTCP待受停止を確認")
     parser.add_argument('--seconds', type=int, default=40, help='試験上限秒。条件達成で早期終了')
     parser.add_argument('--fixed-duration', action='store_true', help='指定秒まで継続する比較・耐久用')
+    parser.add_argument('--selection-options', action='store_true', help='キャラ選択の設定メニューと背景ON/OFF混在を検査')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
     parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
                         help='検証専用の表示要求Hz。実モニター設定は変更しない')

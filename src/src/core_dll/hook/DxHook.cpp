@@ -638,9 +638,11 @@ HRESULT APIENTRY DxHook::Hooked_Present(LPDIRECT3DDEVICE9 pDevice, const RECT *p
             result = reinterpret_cast<Present_t>(original_Present)(pDevice, pSourceRect, pDestRect,
                                                                    hDestWindowOverride, pDirtyRegion);
         if (!scheduled && !cccaster::diagnostics::startup::presentRecorded && SUCCEEDED(result) &&
-            cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_CHARA_SELECT) {
+            (cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_CHARA_SELECT ||
+             cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_REPLAY)) {
             cccaster::diagnostics::startup::presentRecorded = true;
-            cccaster::diagnostics::startup::Mark("chara_present");
+            cccaster::diagnostics::startup::Mark(
+                cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_REPLAY ? "replay_present" : "chara_present");
         }
     }
     // スキップ時も次フレームの準備を行う。省くとロールアップが進まない。

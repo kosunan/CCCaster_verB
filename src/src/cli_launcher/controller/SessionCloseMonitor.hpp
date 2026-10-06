@@ -1,5 +1,6 @@
 #pragma once
 #include "shared_contracts/IpcData.hpp"
+#include "shared_contracts/TrainingStandby.hpp"
 #include "shared_contracts/SessionClosePacket.hpp"
 #include "core_dll/network/UdpSocket.hpp"
 #include <atomic>
@@ -9,6 +10,7 @@
 namespace cccaster::main_app::controller {
 // CLIとGUI workerの共通監視。ゲーム/DLLが消えた後も送信・再送・ACK受信を続ける。
 class SessionCloseMonitor {
+    cccaster::training_standby::Channel standby;
     bool localReported = false, peerReported = false;
     void Report(const cccaster::public_api::SharedState &s) {
         using namespace cccaster::public_api;
@@ -24,10 +26,19 @@ class SessionCloseMonitor {
         }
     }
   public:
+    SessionCloseMonitor() { standby.OpenEnvironment(); }
     bool Poll(HANDLE game) {
         using namespace cccaster::public_api;
         if (!game || WaitForSingleObject(game, 0) == WAIT_OBJECT_0) return true;
         SharedState state{};
+        cccaster::training_standby::State request{};
+        if (standby.Read(request) && request.stopGame && IpcManager::OpenAndRead(state) &&
+            state.targetGameMode == static_cast<uint32_t>(IpcGameMode::Training)) {
+            std::cout << "[TrainingStandby] Closing training before match launch.\n" << std::flush;
+            if (!TerminateProcess(game, 0) && WaitForSingleObject(game, 0) != WAIT_OBJECT_0)
+                std::cout << "[ CLOSE FAILED ] training win32=" << GetLastError() << '\n' << std::flush;
+            return WaitForSingleObject(game, 1000) == WAIT_OBJECT_0;
+        }
         if (IpcManager::OpenAndRead(state) && state.targetGameMode == static_cast<uint32_t>(IpcGameMode::Versus) &&
             (state.gameShutdownRequest || state.lastErrorCode == static_cast<uint32_t>(SessionErrorType::PeerClosed))) {
             Report(state);

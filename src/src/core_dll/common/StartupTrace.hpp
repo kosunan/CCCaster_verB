@@ -9,7 +9,7 @@ inline void Mark(const char *event) {
 // ゲームスレッドだけで使用。通常戦闘ではログも時計取得も行わない。
 inline bool inputRecorded = false;
 inline bool presentRecorded = false;
-inline void InputReady() {
-    if (!inputRecorded) { inputRecorded = true; Mark("chara_input"); }
+inline void InputReady(bool replay = false) {
+    if (!inputRecorded) { inputRecorded = true; Mark(replay ? "replay_input" : "chara_input"); }
 }
 }

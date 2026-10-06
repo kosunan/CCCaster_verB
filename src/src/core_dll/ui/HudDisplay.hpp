@@ -81,7 +81,7 @@ inline void FormatNetplayHudLine(char *output, std::size_t outputSize,
                   value.ping, value.jitter, value.frame);
 }
 
-// 対戦中の中央下端は通信・提示時間のみ。DELAYは中央上部、勝数は各名前欄。
+// 対戦中の中央下端は通信・通常更新間隔のみ。DELAYは中央上部、勝数は各名前欄。
 inline void FormatBattleHudLine(char *output, std::size_t outputSize,
                                 bool pingAvailable, bool stale, float pingMs,
                                 bool jitterAvailable, float jitterMs,
@@ -107,9 +107,14 @@ class HudDisplay {
     static HudDisplayMode Get() { return mode_.load(std::memory_order_relaxed); }
     static bool Visible() { return Get() != HudDisplayMode::Hidden; }
     static bool Detailed() { return Get() == HudDisplayMode::Detailed; }
-    static void Cycle() {
+    static void Cycle(int direction = 1) {
         auto current = mode_.load(std::memory_order_relaxed);
-        while (!mode_.compare_exchange_weak(current, Next(current), std::memory_order_relaxed)) {}
+        while (!mode_.compare_exchange_weak(current,
+            direction < 0 ? Next(Next(current)) : Next(current), std::memory_order_relaxed)) {}
+    }
+    static const char* Name() {
+        const auto mode = Get();
+        return mode == HudDisplayMode::Compact ? "NORMAL" : mode == HudDisplayMode::Detailed ? "DETAILED" : "HIDDEN";
     }
     static constexpr HudDisplayMode Next(HudDisplayMode mode) {
         return mode == HudDisplayMode::Compact ? HudDisplayMode::Detailed

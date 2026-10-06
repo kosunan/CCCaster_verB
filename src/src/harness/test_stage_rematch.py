@@ -144,19 +144,19 @@ class StageRematchAnalysis(unittest.TestCase):
         self.assertFalse(analyze_assembly_text(good, False)['passed'])
         self.assertFalse(analyze_assembly_text(good.replace('patches=1', 'patches=7'), True)['passed'])
 
-    def check_logs(self, scenario, second_stage=12, second_color=35, ack=1):
+    def check_logs(self, scenario, second_stage=12, second_color=35, ack=1, excluded=55, candidates=46):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             for side in (1, 2):
                 fixed = scenario == 'fixed'
                 first = 59 if fixed else 55
-                log = '' if side == 2 or fixed else '[Select] RANDOM resolved=55 candidates=47\n'
+                log = '' if side == 2 or fixed else '[Select] RANDOM resolved=55 candidates=47 excluded=0\n'
                 log += f'[Select] COMMIT p1=51/2/35 p2=33/1/15 stage={first}\n'
                 log += f'[Select] LOADED p1=51/2/35 p2=33/1/15 stage={first}\n'
                 log += f'[RetryMenu] RESOLVED epoch=262144 frame=262500 local=0 peer=0 target=0 ack={ack}/1\n'
                 if not fixed:
                     if side == 1:
-                        log += f'[Select] RANDOM resolved={second_stage} candidates=47\n'
+                        log += f'[Select] RANDOM resolved={second_stage} candidates={candidates} excluded={excluded}\n'
                     log += f'[Select] COMMIT p1=51/2/{second_color} p2=33/1/15 stage={second_stage}\n'
                     log += '[StageRematch] FAST OFF phase=4 elapsedUs=150000\n'
                 log += f'[Select] LOADED p1=51/2/{second_color} p2=33/1/15 stage={first if fixed else second_stage}\n'
@@ -165,8 +165,14 @@ class StageRematchAnalysis(unittest.TestCase):
 
     def test_random_and_fixed(self):
         self.assertTrue(self.check_logs('random'))
-        self.assertTrue(self.check_logs('random', second_stage=55))  # 同じ候補の再当選も正常。
+        self.assertFalse(self.check_logs('random', second_stage=55))  # 直前と同じステージは不合格。
         self.assertTrue(self.check_logs('fixed'))  # ランダム除外59の手動指定を維持。
+
+    def test_previous_stage_must_be_removed_from_the_pool(self):
+        # 偶然違う番号が出ただけでは成功にしない。
+        self.assertFalse(self.check_logs('random', excluded=0))
+        self.assertFalse(self.check_logs('random', excluded=12))
+        self.assertFalse(self.check_logs('random', candidates=47))
 
     def test_excluded_or_unavailable_stage_is_failure(self):
         for stage in (0, 11, 32, 43, 44, 51, 54, 57, 58, 59):

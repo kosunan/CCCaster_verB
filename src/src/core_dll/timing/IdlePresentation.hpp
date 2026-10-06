@@ -7,8 +7,10 @@ namespace cccaster::core::timer {
 struct IdlePresentation {
     using Callback = void (*)(int64_t remainingUs);
     inline static thread_local Callback callback = nullptr;
-    static void Pump(int64_t remainingUs) {
-        if (callback && remainingUs > 1000) callback(remainingUs);
+    // 呼出側は粗い待機区間に限る。提示側にもスピン開始までの残り時間だけを渡す。
+    static void Pump(int64_t remainingUs, int64_t spinGuardUs = 0) {
+        const auto availableUs = remainingUs - (spinGuardUs > 0 ? spinGuardUs : 0);
+        if (callback && availableUs > 1000) callback(availableUs);
     }
     struct Scope {
         Callback previous;

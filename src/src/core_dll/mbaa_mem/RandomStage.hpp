@@ -14,9 +14,10 @@ inline bool RandomAllowed(uint32_t stage) {
 struct RandomPool {
     std::array<uint32_t, 59> stages{};
     uint32_t count = 0;
-    explicit RandomPool(std::span<const uint32_t> available) {
+    // 再戦では直前の番号を除く。初回・手動選択には履歴を持ち込まない。
+    explicit RandomPool(std::span<const uint32_t> available, uint32_t previousStage = 0) {
         for (uint32_t stage = 1; stage < available.size() && stage < 60; ++stage)
-            if (available[stage] && RandomAllowed(stage)) stages[count++] = stage;
+            if (stage != previousStage && available[stage] && RandomAllowed(stage)) stages[count++] = stage;
     }
     // 2^32が候補数で割り切れない余りを棄却し、候補を等確率にする。
     bool Pick(uint32_t random, uint32_t &stage) const {

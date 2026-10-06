@@ -100,9 +100,10 @@ HRESULT Display() {
         return result;
     }
     ++serial;
-    if (!diagnostics::startup::presentRecorded && sourceMode == CC_GAME_MODE_CHARA_SELECT) {
+    if (!diagnostics::startup::presentRecorded &&
+        (sourceMode == CC_GAME_MODE_CHARA_SELECT || sourceMode == CC_GAME_MODE_REPLAY)) {
         diagnostics::startup::presentRecorded = true;
-        diagnostics::startup::Mark("chara_present");
+        diagnostics::startup::Mark(sourceMode == CC_GAME_MODE_REPLAY ? "replay_present" : "chara_present");
     }
     const bool repeat = image == lastImage;
     repeats += repeat; lastImage = image;

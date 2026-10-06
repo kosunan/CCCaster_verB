@@ -22,6 +22,8 @@ class RmlView final : public Rml::EventListener {
     void Navigate(const std::string& page);
     void MatchingTab(const std::string& tab);
     void Registration();
+    void Controllers();
+    std::string controllerDevicesSignature_;
     void Disable(const char* id, bool disabled);
 public:
     RmlView(Rml::Context& context,std::function<void(Json)> send);

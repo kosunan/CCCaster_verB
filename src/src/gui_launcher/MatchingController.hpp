@@ -8,8 +8,46 @@ struct MatchingController {
     uint64_t notifications = 0;
     std::string activeMatch;
     bool hostReady = false, playing = false, otherMode = false;
+    bool trainingEnabled = false, trainingOnWait = false, acceptPending = false;
+    cccaster::matching::Event pendingLaunch;
+    std::string answeredRequest;
     int port = 7500;
     char comment[161]{};
+
+    bool TrainingRunning(const Session& session) const {
+        return session.Running() && session.standbyTraining && trainingEnabled;
+    }
+    bool CanAccept(const Session& session) const {
+        return view.registered && view.state == "waiting" && !view.paused &&
+            (!session.Running() || TrainingRunning(session)) && pendingLaunch.match.empty() && !acceptPending;
+    }
+    void Reply(Session& session, const std::string& id, bool accept) {
+        if (accept && !CanAccept(session)) return;
+        const auto found = std::find_if(view.incoming.begin(), view.incoming.end(), [&](const auto& r) {
+            return r.id == id && r.expires > cccaster::p2p::Now();
+        });
+        if (found == view.incoming.end() || id == answeredRequest) return;
+        answeredRequest = id;
+        acceptPending = accept;
+        client->Command({{"type",accept ? "accept" : "reject"},{"request",id}});
+        session.incomingNotice = false;
+        cccaster::notification::CloseIncomingToast();
+        cccaster::notification::FlashIncomingWindow(guiWindow, false);
+    }
+    void StopTrainingStandby(Session& session) {
+        trainingEnabled = trainingOnWait = false;
+        pendingLaunch = {}; acceptPending = false;
+        session.standby.Update([](training_standby::State& s) { s.request[0] = 0; s.reply = 0; ++s.generation; });
+    }
+    void Launch(Session& session, const cccaster::matching::Event& event) {
+        session.Start(event.host,port,event.code.c_str(),false,false,
+            std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2),false,&event);
+        if(session.Running()) { activeMatch=event.match; hostReady=false; playing=false; }
+        else {
+            client->Command({{"type","finished"},{"match",event.match}});
+            trainingOnWait = trainingEnabled;
+        }
+    }
 
     static const char* Status(const std::string& value) {
         if(value=="idle") return Text("Not started", "未開始");
@@ -65,6 +103,7 @@ struct MatchingController {
             if(!session.Running()) {
                 client->Command({{"type","finished"},{"match",activeMatch}});
                 activeMatch.clear(); hostReady=false; playing=false;
+                trainingOnWait = trainingEnabled;
             } else {
                 if(!hostReady && !session.code.empty()) {
                     client->Command({{"type","host_ready"},{"match",activeMatch},{"code",session.code}}); hostReady=true;
@@ -74,9 +113,34 @@ struct MatchingController {
                 }
             }
         }
-        const bool busy=session.Running() && activeMatch.empty();
+        const bool busy=session.Running() && activeMatch.empty() && !TrainingRunning(session);
         if(otherMode!=busy) { otherMode=busy; client->Command({{"type","activity"},{"busy",busy}}); }
         view=client->View();
+        if (view.state != "waiting" || std::none_of(view.incoming.begin(),view.incoming.end(),
+            [&](const auto& r) { return r.id == answeredRequest; })) acceptPending = false;
+        if (!view.registered && view.state == "idle" && (!trainingOnWait || !view.error.empty()))
+            trainingEnabled = trainingOnWait = false;
+        if (trainingOnWait && view.registered && view.state == "waiting" && !session.Running() && pendingLaunch.match.empty()) {
+            trainingOnWait = false;
+            session.Start(true,0,"",true,false,0,false,nullptr,true);
+        }
+        if (TrainingRunning(session)) {
+            training_standby::State reply{};
+            if (session.standby.Read(reply) && reply.reply && reply.Live(GetTickCount64(),cccaster::p2p::Now()))
+                Reply(session, reply.request, reply.reply == 1);
+            const cccaster::matching::Request* shown = nullptr;
+            if (CanAccept(session)) for (const auto& r : view.incoming) {
+                if (r.id != answeredRequest && r.expires > cccaster::p2p::Now()) { shown = &r; break; }
+            }
+            session.standby.Update([&](training_standby::State& s) {
+                s.heartbeat = GetTickCount64();
+                const std::string id = shown ? shown->id : "";
+                if (id != s.request) { ++s.generation; s.reply = 0; }
+                std::snprintf(s.request,sizeof(s.request),"%s",id.c_str());
+                std::snprintf(s.name,sizeof(s.name),"%s",shown ? shown->peer.name.c_str() : "");
+                s.expires = shown ? shown->expires : 0;
+            });
+        }
         if(view.notifications!=notifications) {
             notifications=view.notifications;
             if(!view.incoming.empty()) {
@@ -89,13 +153,26 @@ struct MatchingController {
         }
         for(const auto& event:client->Events()) {
             if(event.type=="launch") {
+                if (TrainingRunning(session) && pendingLaunch.match.empty()) {
+                    pendingLaunch = event;
+                    session.cancelling = true;
+                    continue;
+                }
                 if(session.Running()) { client->Command({{"type","finished"},{"match",event.match}}); continue; }
-                session.Start(event.host,port,event.code.c_str(),false,false,
-                    std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2),false,&event);
-                if(session.Running()) { activeMatch=event.match; hostReady=false; playing=false; }
-                else client->Command({{"type","finished"},{"match",event.match}});
+                Launch(session,event);
+            } else if(event.type=="abort" && pendingLaunch.match==event.match) {
+                pendingLaunch = {}; trainingOnWait = trainingEnabled;
             } else if(event.type=="abort" && activeMatch==event.match && session.Running() && !playing) {
                 SetEvent(session.cancel); session.cancelling=true;
+            }
+        }
+        if (!pendingLaunch.match.empty()) {
+            if (session.Running()) {
+                session.standby.Update([](training_standby::State& s) { s.stopGame = true; s.request[0] = 0; });
+                session.status = {"Closing training before starting the match...", "トレーニングを終了して対戦を起動しています..."};
+            } else {
+                const auto event = pendingLaunch; pendingLaunch = {};
+                Launch(session,event);
             }
         }
     }

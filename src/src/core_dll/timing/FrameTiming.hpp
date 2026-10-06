@@ -5,13 +5,16 @@
 #include <cstdlib>
 
 namespace cccaster::core::timer {
-// ゲームスレッド専用。実QPCで提示要求間隔を測る。再計算をゲーム進行に数えない。
+// ゲームスレッド専用。実QPCで提示要求／通常更新の間隔を別々に測る。
+// 再計算をゲーム進行に数えず、通常更新の間にかかった待機・再計算時間は含める。
 class FrameTiming {
   public:
+    // モニター向けの再提示を含む。HUDの「1F」には使わない。
     static FrameTiming &Get() {
         static FrameTiming value;
         return value;
     }
+    // 通常更新の解放境界で採取する。設定周期や描画処理単体の時間ではない。
     static FrameTiming &Simulation() {
         static FrameTiming value;
         return value;

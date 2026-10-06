@@ -25,8 +25,19 @@ namespace cccaster::testing {
 
 /// 役割ごとに位相をずらした入力列。両者がゼロを出すだけの
 /// 自明な一致にならないようにしてある。
-inline uint32_t ScriptedInput(uint32_t frame, bool isHost) {
+inline uint32_t ScriptedInput(uint32_t frame, bool isHost, bool inGame = false) {
     namespace Dir = cccaster::game_interface::Dir;
+    static const bool projectile = std::getenv("CCCASTER_TEST_PROJECTILE_INPUT") != nullptr;
+    if (inGame && projectile) {
+        // 60Fごとに236A/B。入力時計と既存GameMem経路をそのまま通す。
+        // 両側同時発射で相殺を狙う。初期位置の向きを使い、状態値は書き換えない。
+        const unsigned step = frame % 60;
+        const uint16_t forward = isHost ? Dir::Right : Dir::Left;
+        const uint16_t diagonal = isHost ? Dir::DownRight : Dir::DownLeft;
+        uint16_t direction = step < 3 ? Dir::Down : step < 6 ? diagonal : step < 9 ? forward : Dir::Neutral;
+        uint16_t buttons = step == 6 ? ((frame / 60) % 2 ? CC_BUTTON_B : CC_BUTTON_A) : 0;
+        return cccaster::game_interface::GameInput{direction, buttons}.Pack();
+    }
     const uint32_t phase = (frame + (isHost ? 0u : 7u)) % 24;
 
     uint16_t dir = Dir::Neutral;

@@ -14,7 +14,7 @@ def distribution(values):
                 p99=round(values[math.ceil(len(values)*.99)-1], 3), maximum=round(values[-1], 3))
 
 
-def analyze(path):
+def analyze(path, all_play=False):
     text = path.read_text(encoding="utf-8", errors="replace")
     tables = {tag: {} for tag in ('SpinProbe', 'SpinTail', 'SpinGap', 'SpinReturn', 'SpinClock')}
     for line in text.splitlines():
@@ -23,20 +23,22 @@ def analyze(path):
                 row = {k: int(v) for k, v in re.findall(r'(\w+)=(-?\d+)', line)}
                 tables[tag][row['f']] = row
     first = re.search(r'\[Rollback\] BEGIN frame=\d+ target=(\d+)', text)
-    if not first:
+    if not first and not all_play:
         return {"error": "初回ロールバックなし"}
-    first = int(first[1])
+    first = int(first[1]) if first else None
     samples = []
     missing = []
     boundaries = ('spin', 'bounded', 'wait', 'begin', 'input', 'trace', 'commit', 'step', 'game')
     previous = None
     previous_probe = None
     for f, p in sorted(tables['SpinProbe'].items()):
-        if not p['play'] or f < first or f//65536 != first//65536:
+        if not p['play'] or (not all_play and (f < first or f//65536 != first//65536)):
+            previous = previous_probe = None
             continue
         t, g = tables['SpinTail'].get(f), tables['SpinGap'].get(f)
         if not t or not g or any(not t.get(k) for k in boundaries):
             missing.append(f)
+            previous = previous_probe = None
             continue
         s = dict(frame=f, reads=p['reads'], ready_margin=(p['due']-p['ready'])/60)
         for k in ('gap', 'read', 'between', 'gapLate', 'exitLate'):
@@ -71,7 +73,7 @@ def analyze(path):
                 for a, b in zip(order, order[1:]):
                     assert points[b] >= points[a], (f, a, b)
                     s[f'{a}_to_{b}'] = (points[b]-points[a])/60
-        if previous and f == previous['f'] + 1:
+        if previous and f == previous['f'] + 1 and f//65536 == previous['f']//65536:
             s['interval'] = (t['game']-previous['game'])/60
             delta = t['game'] - previous['game']
             scheduled = p['due'] - previous_probe['due']
@@ -93,7 +95,7 @@ def analyze(path):
         previous_probe = p
     keys = sorted(set().union(*(r.keys() for r in samples)) - {'frame'}) if samples else []
     top = lambda key: sorted(samples, key=lambda r:r[key], reverse=True)[:6]
-    return dict(source=str(path.resolve()), first_recovery=first, samples=len(samples),
+    return dict(source=str(path.resolve()), first_recovery=first, selection='all_play' if all_play else 'first_recovery_epoch', samples=len(samples),
                 incomplete=missing, deferred_drop='[DeferredTraceDropped]' in text,
                 stats={key:distribution([s[key] for s in samples if key in s]) for key in keys},
                 intervals=[s for s in samples if 'interval' in s],
@@ -102,8 +104,13 @@ def analyze(path):
 
 
 if __name__ == '__main__':
-    root = Path(sys.argv[1])
-    result = {str(side):analyze(root/f'game_{side}.log') for side in (1,2)}
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root', type=Path)
+    parser.add_argument('--all-play', action='store_true', help='RBの有無を問わず全世代の通常対戦を解析')
+    args = parser.parse_args()
+    root = args.root
+    result = {str(side):analyze(root/f'game_{side}.log', args.all_play) for side in (1,2)}
     output = json.dumps(result, ensure_ascii=False, indent=2)
     (root/'spin_analysis.json').write_text(output, encoding='utf-8')
     print(output)

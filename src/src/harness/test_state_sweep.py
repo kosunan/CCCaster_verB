@@ -1,10 +1,18 @@
 import copy
 import unittest
 
-from run_state_sweep import summarize
+from run_state_sweep import summarize, coverage_gaps, batch_coverage, binary_build_id, CHARACTERS, ALL_COMBINATIONS
 
 
 class StateSweepReportTests(unittest.TestCase):
+    def test_build_identity_rejects_unknown_or_ambiguous_binary(self):
+        identity = b'a' * 64
+        self.assertEqual(binary_build_id(b'[BOOT_READY] build=' + identity + b' stage=running'), 'a' * 64)
+        self.assertEqual(binary_build_id(b'SBCC\x01\x00\x00\x00\x50\x00\x00\x00' + identity + b'\x00', True), 'a' * 64)
+        for data in (b'unknown', b'[BOOT_READY] build=' + identity + b' stage=running [BOOT_READY] build=' + b'b'*64 + b' stage=running'):
+            with self.assertRaises(ValueError):
+                binary_build_id(data)
+
     def setUp(self):
         self.events = [
             {'event': 'start'},
@@ -115,6 +123,55 @@ class StateFrameCoverageTests(unittest.TestCase):
         events = self.events()
         events[-1]['watch_changes'] = 1
         self.assertFalse(summarize(events)['passed'])
+
+    def test_attempts_union_ages_without_counting_duplicates(self):
+        events = self.events((0, 0, 1, 2))
+        self.assertTrue(summarize(events)['passed'])
+        self.assertEqual(summarize(events)['covered_frame_points'], 3)
+        self.assertEqual(coverage_gaps(events)['missing_frame_points'], 0)
+
+    def test_gap_report_keeps_missing_middle_and_end(self):
+        gaps = coverage_gaps(self.events((0, 0)))
+        self.assertEqual(gaps['gaps'][0]['missing_age_ranges_end_exclusive'], [[1, 3]])
+        self.assertEqual(gaps['missing_frame_points'], 2)
+
+    def test_actor_prepared_frames_are_compared_but_not_world_reachability(self):
+        events = self.events()
+        for e in events:
+            if e.get('event') in ('frame_begin', 'result') and e['state_age'] > 0:
+                e['frame_source'] = 'native_actor_setup'
+        result = summarize(events)
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['world_update_frame_points'], 1)
+        self.assertEqual(result['actor_setup_only_frame_points'], 2)
+        self.assertEqual(result['actor_setup_comparisons'], 2)
+        self.assertFalse(result['all_frames_reached_by_world_updates'])
+        events[5]['frame_source'] = 'native_actor_setup'
+        self.assertFalse(summarize(events)['passed'])
+
+    def test_unknown_frame_preparation_or_mismatched_attempt_is_rejected(self):
+        for field, value in (('frame_source', 'invented'), ('attempt', 106)):
+            events = self.events()
+            events[5][field] = value
+            self.assertFalse(summarize(events)['passed'])
+
+    def test_all_characters_requires_exact_93_complete_unfiltered_combinations(self):
+        cases = [dict(character=c, moon=m, passed=True, all_selected_nominal_frames_covered=True)
+                 for c in CHARACTERS for m in range(3)]
+        self.assertTrue(batch_coverage(cases, CHARACTERS, range(3))['all_standard_character_motion_frames_covered'])
+        self.assertFalse(batch_coverage(cases, CHARACTERS, range(3))['all_character_motion_frames_covered'])
+        for bad in (cases[:-1], cases[:-1] + [cases[0]]):
+            self.assertFalse(batch_coverage(bad, CHARACTERS, range(3))['all_standard_character_motion_frames_covered'])
+        self.assertFalse(batch_coverage(cases, CHARACTERS, range(3), True)['all_standard_character_motion_frames_covered'])
+        cases[-1]['all_selected_nominal_frames_covered'] = False
+        self.assertFalse(batch_coverage(cases, CHARACTERS, range(3))['all_standard_character_motion_frames_covered'])
+
+    def test_all_characters_includes_10_extra_asset_combinations(self):
+        cases = [dict(character=c, moon=m, passed=True, all_selected_nominal_frames_covered=True)
+                 for c, m in ALL_COMBINATIONS]
+        self.assertEqual(len(cases), 103)
+        self.assertTrue(batch_coverage(cases, (), (), combinations=ALL_COMBINATIONS)['all_character_motion_frames_covered'])
+        self.assertFalse(batch_coverage(cases[:-1], (), (), combinations=ALL_COMBINATIONS)['all_character_motion_frames_covered'])
 
 
 if __name__ == '__main__':

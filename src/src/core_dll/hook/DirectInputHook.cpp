@@ -1,7 +1,6 @@
 #include "shared_contracts/NativePath.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
-#include "core_dll/hook/TimeHooks.hpp"
 #include "core_dll/hook/ControllerProfile.hpp"
 #include "core_dll/hook/CompiledInputBindings.hpp"
 #include "cli_launcher/ConfigManager.hpp"
@@ -13,6 +12,7 @@
 #include "core_dll/common/VirtualControllerTest.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/engine/SceneRunner.hpp"
+#include "core_dll/engine/SelectionOptions.hpp"
 #include <windows.h>
 #include <dinput.h>
 #include <cfgmgr32.h>
@@ -265,7 +265,7 @@ static void CALLBACK RunDeviceProbe(PTP_CALLBACK_INSTANCE instance, void *contex
         probe.attached.clear();
         // 診断専用。数秒かかる列挙でもゲームが進行することを実機で検査する。
         if (const auto value = std::getenv("CCCASTER_TEST_DEVICE_PROBE_DELAY_MS"))
-            cccaster::core::hooks::TimeHooks::RealSleep(static_cast<DWORD>(std::clamp(std::atoi(value), 0, 5000)));
+            cccaster::platform::RealSleepMs(static_cast<uint32_t>(std::clamp(std::atoi(value), 0, 5000)));
         std::vector<std::wstring> paths;
         if (!ReadHidPaths(paths)) {
             probe.status = E_FAIL; // 取得失敗を「全機器が抜けた」と解釈しない。
@@ -470,18 +470,7 @@ void DirectInputHook::Poll() {
 
 }
 
-// Constants for MBAA Inputs
-#define CC_BUTTON_A 0x0010
-#define CC_BUTTON_B 0x0020
-#define CC_BUTTON_C 0x0008
-#define CC_BUTTON_D 0x0004
-#define CC_BUTTON_E 0x0080
-#define CC_BUTTON_AB 0x0040
-#define CC_BUTTON_START 0x0001
-#define CC_BUTTON_FN1 0x0100
-#define CC_BUTTON_FN2 0x0200
-#define CC_BUTTON_CONFIRM 0x0400
-#define CC_BUTTON_CANCEL 0x0800
+// MBAA入力値はMbaaInputDefs.hppの共通定義を使う。
 
 #define AXIS_CENTERED 0
 #define AXIS_POSITIVE 1
@@ -642,6 +631,9 @@ static bool CheckInputBind(int joyId, const CompiledBinding &bind) {
     if (bind.kind == BindingKind::None) return false;
     if (joyId == -2) {
         if (bind.kind != BindingKind::Key) return false;
+        namespace options = cccaster::domain::scene::selection_options;
+        const auto menuKey = options::KeyMask(bind.index);
+        if (menuKey && (options::active.load() || (options::heldKeys.load() & menuKey))) return false;
         // 設定ショートカット・フォーカスはキャッシュせず、従来と同じ採取点で確認する。
         if (*CC_GAME_MODE_ADDR == CC_GAME_MODE_CHARA_SELECT &&
             ((GetAsyncKeyState(VK_CONTROL) | GetAsyncKeyState(VK_MENU)) & 0x8000))

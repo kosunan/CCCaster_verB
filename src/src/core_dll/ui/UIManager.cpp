@@ -5,6 +5,7 @@
 
 #include "core_dll/ui/UIManager.hpp"
 #include "core_dll/ui/TrainingCharacterView.hpp"
+#include "core_dll/ui/TrainingStandbyView.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include "core_dll/ui/State_Ui_View.hpp"
@@ -13,6 +14,7 @@
 #include "core_dll/ui/Controller_Ui_View.hpp"
 #include "core_dll/ui/Controller_Ui_Logic.hpp"
 #include "core_dll/engine/SceneRunner.hpp"
+#include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/sync/MatchInputBuffer.hpp"
 #include "core_dll/sync/NetplaySession.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -29,6 +31,7 @@ void UIManager::Render(UiPhase phase) {
     // 相手側の画面遷移などで設定画面を離れても、入力遮断状態を次画面へ持ち越さない。
     // 登録済みの項目は都度保存済み。強制遷移では入力待ちだけ中止する。
     const bool training = cccaster::domain::session::SceneRunner::AppMode() == 1;
+    if (training && training_standby_view::Draw()) return;
     const bool replayList = cccaster::domain::session::SceneRunner::AppMode() == 4 &&
         cccaster::game_interface::GameMem().GameMode() == CC_GAME_MODE_REPLAY;
     if (phase != UiPhase::CharaSelect && !(training && phase == UiPhase::InGame) && !replayList && StateUiLogic::IsMappingWindowOpen()) {
@@ -96,7 +99,13 @@ bool UIManager::IsMappingWindowOpen() {
 // ============================================================================
 
 int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    // 全モード共通でF1は通常→詳細→非表示。長押しと解放をゲームへ通さない。
+    if (training_standby_view::Active() && (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN ||
+        uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP || uMsg == WM_CHAR)) {
+        if (uMsg == WM_KEYDOWN) training_standby_view::Key(static_cast<unsigned>(wParam), (lParam & (1u << 30)) != 0);
+        return 1;
+    }
+    namespace options = cccaster::domain::scene::selection_options;
+    // キャラ選択のF1は設定メニュー。それ以外ではHUD切替。長押し・解放は遮断する。
     static bool hudF1Held = false;
     if (uMsg == WM_KILLFOCUS) hudF1Held = false;
     if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F1 && hudF1Held) {
@@ -106,11 +115,25 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     if (uMsg == WM_KEYDOWN && wParam == VK_F1) {
         hudF1Held = true;
         if (!(lParam & (1u << 30)) && !IsMappingWindowOpen() &&
-            !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000))
-            HudDisplay::Cycle();
+            !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000)) {
+            const auto mode = cccaster::domain::session::SceneRunner::AppMode();
+            auto &mem = cccaster::game_interface::GameMem();
+            if ((mode == 0 || mode == 1) && mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT)
+                options::Queue(options::Toggle);
+            else HudDisplay::Cycle();
+        }
         return 1;
     }
     static bool hudF3Held = false;
+    if (uMsg == WM_KILLFOCUS) {
+        hudF3Held = false;
+        options::heldKeys = 0;
+        options::actions = 0;
+    }
+    if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) {
+        const auto mask = options::KeyMask(static_cast<unsigned>(wParam));
+        if (options::heldKeys.fetch_and(~mask) & mask) return 1;
+    }
     if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F3 && hudF3Held) {
         hudF3Held = false;
         return 1;
@@ -127,7 +150,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
         // リピート除外: lParam bit30=1 → 前回もキーダウン
         bool isRepeat = (lParam & (1 << 30)) != 0;
         if (isRepeat) {
-            if (IsMappingWindowOpen())
+            if (IsMappingWindowOpen() || options::active.load())
                 return 1; // マッピング中はブロック
             return -1;    // リピートはゲームに通す
         }
@@ -155,6 +178,16 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
         // マッピング中は全キーブロック
         if (IsMappingWindowOpen())
             return 1;
+
+        if (options::active.load() && !isAltDown) {
+            options::heldKeys.fetch_or(options::KeyMask(key));
+            if (key == VK_UP) options::Queue(options::Up);
+            if (key == VK_DOWN) options::Queue(options::Down);
+            if (key == VK_LEFT) options::Queue(options::Left);
+            if (key == VK_RIGHT) options::Queue(options::Right);
+            if (key == VK_ESCAPE || key == VK_RETURN) options::Queue(options::Close);
+            return 1;
+        }
 
         // Ctrl+F3: 表示だけを変更。ゲーム入力や同期設定には触れない。
         if (key == VK_F3 && isCtrlDown && !isAltDown) {
@@ -189,7 +222,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     }
 
     // (3) マッピング中は KEYUP もブロック
-    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && IsMappingWindowOpen()) {
+    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && (IsMappingWindowOpen() || options::active.load())) {
         return 1;
     }
 

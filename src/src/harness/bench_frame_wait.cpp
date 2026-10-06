@@ -2,18 +2,9 @@
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/timing/WasapiClock.hpp"
 #include "core_dll/timing/FrameCadence.hpp"
-#include "core_dll/hook/TimeHooks.hpp"
 #include <algorithm>
 #include <vector>
 #include <cstdio>
-namespace cccaster::core::hooks {
-void TimeHooks::RealQueryPerformanceCounter(LARGE_INTEGER *p) {
-    ::QueryPerformanceCounter(p);
-}
-void TimeHooks::RealSleep(DWORD ms) {
-    ::Sleep(ms);
-}
-} // namespace cccaster::core::hooks
 int main() {
     using namespace cccaster;
     platform::BeginHighResolutionTimers();

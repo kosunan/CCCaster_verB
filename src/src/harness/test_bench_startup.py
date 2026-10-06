@@ -46,6 +46,24 @@ class StartupBenchmarkTests(unittest.TestCase):
             self.assertEqual(diagnostic_environment(args), {
                 'CCCASTER_STARTUP_TRACE': '1', 'CCCASTER_STARTUP_RESTORE_VERIFY': '1'})
 
+    def test_replay_readiness_rejects_training_and_partial_initialization(self):
+        mode = '[StartupMode] target=4 mode=26 kind=1 versus=2'
+        display = '[Startup] event=replay_present'
+        inputs = '[Startup] event=replay_input'
+        complete = '\n'.join([mode, display, inputs])
+        self.assertTrue(readiness(complete, 'replay')['ready'])
+        for invalid in [mode + '\n' + display, mode + '\n' + inputs,
+                        complete.replace('versus=2', 'versus=1'),
+                        complete.replace('replay_present', 'chara_present')]:
+            self.assertFalse(readiness(invalid, 'replay')['ready'])
+
+    def test_replay_comparison_only_disables_replay_acceleration(self):
+        args = argparse.Namespace(variant='baseline', comparison='replay', profile=False,
+                                  verify_io=False, verify_assets=False)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(diagnostic_environment(args), {
+                'CCCASTER_STARTUP_TRACE': '1', 'CCCASTER_STARTUP_REPLAY_BASELINE': '1'})
+
     def test_protection_detects_contents_and_added_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             side = Path(tmp)
@@ -56,6 +74,17 @@ class StartupBenchmarkTests(unittest.TestCase):
             self.assertNotEqual(original, protected_files([side]))
             (side / 'pad.ini').write_bytes(b'old')
             (side / 'other.ini').write_bytes(b'added')
+            self.assertNotEqual(original, protected_files([side]))
+
+    def test_protection_includes_replay_contents_and_list(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            side = Path(tmp)
+            (side / 'MBAA.exe').write_bytes(b'game')
+            (side / 'sample.rep').write_bytes(b'replay')
+            original = protected_files([side])
+            (side / 'sample.rep').write_bytes(b'changed')
+            self.assertNotEqual(original, protected_files([side]))
+            (side / 'sample.rep').unlink()
             self.assertNotEqual(original, protected_files([side]))
 
 

@@ -21,7 +21,7 @@
 //   - NOP パッチ / キーボードクリア → MbaaPatcher に移動
 //   - FastBoot ループ → FastBootRunner に移動
 //   - ReadMemory / WriteMemory テンプレート → 削除（MemoryPatcher で代替）
-//   - TimeHooks::Initialize() 呼び出し → dllmain.cpp に移動
+//   - 本体のフレーム待機バイパス → dllmain.cpp で適用
 // ============================================================================
 
 #include <cstdint>

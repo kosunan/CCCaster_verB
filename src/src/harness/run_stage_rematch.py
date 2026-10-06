@@ -294,6 +294,8 @@ def analyze(folder, scenario):
         rows = lambda kind: [tuple(map(int, r)) for r in re.findall(SELECTION.format(kind), text)]
         commits, loaded = rows('COMMIT'), rows('LOADED')
         random = list(map(int, re.findall(r'\[Select\] RANDOM resolved=(\d+)', text)))
+        draws = [tuple(map(int, r)) for r in re.findall(
+            r'\[Select\] RANDOM resolved=(\d+) candidates=(\d+) excluded=(\d+)', text)]
         retries = [tuple(map(int, r)) for r in re.findall(
             r'\[RetryMenu\] RESOLVED epoch=(\d+) frame=(\d+) local=(-?\d+) peer=(-?\d+) target=(\d+) ack=(\d+)/(\d+)', text)]
         fast = list(map(int, re.findall(r'\[StageRematch\] FAST OFF phase=4 elapsedUs=(\d+)', text)))
@@ -304,8 +306,12 @@ def analyze(folder, scenario):
         if scenario == 'random':
             ok &= len(commits) >= 2 and len(fast) >= 1
             ok &= all(c[:6] == commits[0][:6] and c[-1] in VALID_RANDOM for c in commits)
+            ok &= all(a[-1] != b[-1] for a, b in zip(commits, commits[1:]))
             ok &= all(target == 0 and own == peer == 0 for _, _, own, peer, target, _, _ in retries)
             ok &= random == [c[-1] for c in commits] if side == 1 else not random
+            if side == 1:
+                ok &= draws == [(c[-1], 46 if i else 47, commits[i-1][-1] if i else 0)
+                                for i, c in enumerate(commits)]
         elif scenario == 'fixed':
             ok &= len(commits) == 1 and len(loaded) >= 2 and not random and not fast
             ok &= all(c == commits[0] and c[-1] == 59 for c in loaded)
@@ -313,7 +319,7 @@ def analyze(folder, scenario):
         else:
             ok &= len(commits) >= 2 and not fast
             ok &= all(target == 1 for _, _, _, _, target, _, _ in retries)
-        sides.append(dict(commits=commits, loaded=loaded, random=random, retries=retries,
+        sides.append(dict(commits=commits, loaded=loaded, random=random, draws=draws, retries=retries,
                           fast_elapsed_us=fast, failures=failures, passed=bool(ok)))
     same = sides[0]['commits'] == sides[1]['commits'] and sides[0]['loaded'] == sides[1]['loaded']
     return dict(scenario=scenario, sides=sides, passed=bool(same and all(s['passed'] for s in sides)))

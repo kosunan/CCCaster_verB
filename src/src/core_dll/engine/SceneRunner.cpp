@@ -1,4 +1,5 @@
 #include "core_dll/engine/ReplayFileName.hpp"
+#include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
 #include "core_dll/spectator/Playback.hpp"
 #include <cstdio>
@@ -10,6 +11,7 @@
 #include "core_dll/timing/OfflinePacing.hpp"
 #include "core_dll/timing/IdlePresentation.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
+#include "core_dll/ui/TrainingStandbyView.hpp"
 #include "core_dll/sync/SettingsCommands.hpp"
 // 通常フレームは確定入力または上限内の予測を適用し、訂正時は保存状態から再計算する。
 // 2026-09-10 ユーザー承認: ゲームスレッドの期限付き待機を許可。
@@ -46,6 +48,8 @@
 #include "core_dll/engine/RematchChoice.hpp"
 #include "core_dll/engine/StageRematch.hpp"
 #include "core_dll/engine/LocalInputGate.hpp"
+#include "core_dll/engine/SelectionOptions.hpp"
+#include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/engine/TrainingInputDelay.hpp"
 #include "core_dll/engine/RetryInputGate.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
@@ -103,6 +107,41 @@ struct SceneRuntime {
     int64_t retryTick = 0;
 };
 SceneRuntime runtime;
+
+bool StepSelectionOptions(GameInput input, bool available, bool editable) {
+    namespace options = scene::selection_options;
+    auto &mem = cccaster::game_interface::GameMem();
+    const bool mapping = cccaster::domain::ui::StateUiLogic::IsMappingWindowOpen();
+    options::visible = available;
+    options::delay = SettingsCommands::delay;
+    options::delayEditable = editable;
+    options::animationValue = available ? mem.StageAnimation() : -1;
+    options::animationOn = options::animationValue == 1;
+    const bool wasOpen = options::menu.open;
+    const auto result = options::menu.Step(input, options::actions.exchange(0), available, mapping,
+        editable && !SettingsCommands::pending.load(), options::animationOn);
+    options::active = options::menu.open;
+    if (result.hudStep) {
+        ui::HudDisplay::Cycle(result.hudStep);
+        DebugLog("[SelectionOptions] HUD mode=%s", ui::HudDisplay::Name());
+    }
+    if (wasOpen != options::menu.open)
+        DebugLog("[SelectionOptions] %s", options::menu.open ? "OPEN" : "CLOSE");
+    if (result.delayStep) {
+        const int value = std::clamp(options::delay + result.delayStep, 0, public_api::NetplaySettings::MaxDelay);
+        if (value != options::delay) {
+            const bool accepted = runtime.context->appMode == 1 ? SceneRunner::RequestTrainingDelay(value)
+                : SettingsCommands::Request(false, value);
+            DebugLog("[SelectionOptions] DELAY request=%d accepted=%d", value, int(accepted));
+        }
+    }
+    if (result.animation >= 0 && options::animationValue >= 0 &&
+        result.animation != options::animationValue && mem.SetStageAnimation(result.animation == 1)) {
+        options::animationValue = result.animation;
+        options::animationOn = result.animation == 1;
+    }
+    return result.block;
+}
 
 void PublishSpectatorConfirmed() {
     if (!runtime.broadcasting || !runtime.spectatorNext) return;
@@ -231,10 +270,6 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
     const auto result = WaitBounded(
         timeoutUs,
         [&] {
-            // 描画だけを待機中にサービスする。確定入力やゲーム状態は更新しない。
-            const auto presentationDue = deadlineTicks ? deadlineTicks : readyHintTicks;
-            cccaster::core::timer::IdlePresentation::Pump(presentationDue ?
-                (presentationDue - cccaster::core::timer::WasapiClock::GetTimeTicks()) / 60 : 10000);
             const auto hintNow = readyHintTicks ? cccaster::core::timer::WasapiClock::GetTimeTicks() : 0;
             const auto readyHintGuardTicks = 60 * std::max<int64_t>(0, readyHintSpinGuardUs);
             if (readyHintTicks && hintNow >= readyHintTicks - readyHintGuardTicks &&
@@ -245,8 +280,6 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
                 do {
                     if (predicate())
                         return true;
-                    cccaster::core::timer::IdlePresentation::Pump(
-                        (readyHintTicks - cccaster::core::timer::WasapiClock::GetTimeTicks()) / 60);
                     cccaster::platform::CpuRelax();
                 } while (cccaster::core::timer::WasapiClock::GetTimeTicks() < until);
                 return false;
@@ -266,17 +299,23 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
                         sample.clock.Observe(reading.qpc, audio, after, deadlineTicks,
                                              reading.anchorShift, reading.clamp, reading.ppm);
                         if (audio >= deadlineTicks) break;
-                        cccaster::core::timer::IdlePresentation::Pump((deadlineTicks - audio) / 60);
                         cccaster::platform::CpuRelax();
                     }
                 } else {
                     while (cccaster::core::timer::WasapiClock::GetTimeTicks() < deadlineTicks) {
-                        cccaster::core::timer::IdlePresentation::Pump(
-                            (deadlineTicks - cccaster::core::timer::WasapiClock::GetTimeTicks()) / 60);
                         cccaster::platform::CpuRelax();
                     }
                 }
                 spinEnd = stageTrace ? cccaster::platform::RealMonotonicUs() : 0;
+            } else {
+                // 追加提示は粗い待機区間だけ。スピン開始までの余裕から提示コストを判断する。
+                // スピン中は通常経路・診断経路とも時計確認とCPU待機に専念する。
+                const auto presentationDue = deadlineTicks ? deadlineTicks : readyHintTicks;
+                const auto presentationGuardUs = deadlineTicks ? spinGuardUs :
+                    readyHintTicks ? readyHintSpinGuardUs : 0;
+                cccaster::core::timer::IdlePresentation::Pump(presentationDue ?
+                    (presentationDue - cccaster::core::timer::WasapiClock::GetTimeTicks()) / 60 : 10000,
+                    presentationGuardUs);
             }
             return predicate();
         },
@@ -363,6 +402,7 @@ void SceneRunner::Init(MatchContext &ctx) {
     runtime.fastRematchTransition = false;
     runtime.stageRematch = {};
     runtime.localInputGate = {};
+    scene::selection_options::Reset();
     runtime.secondInputGate = {};
     runtime.running = true;
     runtime.sequence = FrameSequence{};
@@ -694,6 +734,8 @@ reconcileBoundary:
     const auto phase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
     const auto intro = mem.IntroState();
     const auto world = mem.WorldTimer();
+    if (phase != GamePhase::CharaSelect || (ctx.appMode != 0 && ctx.appMode != 1))
+        StepSelectionOptions({}, false, false);
     // 直前までの予測は上のdrain/replayで確定済み。intro=1/2とは分離する。
     if (runtime.snapshotReady && phase == GamePhase::InGame && intro == 0 &&
         !mem.CanPredict() && !runtime.postRoundDelay.first) {
@@ -811,11 +853,22 @@ reconcileBoundary:
         OfflinePacing::Waited(mem.WorldTimer(), offlineDue);
     }
     if (ctx.appMode != 0) {
-        const bool configuring = cccaster::domain::ui::StateUiLogic::IsMappingWindowOpen();
         const auto raw1 = cccaster::game_interface::DirectInputHook::GetPlayer1Input();
         const auto raw2 = cccaster::game_interface::DirectInputHook::GetPlayer2Input();
+        const auto firstInput = GameInput::Unpack(raw1), secondInput = GameInput::Unpack(raw2);
+        const bool standbyPrompt = ctx.appMode == 1 && ui::training_standby_view::Step(
+            {firstInput.direction ? firstInput.direction : secondInput.direction,
+             static_cast<uint16_t>(firstInput.buttons | secondInput.buttons)});
+        const bool configuring = cccaster::domain::ui::StateUiLogic::IsMappingWindowOpen() || standbyPrompt;
+        if (standbyPrompt) StepSelectionOptions({}, false, false);
         auto output1 = runtime.localInputGate.Apply(GameInput::Unpack(raw1), configuring);
         auto output2 = runtime.secondInputGate.Apply(GameInput::Unpack(raw2), configuring);
+        if (ctx.appMode == 1 && phase == GamePhase::CharaSelect && !standbyPrompt) {
+            const auto first = GameInput::Unpack(raw1), second = GameInput::Unpack(raw2);
+            if (StepSelectionOptions({first.direction ? first.direction : second.direction,
+                    static_cast<uint16_t>(first.buttons | second.buttons)}, true, true))
+                output1 = output2 = {};
+        }
         if (ctx.appMode == 1) {
             const int requested = runtime.requestedTrainingDelay.exchange(-1);
             if (requested >= 0 && requested != ctx.delay &&
@@ -885,7 +938,8 @@ reconcileBoundary:
                 DebugLog("[InputRoute] wt=%u mode=%u configuring=%u raw1=%08X raw2=%08X output1=%08X output2=%08X",
                     mem.WorldTimer(), mem.GameMode(), unsigned(configuring), raw1, raw2, output1.Pack(), output2.Pack());
         }
-        if (phase == GamePhase::CharaSelect) cccaster::diagnostics::startup::InputReady();
+        if (phase == GamePhase::CharaSelect || (ctx.appMode == 4 && mem.GameMode() == CC_GAME_MODE_REPLAY))
+            cccaster::diagnostics::startup::InputReady(ctx.appMode == 4);
         runtime.previous = phase;
         runtime.previousIntro = intro;
         OfflinePacing::Prepared();
@@ -1030,7 +1084,8 @@ reconcileBoundary:
             runtime.selectionStarted = cccaster::platform::RealMonotonicUs();
             const auto base = runtime.sequence.Base();
             if (preparingStageRematch) runtime.stageRematch.selectionEpoch = base;
-            const auto rerolled = runtime.stageRematch.active && ctx.isHost ? mem.DrawRandomStage() : 0;
+            const auto rerolled = runtime.stageRematch.active && ctx.isHost
+                ? mem.DrawRandomStage(runtime.stageRematch.saved.stage) : 0;
             if (runtime.stageRematch.active && ctx.isHost && !rerolled) {
                 Fail(Error::SyncTimeout, "random stage pool empty or random source failed"); return;
             }
@@ -1150,6 +1205,9 @@ reconcileBoundary:
         }
         // キャラ確定後は戻る操作を閉じ、ステージ操作はホストだけが所有する。
         auto own = GameInput::Unpack(localInput & SettingsCommands::GameMask);
+        if (!runtime.stageRematch.active && StepSelectionOptions(own, true,
+                !local.confirmed && !runtime.selectionReleased && mem.SelectionDelayEditable(ctx.isHost)))
+            own = {};
         if (local.confirmed) {
             own.buttons &= ~(CC_BUTTON_B | CC_BUTTON_CANCEL);
             if (!ctx.isHost || local.stageConfirmed) own = {};
@@ -1282,6 +1340,9 @@ reconcileBoundary:
         cccaster::domain::ui::StateUiLogic::SetDelay(ctx.delay);
         cccaster::domain::ui::StateUiLogic::SetRollback(ctx.maxRollback);
         DebugLog("[Settings] ACTIVE D=%d R=%d", int(ctx.delay), int(ctx.maxRollback));
+        if (phase == GamePhase::InGame && cccaster::testing::IsScriptedInputEnabled() &&
+            std::getenv("CCCASTER_TEST_SELECTION_OPTIONS"))
+            DebugLog("[SelectionOptions] BATTLE animation=%d delay=%d hud=%s", mem.StageAnimation(), int(ctx.delay), ui::HudDisplay::Name());
         const int delay = int(ctx.delay);
         if (!cccaster::public_api::NetplaySettings::IsValid(ctx.delay, ctx.maxRollback)) {
             Fail(Error::SyncTimeout, "D and R must each be 0..8");
