@@ -71,6 +71,8 @@ struct MatchingController {
         if(value=="cleanup_finished") return Text("Earlier listings were cancelled.", "残っていた自分の募集を取り消しました");
         if(value=="invalid_code") return Text("Check the six-character opponent code", "相手の6文字コードを確認してください");
         if(value=="rate_limited") return Text("Service posting limit reached. Wait before retrying.", "通知サービスの投稿制限です。時間を置いて再試行してください");
+        if(value=="service_unavailable") return Text("The listing service is unavailable. Check your connection and the notification server setting, then retry.", "一覧サービスを利用できません。回線と通知サーバーの設定を確認してから再試行してください");
+        if(value=="code_collision") return Text("Could not allocate an unused matching code. Try starting your listing again.", "未使用の募集コードを確保できませんでした。募集を開始し直してください");
         if(value=="connection_failed") return Text("Connection failed. Your registration is kept.", "接続できませんでした。登録とコードはそのまま使えます");
         if(value=="invalid_profile") return Text("Check your player name in Profile & settings.", "プロフィール・設定でプレイヤー名を確認してください");
         if(value=="online") return Text("Listing service connected", "一覧に接続済み");

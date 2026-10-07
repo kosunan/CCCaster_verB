@@ -33,12 +33,19 @@ int main(int argc, char *argv[]) {
     // Dの既定は2。RはINIの旧値によらず、MainControllerで当面7固定にする。
     {
         // DLLと同じ設定を読む。起動時のカレントディレクトリに依存させない。
-        std::filesystem::path configDir = std::filesystem::absolute(argv[0]).parent_path();
+        std::filesystem::path configDir;
 #ifdef _WIN32
+        // Windowsのargv[0]はANSI。日本語パスをfilesystemへ渡すと、
+        // 下のUnicodeパスで上書きする前に文字変換例外となる場合がある。
         wchar_t executablePath[32768]{};
         const DWORD length = GetModuleFileNameW(nullptr, executablePath, std::size(executablePath));
-        if (length > 0 && length < std::size(executablePath))
-            configDir = std::filesystem::path(executablePath).parent_path();
+        if (!length || length >= std::size(executablePath)) {
+            std::cerr << "[BOOT_ERROR] code=windows stage=preflight win32=" << GetLastError() << '\n';
+            return 2;
+        }
+        configDir = std::filesystem::path(executablePath).parent_path();
+#else
+        configDir = std::filesystem::absolute(argv[0]).parent_path();
 #endif
         const std::string kConfigPath = cccaster::PathUtf8(cccaster::ConfigPath(configDir));
         std::ifstream testFile(cccaster::Utf8Path(kConfigPath));

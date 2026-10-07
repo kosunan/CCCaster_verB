@@ -8,7 +8,8 @@ inline constexpr uint32_t Magic = 0x43434253, Abi = 1;
 enum class Stage : int32_t { Preflight, GameValidation, CreateProcess, EntryLock, DllLoad, Bootstrap,
     RuntimeValidation, Ipc, Patches, Clock, Network, Graphics, Scene, Assets, Ready, EntryRelease, Running };
 enum class Error : uint32_t { None, DllFile, DllFormat, BuildMismatch, GameMismatch, Windows,
-    Timeout, ChildExited, Ipc, Settings, Patch, Clock, Network, Graphics, Exception, Contract };
+    Timeout, ChildExited, Ipc, Settings, Patch, Clock, Network, Graphics, Exception, Contract,
+    GameMissing, GameFile, GameFormat };
 struct Descriptor { uint32_t magic, abi, size; char build[65]; };
 // 対戦IPC・通信版とは独立。無名共有メモリのhandleを対象子プロセスだけへ複製する。
 struct Status {
@@ -30,11 +31,15 @@ inline const char *Name(Stage stage) {
 }
 inline const char *Name(Error error) {
     constexpr const char *names[]{"none","dll_file","dll_format","build_mismatch","game_mismatch","windows",
-        "timeout","child_exited","ipc","settings","patch","clock","network","graphics","exception","contract"};
+        "timeout","child_exited","ipc","settings","patch","clock","network","graphics","exception","contract",
+        "game_missing","game_file","game_format"};
     return uint32_t(error) < std::size(names) ? names[uint32_t(error)] : "unknown";
 }
 inline const char *Message(Error error, bool japanese) {
     switch (error) {
+    case Error::GameMissing: return japanese ? "MBAA.exeが見つかりません。ゲームフォルダー内でMBAA.exeと同じ階層にcccaster_Bフォルダーを配置してください。" : "MBAA.exe was not found. Place the cccaster_B folder next to MBAA.exe inside the game folder.";
+    case Error::GameFile: return japanese ? "MBAA.exeを読み込めません。ファイルのアクセス権と使用状況を確認してください。" : "Cannot read MBAA.exe. Check file access permissions and file locks.";
+    case Error::GameFormat: return japanese ? "MBAA.exeの形式またはサイズが不正です。対応するゲーム本体のEXEを確認してください。" : "MBAA.exe has an invalid format or size. Check the executable from the supported game installation.";
     case Error::DllFile: return japanese ? "DLLを読み込めません。配置先とファイルのアクセス権を確認してください。" : "Cannot read the DLL. Check its location and file access.";
     case Error::DllFormat: case Error::BuildMismatch: case Error::Contract:
         return japanese ? "ランチャーとDLLの組合せが一致しません。同じ配布物のCLI・GUI・DLLをまとめて配置してください。" : "Launcher and DLL do not match. Install CLI, GUI and DLL from the same package.";
@@ -59,7 +64,7 @@ inline Error ParseError(std::string_view log) {
     const auto from = begin + prefix.size(), end = log.find(' ', from);
     if (end == log.npos || end >= newline) return Error::None;
     const auto code = log.substr(from, end-from);
-    for (uint32_t i = 1; i <= uint32_t(Error::Contract); ++i)
+    for (uint32_t i = 1; i <= uint32_t(Error::GameFormat); ++i)
         if (code == Name(Error(i))) return Error(i);
     return Error::None;
 }

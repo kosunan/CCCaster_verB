@@ -4,6 +4,7 @@
 #include "cli_launcher/controller/MainController.hpp"
 #include "shared_contracts/NetplaySettings.hpp"
 #include "shared_contracts/TrainingStandby.hpp"
+#include "shared_contracts/SessionDiagnostics.hpp"
 #include <shellapi.h>
 #include <iostream>
 namespace cccaster::gui {
@@ -48,7 +49,9 @@ int RunWorker(int argc, wchar_t** argv) {
                                            : training ? cccaster::public_api::IpcGameMode::Training
                                                     : cccaster::public_api::IpcGameMode::Versus);
             app.Run();
-        } catch (const std::exception& error) { std::cout << "ERROR: " << error.what(); result = 1; }
+        } catch (const std::exception& error) {
+            session_diagnostics::Write(std::cout, session_diagnostics::Code::Exception, "worker", error.what()); result = 1;
+        }
         CloseHandle(main_app::gui::cancelEvent); return result;
     }
     if (argv) LocalFree(argv);

@@ -14,7 +14,7 @@ namespace cccaster::public_api {
 
 // Windows Shared Memory Name (Local prefix restricts to current user session)
 constexpr const char *IPC_SHARED_MEM_NAME = "Local\\CCCasterV10_SharedState";
-constexpr uint32_t IPC_VERSION_MAGIC = 0xCC100003;
+constexpr uint32_t IPC_VERSION_MAGIC = 0xCC100004;
 
 /**
  * @brief ゲーム起動時にDLLへ指示するモードの列挙型です。
@@ -29,7 +29,7 @@ inline constexpr bool IsLocalGameMode(IpcGameMode mode) {
  */
 enum class SessionErrorType : uint32_t {
     None = 0,
-    SyncTimeout = 1,      // 初期同期フェーズでのタイムアウト
+    SyncTimeout = 1,      // 同期・ゲーム状態処理の失敗。具体的な理由はlastErrorReason。
     PeerDisconnected = 2, // 対戦中(Phase 3以降)の通信途絶
     AbortedByUser = 3,    // ユーザーによる中断 (F12など)
     PeerClosed = 4       // 相手のゲーム終了通知を受信
@@ -70,7 +70,7 @@ struct SharedState {
     bool headlessMode; // true: AIテストモード (ランダム入力注入)
 
     // Error & Termination Reporting
-    uint32_t lastErrorCode; // 0 = None, 1 = Disconnect, 2 = Desync, etc.
+    uint32_t lastErrorCode; // SessionErrorType
 
     // Real-time Performance Metrics (Direct writing by DLL has ~0 overhead)
     uint32_t currentPingMs;
@@ -83,6 +83,7 @@ struct SharedState {
     uint8_t udpProtocol[1024];
     uint8_t p2pMac[32];
     uint8_t p2pSession[8];
+    char lastErrorReason[128]; // DLLで確定した原因。ローカルIPCだけで渡し、通信形式は変更しない。
 };
 #pragma pack(pop)
 
@@ -223,7 +224,11 @@ class IpcManager {
 inline bool RequestLocalGameExit(SessionExitReason reason) {
     bool requested = false;
     IpcManager::UpdateOrReadState([&](SharedState &s) {
-        if (s.targetGameMode != static_cast<uint32_t>(IpcGameMode::Versus)) return;
+        if (s.targetGameMode != static_cast<uint32_t>(IpcGameMode::Versus)) {
+            // ローカルモードは既存の終了経路を使うが、GUI向けの操作理由は残す。
+            if (!s.localExitReason) s.localExitReason = static_cast<uint32_t>(reason);
+            return;
+        }
         if (!s.gameShutdownRequest) s.localExitReason = static_cast<uint32_t>(reason);
         s.gameShutdownRequest = true;
         requested = true;

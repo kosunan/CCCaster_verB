@@ -1,5 +1,6 @@
 #pragma once
 #include "AppContext.hpp"
+#include "SessionMessages.hpp"
 #include "cli_launcher/ConfigManager.hpp"
 #include "cli_launcher/network_wrapper/ConnectionHash.hpp"
 #include "p2p/Matching.hpp"
@@ -61,36 +62,24 @@ struct Session {
         if (process) CloseHandle(process); // 実行中のゲームは終了しない。
     }
     bool Running() const { return process != nullptr; }
-    bool ShowCloseStatus() {
-        if (log.find("[ PEER CLOSED ]") != std::string::npos) {
-            if (!peerNoticeSeen) { revealCloseLog = true; peerNoticeSeen = true; }
-            if (log.find("[ PEER CLOSED ] reason=1") != std::string::npos)
-                status = {"Your opponent pressed the game's close button.", "相手がゲームの閉じるボタンを押しました。"};
-            else if (log.find("[ PEER CLOSED ] reason=2") != std::string::npos)
-                status = {"Your opponent pressed ESC in the game.", "相手がゲームでESCキーを押しました。"};
-            else if (log.find("[ PEER CLOSED ] reason=3") != std::string::npos)
-                status = {"Your opponent pressed F12 in the game.", "相手がゲームでF12キーを押しました。"};
-            else status = {"Your opponent's game exited. The cause is unknown.", "相手のゲームが終了しました。操作理由は不明です。"};
-            return true;
-        }
-        if (log.find("[ LOCAL CLOSED ]") != std::string::npos) {
-            if (!localNoticeSeen) { revealCloseLog = true; localNoticeSeen = true; }
-            status = {"Your game ended. See the session log for the exit reason and delivery result.",
-                      "ゲームを終了しました。終了理由と通知の受領結果は詳細ログに表示しています。"};
-            return true;
-        }
-        return false;
-    }
     bool peerNoticeSeen = false, localNoticeSeen = false;
+    session_messages::State diagnostics;
     void Poll() {
         if (!process) return;
         // 終了確認後にログを読む。読み取り直後のworker終了で末尾通知を取りこぼさない。
         const bool ended = WaitForSingleObject(process, 0) == WAIT_OBJECT_0;
+        DWORD workerExit = 0;
+        if (ended) GetExitCodeProcess(process, &workerExit);
         std::ifstream input(logPath, std::ios::binary);
         input.seekg(0, std::ios::end);
         const auto length = input.tellg();
         input.seekg(length > 65536 ? length - std::streamoff(65536) : std::streampos(0));
         std::string raw((std::istreambuf_iterator<char>(input)), {});
+        // 末尾64KiBの先頭が途中行なら捨てる。途中から現れた診断文字列を行頭扱いしない。
+        if (length > 65536) {
+            const auto newline = raw.find('\n');
+            raw.erase(0, newline == raw.npos ? raw.size() : newline + 1);
+        }
         // ANSI制御列は画面に持ち込まない。ログファイル自体は原文を維持する。
         log.clear();
         for (size_t i = 0; i < raw.size(); ++i) {
@@ -130,37 +119,32 @@ struct Session {
             }
         }
         auto readP2p = [&](const char* prefix, std::string& value) {
-            auto pos=log.rfind(prefix); if(pos==std::string::npos)return;
-            pos+=std::strlen(prefix);auto end=log.find('\n',pos);
-            if(end!=std::string::npos)value=log.substr(pos,end-pos);
+            const auto found = session_diagnostics::LastLine(log, prefix);
+            if (found.data()) value = found;
         };
         readP2p("[P2P_STATUS] ",p2pStage);
         readP2p("[P2P_SERVICE] ",p2pService);
         readP2p("[P2P_MANUAL] ",manualCode);
         readP2p("[SPECTATOR CODE] ",watchCode);
         readP2p("[WATCH_STATUS] ",watchStage);
-        booting = booting || log.find("Booting game") != std::string::npos;
-        if (replay) status = log.find("[ REPLAY READY ]") != std::string::npos
+        diagnostics.Observe(log);
+        booting = booting || diagnostics.gameStarting;
+        if (replay) status = session_diagnostics::HasLine(log, "[ REPLAY READY ]")
             ? Message{"Replay viewer is running. Press F4 in the game for controller settings.", "リプレイ観戦を起動しました。ゲーム内のF4でコントローラ設定を開けます。"}
             : Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."};
-        else if (localVersus) status = log.find("[ OFFLINE READY ]") != std::string::npos
+        else if (localVersus) status = session_diagnostics::HasLine(log, "[ OFFLINE READY ]")
             ? Message{"Offline versus is running. Both players use this game window.", "オフライン対戦を起動しました。同じゲーム画面で1P・2Pを操作してください。"}
             : Message{"Launching offline versus...", "オフライン対戦を起動しています..."};
-        else if (training && log.find("[ TRAINING READY ]") != std::string::npos)
+        else if (training && session_diagnostics::HasLine(log, "[ TRAINING READY ]"))
             status = {"Training is running. Switch to the game window.", "トレーニングを起動しました。ゲーム画面に切り替えてください。"};
         else if (training) status = {"Launching training...", "トレーニングを起動しています..."};
-        else if (log.find("[ IN GAME ]") != std::string::npos) status = spectating
+        else if (session_diagnostics::HasLine(log, "[ IN GAME ]")) status = spectating
             ? Message{"Spectator connected. Playback status is shown in the game.", "観戦接続が成立しました。再生状態はゲーム画面に表示します。"}
             : Message{"Match in progress. Switch to the game window.", "対戦中です。ゲーム画面に切り替えてください。"};
         else if (booting) status = {"Connected. Launching the game...", "接続が完了しました。ゲームを起動しています..."};
         else if (!code.empty()) status = {"Waiting for an opponent...", "対戦相手を待っています..."};
-        auto stageStart = log.rfind("[CONNECT_STAGE] ");
-        if (stageStart != std::string::npos) {
-            stageStart += std::strlen("[CONNECT_STAGE] ");
-            auto stageEnd = log.find('\n', stageStart);
-            if (stageEnd != std::string::npos) connectionStage = log.substr(stageStart, stageEnd-stageStart);
-        }
-        if (!booting && !cancelling) {
+        connectionStage = diagnostics.connection;
+        if (!ended && !booting && !cancelling) {
             if (connectionStage == "relay_waiting") status = {"Relay service connected. Waiting for someone to join; no short waiting limit.", "接続支援サーバーへ接続しました。相手の参加を待っています。短い待機制限はありません。"};
             else if (connectionStage == "relay") status = {"Trying automatic hole punching through the legacy relay service...", "旧版の接続支援サーバーを使って自動接続を試しています..."};
             else if (connectionStage == "match" || connectionStage == "punch") status = {"Opponent found. Checking the direct UDP connection...", "参加者が見つかりました。双方のUDP接続を確認しています..."};
@@ -168,23 +152,6 @@ struct Session {
             else if (connectionStage == "attempt_expired" || connectionStage == "handshake_timeout") status = {"That connection attempt did not complete. Hosting continues for the next opponent.", "その参加者との接続が成立しませんでした。次の参加者の募集を続けます。"};
         }
         if (cancelling && !booting) status = {"Cancelling connection...", "接続をキャンセルしています..."};
-        if (ended) {
-            DWORD result = 0;
-            GetExitCodeProcess(process, &result);
-            if (cancelling && !booting) status = {"Connection cancelled.", "接続をキャンセルしました。"};
-            else if (ShowCloseStatus()) {}
-            else if (result != 0 || log.find("ERROR") != std::string::npos ||
-                     log.find("TIMEOUT") != std::string::npos || (log.find("failed") != std::string::npos && !booting))
-                { failed = true; status = {"Check the opponent's code and whether they are hosting. Automatic hole punching also failed or launch could not complete. Check the session log for launch errors.", "相手のコードと募集状態を確認してください。接続の自動試行または起動に失敗しました。起動エラーは詳細ログに表示します。"}; }
-            else status = {"Session ended. Ready to start again.", "終了しました。もう一度開始できます。"};
-            if (!cancelling && (connectionStage == "timeout" || connectionStage == "handshake_timeout")) {
-                failed = true;
-                status = {"Connection attempt ended. Verify the host is still waiting, the code is current, and CCCaster is allowed through the firewall. Repeating unchanged conditions may not help.", "接続試行を終了しました。相手の募集状態・コードの期限・ファイアウォールの許可を確認してください。同じ条件の繰り返しで改善するとは限りません。"};
-            }
-            CloseHandle(process); process = nullptr;
-            CloseHandle(cancel); cancel = nullptr;
-            cancelling = false;
-        }
         if (!ended && !booting && !cancelling && !p2pStage.empty()) {
             if(p2pStage=="preparing")status={"Preparing connection candidates...","接続候補を準備しています..."};
             else if(p2pStage=="waiting")status={"Waiting for an opponent. The code stays valid while hosting.","募集しています。コードは募集を終了するまで有効です。"};
@@ -195,15 +162,17 @@ struct Session {
             else if(p2pStage=="offline_fallback")status={"Notification service unavailable. Trying LAN discovery; manual exchange is available.","通知サービスが使えません。LAN探索を試します。手動交換も利用できます。"};
             else if(p2pStage=="busy")status={"The host is already connecting or playing.","募集側は接続処理中、または対戦中です。"};
             else if(p2pStage=="closed")status={"Hosting has ended. Ask for a new code.","募集は終了しています。新しいコードを受け取ってください。"};
-            else if(p2pStage=="answer_timeout"||p2pStage=="ntfy_unavailable")status={"No answer. Check the code or exchange manual codes.","応答がありません。コードを確認するか、手動コードを交換してください。"};
+            else if(p2pStage=="answer_timeout"||p2pStage=="ntfy_unavailable"||p2pStage=="invalid_code"||p2pStage=="code_collision") {
+                const auto message=session_messages::P2pFailure(p2pStage);status={message.english,message.translated};
+            }
             else if(p2pStage=="punch_timeout")status={"UDP connection failed. Check the firewall, IPv6 availability or port forwarding.","UDP接続が成立しません。ファイアウォール、IPv6の利用可否、ポート転送を確認してください。"};
-            else if(p2pStage=="bind_failed")status={"The listening port is in use. Choose another port.","待受ポートを使用できません。別のポートを指定してください。"};
+            else if(p2pStage=="bind_failed") {const auto message=session_messages::P2pFailure(p2pStage);status={message.english,message.translated};}
             else if(p2pStage=="invalid_manual_code")status={"The manual reply does not match this host session.","手動返信コードが今回の募集と一致しません。"};
             if(p2pStage=="waiting"&&!p2pService.empty()&&p2pService!="online")
                 status={"Waiting on LAN. For Internet play, exchange manual codes because the notification service is unavailable.","LANで募集しています。通知サービスが使えないため、インターネット対戦には手動コードを交換してください。"};
         }
-        if (spectating && !booting) {
-            if(cancelling || (ended && watchStage=="cancelled")) status={"Spectator standby cancelled.","観戦待機をキャンセルしました。"};
+        if (!ended && spectating && !booting) {
+            if(cancelling) status={"Cancelling spectator standby...","観戦待機をキャンセルしています..."};
             else if(watchStage=="standby") status={"Standing by. Spectating starts automatically when the match connects.","観戦待機中です。対戦が接続されると自動で観戦を開始します。"};
             else if(watchStage=="checking") status={"Checking the host's six-character code...","6文字コードの募集状態を確認しています..."};
             else if(watchStage=="connecting") status={"The match is starting. Waiting for the spectator connection...","対戦を開始しています。観戦接続の準備を待っています..."};
@@ -215,11 +184,19 @@ struct Session {
             else if(watchStage=="reconnecting") status={"Reconnecting to spectator status notifications...","観戦状態の通知へ再接続しています..."};
             else if(watchStage=="rate_limited") status={"Notification service limit reached. Waiting before reconnecting...","通知サービスの利用制限です。時間を空けて再接続します..."};
         }
-        ShowCloseStatus();
-        const auto startupError = cccaster::boot::ParseError(log);
-        if (startupError != cccaster::boot::Error::None) {
-            failed = true;
-            status = {cccaster::boot::Message(startupError, false), cccaster::boot::Message(startupError, true)};
+        if ((diagnostics.peerReason >= 0 && !peerNoticeSeen) ||
+            (diagnostics.localReason >= 0 && !localNoticeSeen)) revealCloseLog = true;
+        peerNoticeSeen = peerNoticeSeen || diagnostics.peerReason >= 0;
+        localNoticeSeen = localNoticeSeen || diagnostics.localReason >= 0;
+        if (const auto message = diagnostics.Resolve({ended, cancelling, booting,
+                training || replay || localVersus, spectating, workerExit})) {
+            status = {message.english, message.translated};
+            failed = message.failed;
+        }
+        if (ended) {
+            CloseHandle(process); process = nullptr;
+            CloseHandle(cancel); cancel = nullptr;
+            cancelling = false;
         }
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
@@ -235,16 +212,28 @@ struct Session {
             return;
         }
         auto dir = exePath.parent_path();
-        if (!std::filesystem::exists(dir / ".." / "MBAA.exe") ||
-            !std::filesystem::exists(dir / "libcccaster_hook.dll") || !std::filesystem::exists(dir / "CCCaster_B.exe")) {
-            status = {"Game files not found. Keep the CLI, GUI and DLL together in cccaster_B.", "ゲームファイルが見つかりません。cccaster_BにCLI・GUI・DLLを揃えて配置してください。"};
-            return;
+        for (const auto& name : {"../MBAA.exe", "libcccaster_hook.dll", "CCCaster_B.exe"}) {
+            std::error_code error;
+            const auto state = std::filesystem::status(dir / name, error);
+            if (state.type() == std::filesystem::file_type::not_found && std::strcmp(name,"../MBAA.exe")==0) {
+                status = {boot::Message(boot::Error::GameMissing,false),boot::Message(boot::Error::GameMissing,true)};
+                return;
+            }
+            if (error || !std::filesystem::is_regular_file(state)) {
+                status = {std::string("Cannot access ")+name+". Check its location and file permissions.",
+                    std::string(name)+"を読み込めません。配置先とファイルのアクセス権を確認してください。"};
+                return;
+            }
         }
         auto eventName = L"Local\\CCCasterGuiCancel_" + std::to_wstring(GetCurrentProcessId());
         cancel = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
-        if (!cancel) { status = {"Could not prepare the connection.", "接続の準備に失敗しました。"}; return; }
+        if (!cancel) { status = {"Could not prepare the launcher control event.", "ランチャーの制御用イベントを作成できません。"}; return; }
         wchar_t temp[MAX_PATH]{};
-        if (!GetTempPathW(MAX_PATH, temp)) { CloseHandle(cancel); cancel = nullptr; return; }
+        const auto tempLength = GetTempPathW(MAX_PATH, temp);
+        if (!tempLength || tempLength >= MAX_PATH) {
+            status = {"Cannot access the temporary folder for the session log.","詳細ログの保存先となる一時フォルダーを取得できません。"};
+            CloseHandle(cancel); cancel = nullptr; return;
+        }
         logPath = std::filesystem::path(temp) / (L"CCCaster_B_GUI_" + std::to_wstring(GetCurrentProcessId()) + L".log");
         peerCodePath=logPath;peerCodePath+=L".peer";
         {std::ofstream clear(peerCodePath,std::ios::trunc);}
@@ -288,6 +277,7 @@ struct Session {
         cccaster::notification::CloseIncomingToast();
         cccaster::notification::FlashIncomingWindow(guiWindow, false);
         failed = false;
+        diagnostics = {};
         log.clear(); code.clear(); connectionStage.clear(); p2pStage.clear(); p2pService.clear(); manualCode.clear(); watchCode.clear(); watchStage.clear(); training = offline && !replayMode && !localVersusMode; spectating = watch; replay = replayMode; localVersus = localVersusMode; booting = offline; cancelling = false;
         ipResults[0].clear(); ipResults[1].clear();
         peerNoticeSeen = localNoticeSeen = revealCloseLog = false;

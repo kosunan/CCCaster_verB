@@ -290,12 +290,12 @@ void Fail(Error error, const char *reason) {
     FrameControl::SetModeNormalSpeed();
     DebugLog("[InputGate] FAILED reason=%s frame=%u WT=%u", reason, runtime.sequence.Next(),
              cccaster::game_interface::GameMem().WorldTimer());
-    // IpcManagerの関数ポインタAPIへ同一ゲームスレッドの一時値を渡す。
-    static uint32_t code;
-    code = static_cast<uint32_t>(error);
-    cccaster::public_api::IpcManager::UpdateOrReadState([](cccaster::public_api::SharedState &s) {
+    cccaster::public_api::IpcManager::UpdateOrReadState([error, reason](cccaster::public_api::SharedState &s) {
         s.syncCompleted = false;
-        if (s.lastErrorCode != static_cast<uint32_t>(Error::PeerClosed)) s.lastErrorCode = code;
+        if (s.lastErrorCode != static_cast<uint32_t>(Error::PeerClosed)) {
+            s.lastErrorCode = static_cast<uint32_t>(error);
+            std::snprintf(s.lastErrorReason, sizeof(s.lastErrorReason), "%s", reason);
+        }
     });
     FrameControl::ExitGame();
 }

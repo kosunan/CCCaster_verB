@@ -28,18 +28,23 @@ struct GameFileLock {
     HANDLE handle = INVALID_HANDLE_VALUE;
     ~GameFileLock() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
 };
-bool InspectGameFile(const std::filesystem::path &path, GameFileLock &file) {
+bool InspectGameFile(const std::filesystem::path &path, GameFileLock &file, boot::Error &failure, DWORD &systemError) {
+    failure = boot::Error::GameFile;
+    systemError = 0;
     using namespace cccaster::game_build;
     const auto display = path.u8string();
     std::cerr << "[GameBuild] File: " << reinterpret_cast<const char *>(display.c_str()) << "\n";
     std::error_code error;
     const auto status = std::filesystem::status(path, error);
     if (status.type() == std::filesystem::file_type::not_found) {
+        failure = boot::Error::GameMissing;
+        systemError = ERROR_FILE_NOT_FOUND;
         std::cerr << "[GameBuild] MBAA.exe was not found at the path above.\n"
                      "[GameBuild] Place cccaster_B directly inside the game folder, next to MBAA.exe.\n";
         return false;
     }
     if (error || !std::filesystem::is_regular_file(status)) {
+        systemError = error ? DWORD(error.value()) : ERROR_DIRECTORY;
         std::cerr << "[GameBuild] Cannot access MBAA.exe as a regular file (system error="
                   << error.value() << "). Check the path and file permissions.\n";
         return false;
@@ -48,24 +53,28 @@ bool InspectGameFile(const std::filesystem::path &path, GameFileLock &file) {
     file.handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file.handle == INVALID_HANDLE_VALUE) {
-        std::cerr << "[GameBuild] Cannot open MBAA.exe for reading (system error=" << GetLastError()
+        systemError = GetLastError();
+        std::cerr << "[GameBuild] Cannot open MBAA.exe for reading (system error=" << systemError
                   << "). Check file permissions or file locks.\n";
         return false;
     }
     LARGE_INTEGER fileSize{};
     if (!GetFileSizeEx(file.handle, &fileSize)) {
-        std::cerr << "[GameBuild] Cannot read executable size (system error=" << GetLastError() << ").\n";
+        systemError = GetLastError();
+        std::cerr << "[GameBuild] Cannot read executable size (system error=" << systemError << ").\n";
         return false;
     }
     const auto size = fileSize.QuadPart;
     if (size <= 0 || size > 64 * 1024 * 1024) {
+        failure = boot::Error::GameFormat;
         std::cerr << "[GameBuild] Invalid executable size: " << size << " bytes (expected 1..67108864).\n";
         return false;
     }
     std::vector<uint8_t> bytes(static_cast<size_t>(size));
     DWORD read = 0;
-    if (!ReadFile(file.handle, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr) ||
-        read != bytes.size()) {
+    const bool readOk = ReadFile(file.handle, bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr);
+    if (!readOk || read != bytes.size()) {
+        systemError = readOk ? ERROR_HANDLE_EOF : GetLastError();
         std::cerr << "[GameBuild] Failed to read the complete executable. Check file access and retry.\n";
         return false;
     }
@@ -74,6 +83,7 @@ bool InspectGameFile(const std::filesystem::path &path, GameFileLock &file) {
     else std::cerr << "[GameBuild] SHA-256 unavailable (diagnostic only).\n";
     const auto compatible = game_compat::Inspect(bytes);
     if (!compatible) {
+        failure = compatible.issue == game_compat::Issue::Image ? boot::Error::GameFormat : boot::Error::GameMismatch;
         std::cerr << "[GameBuild] incompatible reason=" << game_compat::Name(compatible.issue)
                   << " site=" << compatible.name << " address=" << std::hex << compatible.address << std::dec << "\n"
                   << "[GameBuild] The required input/state layout does not match this caster.\n";
@@ -296,7 +306,9 @@ bool GameLauncher::BootAndMonitor(const std::filesystem::path &exePath,
             std::cerr << "[Boot] build=" CCCASTER_BUILD_ID " abi=" << boot::Abi << "\n";
             _diagnostic.stage = int32_t(boot::Stage::GameValidation);
             GameFileLock gameFile;
-            if (!InspectGameFile(exePath,gameFile)) return Fail(boot::Error::GameMismatch);
+            boot::Error gameFailure{};
+            DWORD gameSystemError = 0;
+            if (!InspectGameFile(exePath,gameFile,gameFailure,gameSystemError)) return Fail(gameFailure,gameSystemError);
             _diagnostic.stage = int32_t(boot::Stage::CreateProcess);
             if (!LaunchSuspended(exePath)) return false;
             if (prepareChild && !prepareChild(_pi.dwProcessId)) return Fail(boot::Error::Ipc);

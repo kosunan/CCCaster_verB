@@ -13,6 +13,7 @@
 #include "shared_contracts/IpcData.hpp"
 #include "shared_contracts/PlayerName.hpp"
 #include "shared_contracts/SessionClosePacket.hpp"
+#include "shared_contracts/SessionDiagnostics.hpp"
 #include "core_dll/network/UdpSocket.hpp"
 #include "p2p/Session.hpp"
 #include "p2p/Watch.hpp"
@@ -28,6 +29,7 @@
 #include <fstream>
 
 namespace cccaster::main_app::controller {
+namespace diagnostic = cccaster::session_diagnostics;
 
 namespace {
 std::string ReadGamePlayerName(const std::filesystem::path &gameDirectory) {
@@ -83,7 +85,9 @@ void MainController::LaunchAndMonitorGame() {
         std::shared_ptr<cccaster::p2p::Result>& value;
         ~ReleaseConnection() { value.reset(); }
     } releaseConnection{_p2p};
-    if (_guiSession && gui::Cancelled()) return;
+    if (_guiSession && gui::Cancelled()) {
+        diagnostic::Write(std::cout, diagnostic::Code::Cancelled, "launching"); return;
+    }
     std::cout << "[Release] " CCCASTER_PRODUCT_TITLE "\n" << std::flush;
     // Trainingの開始席はP1。メニューから来た場合や直前の接続役割に依存させない。
     // 起動ナビをP2へ送るとゲームがP2側でTrainingへ入り、P1設定では操作できなくなる。
@@ -177,10 +181,11 @@ void MainController::LaunchAndMonitorGame() {
         // DLLがポートをバインドして NetplaySession で同期を完了するのを待つ。
         // 計測開始は Launcher の起動時点ではなく、この待ちループの開始時点とする。
         std::cout << (offline ? "  [ OFFLINE ] Waiting for DLL initialization...\n"
-                               : "  \x1b[1;36m[ SYNC ]\x1b[0m Waiting for DLL sync completion (12s timeout)...\n")
+                               : "  \x1b[1;36m[ SYNC ]\x1b[0m Waiting for DLL sync completion (15s timeout)...\n")
                   << std::flush;
         auto syncStart = std::chrono::steady_clock::now();
         bool syncOk = false;
+        bool initialTimedOut = false;
         HANDLE hProcess = monitor.GetProcessHandle();
 
         while (true) {
@@ -204,8 +209,10 @@ void MainController::LaunchAndMonitorGame() {
                 break;
             }
 
-            if (elapsed >= 15)
-                break; // タイムアウトを12秒から15秒に少し猶予を持たせる
+            if (elapsed >= 15) {
+                initialTimedOut = true;
+                break;
+            }
 
             Sleep(200); // 200ms間隔でポーリング
         }
@@ -229,11 +236,11 @@ void MainController::LaunchAndMonitorGame() {
             }
             std::cout << "  \x1b[1;36m[ INFO ]\x1b[0m Game process exited.\n" << std::flush;
         } else {
-            // syncOkがfalse、かつゲームがまだ稼働中なら12秒の同期タイムアウトとみなして強制終了する
-            if (hProcess && WaitForSingleObject(hProcess, 0) != WAIT_OBJECT_0) {
+            // 実際に初期化の期限へ到達した場合だけ、時間切れとして終了する。
+            if (initialTimedOut && hProcess && WaitForSingleObject(hProcess, 0) != WAIT_OBJECT_0) {
                 std::cout
                     << (offline ? "  [ INIT TIMEOUT ] DLL initialization did not complete within 15 seconds.\n"
-                                 : "  \x1b[31m[ SYNC TIMEOUT ]\x1b[0m DLL sync did not complete within 12 seconds.\n")
+                                 : "  \x1b[31m[ SYNC TIMEOUT ]\x1b[0m DLL sync did not complete within 15 seconds.\n")
                     << std::flush;
                 std::cout << "  \x1b[31m[ ABORT ]\x1b[0m Terminating game process...\n" << std::flush;
                 TerminateProcess(hProcess, 1);
@@ -257,16 +264,43 @@ void MainController::LaunchAndMonitorGame() {
                 if (output) MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
             }
         }
-        // ===== 異常切断等の業務エラー確認 (必ず実施) =====
+        // 終了通知の有無と成否は別。DLLが記録した原因を構造化してGUIへ渡す。
+        DWORD gameExit = 0;
+        if (hProcess) GetExitCodeProcess(hProcess, &gameExit);
+        const auto stage = syncOk ? "running" : offline ? "initializing" : "synchronizing";
         cccaster::public_api::SharedState finalState{};
         if (cccaster::public_api::IpcManager::OpenAndRead(finalState)) {
             auto err = static_cast<cccaster::public_api::SessionErrorType>(finalState.lastErrorCode);
+            finalState.lastErrorReason[sizeof(finalState.lastErrorReason)-1] = 0;
+            using Code = diagnostic::Code;
+            Code outcome = Code::Completed;
+            uint32_t reason = 0;
+            switch (err) {
+            case cccaster::public_api::SessionErrorType::PeerClosed:
+                outcome = Code::PeerExit; reason = finalState.peerExitReason; break;
+            case cccaster::public_api::SessionErrorType::AbortedByUser:
+                outcome = Code::UserExit; reason = finalState.localExitReason; break;
+            case cccaster::public_api::SessionErrorType::SyncTimeout:
+                outcome = Code::StateFailure; break;
+            case cccaster::public_api::SessionErrorType::PeerDisconnected:
+                outcome = Code::Disconnected; break;
+            case cccaster::public_api::SessionErrorType::None:
+                if (finalState.localExitReason) {
+                    outcome = Code::UserExit; reason = finalState.localExitReason;
+                } else if (initialTimedOut) outcome = Code::InitTimeout;
+                else if (!syncOk || gameExit != 0) outcome = Code::UnexpectedExit;
+                break;
+            default: outcome = Code::StateFailure; break;
+            }
+            diagnostic::Write(std::cout, outcome, stage, finalState.lastErrorReason, reason, gameExit);
             if (err == cccaster::public_api::SessionErrorType::PeerClosed) {
                 // 相手の操作理由は既に表示済み。直後の空のエラー画面でログを隠さない。
                 if (!_isHeadless) {
                     std::cout << "  Press any key to return to Main Menu...\n";
                     _getch();
                 }
+            } else if (err == cccaster::public_api::SessionErrorType::AbortedByUser) {
+                std::cout << "  [ User Aborted ] The game was ended by a local operation.\n" << std::flush;
             } else if (err != cccaster::public_api::SessionErrorType::None) {
                 ui::ConsoleRenderer::ClearScreen();
                 ui::ConsoleRenderer::PrintHeader();
@@ -277,11 +311,10 @@ void MainController::LaunchAndMonitorGame() {
                     break;
                 case cccaster::public_api::SessionErrorType::SyncTimeout:
                     std::cout
-                        << "  [\x1b[31m Sync Timeout \x1b[0m] Initial synchronization failed or timed out.\n";
+                        << "  [ State Failure ] Game state processing or synchronization failed.\n";
                     break;
                 case cccaster::public_api::SessionErrorType::PeerDisconnected:
-                    std::cout << "  [\x1b[31m Peer Disconnected \x1b[0m] Connection lost during the match "
-                                 "(3s timeout).\n";
+                    std::cout << "  [ Peer Disconnected ] Connection to the other player was lost.\n";
                     break;
                 case cccaster::public_api::SessionErrorType::AbortedByUser:
                     std::cout
@@ -297,11 +330,11 @@ void MainController::LaunchAndMonitorGame() {
                     std::cout << "  Press any key to return to Main Menu...\n";
                     _getch();
                 }
-            } else if (syncOk) {
+            } else if (outcome == Code::Completed) {
                 if (!_isHeadless)
                     std::cout << "  \x1b[32m[ OK ]\x1b[0m Match finished normally.\n";
             }
-        }
+        } else diagnostic::Write(std::cout, diagnostic::Code::IpcFailure, stage, "Could not read final IPC state", 0, gameExit);
     } // <-- Missing brace closed
 
     if (hIpc) {
@@ -343,6 +376,7 @@ void MainController::Run() {
                 break;
             }
         } catch (const std::exception &e) {
+            diagnostic::Write(std::cout, diagnostic::Code::Exception, "launcher", e.what());
             ui::ConsoleRenderer::ClearScreen();
             std::cout << "\n  \x1b[31m[ FATAL ERROR ]\x1b[0m An unexpected error occurred:\n"
                       << "  " << e.what() << "\n\n"
@@ -350,6 +384,7 @@ void MainController::Run() {
             if (!_guiSession) _getch();
             _currentState = _guiSession ? AppState::Exit : AppState::MainMenu;
         } catch (...) {
+            diagnostic::Write(std::cout, diagnostic::Code::Exception, "launcher", "Unknown exception");
             ui::ConsoleRenderer::ClearScreen();
             std::cout << "\n  \x1b[31m[ FATAL ERROR ]\x1b[0m An unknown error occurred.\n\n"
                       << "  Returning to Main Menu. Press any key to continue...\n";
@@ -569,6 +604,8 @@ void MainController::HandleNetplayConnection() {
         }
         _currentState = AppState::GameRunning;
     } else {
+        diagnostic::Write(std::cout, _guiSession && gui::Cancelled() ? diagnostic::Code::Cancelled
+            : diagnostic::Code::ConnectionFailure, "connecting");
         if (_isHeadless) {
             std::cout << "  \x1b[31m[ HEADLESS ERROR ]\x1b[0m Connection failed.\n";
             _currentState = AppState::Exit;
@@ -607,6 +644,7 @@ void MainController::HandleSpectateConnect() {
     } else if (!code.empty()) {
         network_wrapper::ConnectionHash::DecodedAddress address;
         if (!network_wrapper::ConnectionHash::DecodeSpectator(code, address)) {
+            std::cout << "[WATCH_STATUS] invalid_code\n" << std::flush;
             std::cout << "[ ERROR ] 接続コードが不正、または期限切れです。募集側のコードを確認してください。\n";
             _currentState = _isHeadless ? AppState::Exit : AppState::MainMenu; return;
         }
@@ -614,8 +652,13 @@ void MainController::HandleSpectateConnect() {
         _peerIp = network_wrapper::FindSpectatorEndpoint({address.ipv4, address.ipv6, address.localIpv4}, address.port,
             [this] { return _guiSession && gui::Cancelled(); });
         _peerPort = address.port;
+        if (_peerIp.empty()) {
+            std::cout << "[WATCH_STATUS] " << (_guiSession && gui::Cancelled() ? "cancelled" : "unreachable") << '\n' << std::flush;
+            _currentState = _isHeadless ? AppState::Exit : AppState::MainMenu; return;
+        }
     } else { _peerIp = _targetIp; _peerPort = _port; }
     if (_peerIp.empty() || !_peerPort) {
+        std::cout << "[WATCH_STATUS] missing_endpoint\n" << std::flush;
         std::cout << "[ ERROR ] 観戦先IP・ポートまたは募集側の接続コードを指定してください。\n";
         _currentState = _isHeadless ? AppState::Exit : AppState::MainMenu; return;
     }

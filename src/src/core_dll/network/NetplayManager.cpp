@@ -81,6 +81,7 @@ void NetplayManager::Initialize(bool isNetplay, bool isHost, uint16_t localPort,
             _udpSocket->EnableP2p(mac,session,targetIp,targetPort,ipc.isHost,[] {
                 cccaster::public_api::IpcManager::UpdateOrReadState([](cccaster::public_api::SharedState& state) {
                     state.lastErrorCode=static_cast<uint32_t>(cccaster::public_api::SessionErrorType::PeerDisconnected);
+                    std::snprintf(state.lastErrorReason,sizeof(state.lastErrorReason),"UDP transport failure");
                 });
             });
             cccaster::domain::session::DebugLog("[P2P] UDP socket inherited, no rebind");
