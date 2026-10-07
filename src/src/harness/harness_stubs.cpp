@@ -230,6 +230,18 @@ namespace cccaster::domain::ui::training_standby_view {
 bool Step(game_interface::GameInput) { return false; }
 }
 
+// 画像読込み・ゲームの色カーソルは実ゲーム専用。転送の契約は専用単体試験で検査する。
+namespace cccaster::training_palette {
+bool Install() { return true; }
+namespace selection {
+void Configure(unsigned,bool) {}
+void Tick() {}
+void Filter(game_interface::GameInput&,game_interface::GameInput&) {}
+void Publish(uint32_t,uint32_t) {}
+bool Ready(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t) { return true; }
+}
+}
+
 #include "core_dll/hook/DisplaySettings.hpp"
 namespace cccaster::game_interface::borderless {
 DisplaySettings GetDisplaySettings() { return {}; }

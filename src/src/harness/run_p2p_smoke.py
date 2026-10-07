@@ -20,6 +20,7 @@ def run_real(args, output):
         raise RuntimeError('PowerShell 7 (pwsh)が必要です')
     env = clean_environment()
     env['CCCASTER_NTFY_SERVER'] = args.server
+    if args.extra_color: env['CCCASTER_TEST_EXTRA_COLOR']='1'
     if args.input_runahead:
         env['CCCASTER_TEST_INPUT_RUNAHEAD_SIDES'] = args.input_runahead
     if args.present_rollback is not None:
@@ -75,6 +76,10 @@ def run_real(args, output):
         run = subprocess.run(command, env=env)
         result['exit_code'] = run.returncode
         result.update(evaluate(output, config))
+        if args.extra_color:
+            color_logs={role:(output/f'game_{side}.log').read_text(encoding='utf-8',errors='replace') for side,role in ((1,'host'),(2,'client'))}
+            result['extra_colors']={role:bool(re.search(r'\[ExtraColor\] LOAD slot=0 character=0 .*matched=1 applied=1',data)) for role,data in color_logs.items()}
+            result['passed'] &= all(result['extra_colors'].values())
         result['passed'] &= run.returncode == 0
     except Exception as exc:
         result.update(passed=False, error=str(exc))
@@ -103,6 +108,7 @@ def main():
     parser.add_argument('--seconds', type=int, default=40, help='試験上限秒。条件達成で早期終了')
     parser.add_argument('--fixed-duration', action='store_true', help='指定秒まで継続する比較・耐久用')
     parser.add_argument('--selection-options', action='store_true', help='キャラ選択の設定メニューと背景ON/OFF混在を検査')
+    parser.add_argument('--extra-color',action='store_true',help='保存済みホストEXTRA 6の転送・両側適用を検査')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
     parser.add_argument('--input-handoff-trace', action='store_true', help='採取・公開からゲーム注入までを実QPCで記録する')
     parser.add_argument('--legacy-input-handoff', action='store_true', help='比較専用：旧3ms位相と戦闘待機中の追加Present')

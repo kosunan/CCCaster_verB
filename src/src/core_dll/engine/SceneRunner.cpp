@@ -1,4 +1,6 @@
 #include "core_dll/engine/ReplayFileName.hpp"
+#include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
+#include "core_dll/mbaa_mem/ExtraColorSelection.hpp"
 #include "core_dll/timing/SpinAssistScope.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
@@ -244,6 +246,11 @@ void PublishSpectatorConfirmed() {
 }
 
 void WriteGameInputs(GamePhase phase, uint32_t p1, uint32_t p2) {
+    if(phase==GamePhase::CharaSelect) {
+        auto first=GameInput::Unpack(p1),second=GameInput::Unpack(p2);
+        cccaster::training_palette::selection::Filter(first,second);
+        p1=first.Pack();p2=second.Pack();
+    }
     auto &mem = cccaster::game_interface::GameMem();
     if (phase == GamePhase::Rematch) {
         const int before = scene::rematchChoice.result;
@@ -904,6 +911,11 @@ void SceneRunner::Step() {
         Fail(Error::SyncTimeout, "training character menu hook unavailable");
         return;
     }
+    if(ctx.appMode==0 || ctx.appMode==1 || ctx.appMode==5) {
+        if(!cccaster::training_palette::Install()){Fail(Error::SyncTimeout,"extra color hook unavailable");return;}
+        cccaster::training_palette::selection::Configure(ctx.appMode,ctx.isHost);
+        cccaster::training_palette::selection::Tick();
+    }
     auto &inputBuffer = MatchInputBuffer::GetInstance();
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
     // Even DONOTWAIT Present can spend a frame inside the driver. Keep those
@@ -1148,6 +1160,7 @@ void SceneRunner::Step() {
             if (StepSelectionOptions({first.direction ? first.direction : second.direction,
                     static_cast<uint16_t>(first.buttons | second.buttons)}, true, true))
                 output1 = output2 = {};
+            cccaster::training_palette::selection::Filter(output1,output2);
         }
         if (ctx.appMode == 1 || ctx.appMode == 5) {
             const int requested = runtime.requestedTrainingDelay.exchange(-1);
@@ -1463,12 +1476,14 @@ void SceneRunner::Step() {
             SettingsCommands::rollback = local.rollback = peer.rollback;
         }
         local.ack = peer.revision;
+        cccaster::training_palette::selection::Publish(local.epoch,local.revision);
         const auto navFrame = runtime.stageRematch.active ? ++runtime.retryDriveFrames : frame;
         const auto remoteInput = preparingStageRematch ? GameInput{} : mem.DriveRemoteSelection(ctx.isHost, peer, navFrame);
         const bool settingsReady = ctx.isHost ? !SettingsCommands::pending.load() :
             (!local.commandSerial || peer.commandAck == local.commandSerial);
         const auto &hostState = ctx.isHost ? local : peer;
-        if (local.PeerHasFinal(peer) && hostState.stageConfirmed && settingsReady && state.isSynced)
+        if (local.PeerHasFinal(peer) && hostState.stageConfirmed && settingsReady && state.isSynced &&
+            cccaster::training_palette::selection::Ready(local.epoch,local.character,peer.character,local.revision,peer.revision))
             runtime.selectionReleased = true;
         if (runtime.broadcasting && !runtime.spectatorSelectionSent &&
             (runtime.selectionReleased || runtime.spectatorSelectionRevisions[0] != local.revision ||
@@ -1532,7 +1547,10 @@ void SceneRunner::Step() {
                       [&] { return cccaster::core::timer::WasapiClock::GetTimeTicks() >= due; }, due,
                       0, 200)) return;
         }
-        FrameControl::WriteInput(ctx.isHost ? own : remoteInput, ctx.isHost ? remoteInput : own);
+        auto first=ctx.isHost ? own : remoteInput,second=ctx.isHost ? remoteInput : own;
+        if(!runtime.stageRematch.active)
+            cccaster::training_palette::selection::Filter(first,second);
+        FrameControl::WriteInput(first,second);
         if (std::getenv("CCCASTER_PACE_TRACE")) {
             const auto now = cccaster::platform::RealMonotonicUs();
             DebugLog("[SelectPace] f=%u WT=%u interval=%lld local=%u peer=%u", frame, world,

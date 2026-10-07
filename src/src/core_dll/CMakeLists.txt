@@ -26,6 +26,9 @@ add_library(cccaster_hook SHARED
     mbaa_mem/TrainingMetrics.cpp
     mbaa_mem/StateSweep.cpp
     mbaa_mem/TrainingCharacterMenu.cpp
+    mbaa_mem/TrainingPaletteMenu.cpp
+    mbaa_mem/ExtraColorSelection.cpp
+    mbaa_mem/NativeColorMenu.cpp
     mbaa_mem/CombatStress.cpp
     mbaa_mem/NetplayMenu.cpp
     mbaa_mem/ReplaySave.cpp
@@ -46,6 +49,7 @@ add_library(cccaster_hook SHARED
 
     # === engine/ — メインロジック ===
     engine/SceneRunner.cpp
+    engine/ExtraColorStore.cpp
     engine/GameFrameOrchestrator.cpp
     engine/SceneFastBoot.cpp
     engine/SceneInputFilter.cpp
@@ -68,6 +72,7 @@ add_library(cccaster_hook SHARED
     ui/HudResources.cpp
     ui/StartupFontCache.cpp
     ui/TrainingCharacterView.cpp
+    ui/TrainingPaletteView.cpp
     ui/TrainingStandbyView.cpp
     ui/State_Ui_Logic.cpp
     ui/ScoreBroadcast.cpp
@@ -86,7 +91,7 @@ add_library(cccaster_hook SHARED
 target_include_directories(cccaster_hook PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Link everything to the hook DLL
-target_link_libraries(cccaster_hook PRIVATE minhook imgui d3d9 dwmapi dinput8 dxguid cfgmgr32 hid ws2_32 mswsock ole32 winmm bcrypt)
+target_link_libraries(cccaster_hook PRIVATE minhook imgui d3d9 dwmapi dinput8 dxguid cfgmgr32 hid ws2_32 mswsock ole32 winmm bcrypt comdlg32)
 target_include_directories(cccaster_hook PRIVATE
     ${minhook_SOURCE_DIR}/include
     ${imgui_SOURCE_DIR}

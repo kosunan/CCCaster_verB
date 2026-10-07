@@ -64,6 +64,7 @@ struct SyncPayload {
 #pragma pack(pop)
 static_assert(20 + sizeof(SyncPayload) + sizeof(cccaster::emblem::Chunk) <= 1200,
               "Emblem extension must fit a single conservative UDP datagram");
+static_assert(20+sizeof(SyncPayload)+sizeof(cccaster::training_palette::network::Chunk)<=1200);
 
 // ============================================================================
 // BuildUnifiedPacket — CC10統一ヘッダ + ペイロードを組み立てる
@@ -99,6 +100,7 @@ void SyncCodec::Initialize(bool isHost, int delayFrames, int maxRollback, Metron
 
 void SyncCodec::Reset() {
     _emblems.Start(cccaster::emblem::Store::Get(0));
+    _extraColors.Reset();_extraTurn=false;
     _peerClosed = false;
     _clock.Reset();
     _lastModelEvaluation = UINT32_MAX;
@@ -213,6 +215,11 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
             shared.peerLoadingSkipEpoch.store(epoch, std::memory_order_release);
     }
 
+    if(data.size()==UNIFIED_HEADER_SIZE+sizeof(SyncPayload)+sizeof(cccaster::training_palette::network::Chunk)) {
+        cccaster::training_palette::network::Chunk chunk;
+        std::memcpy(&chunk,data.data()+UNIFIED_HEADER_SIZE+sizeof(SyncPayload),sizeof(chunk));
+        _extraColors.Receive(chunk);
+    }
     if (data.size() == UNIFIED_HEADER_SIZE + sizeof(SyncPayload) + sizeof(cccaster::emblem::Chunk)) {
         cccaster::emblem::Chunk chunk;
         std::memcpy(&chunk, data.data() + UNIFIED_HEADER_SIZE + sizeof(SyncPayload), sizeof(chunk));
@@ -461,10 +468,17 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
     }
     BuildUnifiedPacket(packet, uint8_t(phaseToken), PKT_SYNC_TICK, now, &gtp, sizeof(gtp));
     cccaster::emblem::Chunk chunk;
-    if (_emblems.Next(now / 60, chunk)) {
+    _extraTurn=!_extraTurn;
+    if (!_extraTurn && _emblems.Next(now / 60, chunk)) {
         const auto offset = packet.size();
         packet.resize(offset + sizeof(chunk));
         std::memcpy(packet.data() + offset, &chunk, sizeof(chunk));
+    } else {
+        cccaster::training_palette::network::Chunk color;
+        if(_extraColors.Next(color,now/60)) {
+            const auto offset=packet.size();packet.resize(offset+sizeof(color));
+            std::memcpy(packet.data()+offset,&color,sizeof(color));
+        }
     }
 }
 

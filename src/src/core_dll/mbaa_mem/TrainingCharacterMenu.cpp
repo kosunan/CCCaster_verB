@@ -1,4 +1,5 @@
 #include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
+#include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
@@ -107,6 +108,16 @@ __attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t
     auto** begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
     auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
     std::rotate(begin, end - 1, end);
+    auto* paletteItem = static_cast<uint32_t*>(reinterpret_cast<void* (__cdecl*)(size_t)>(0x4E0177)(0x58));
+    if (paletteItem) {
+        reinterpret_cast<void (__stdcall*)(void*, const char*, const char*, int)>(0x429140)(
+            paletteItem, "COLOR PALETTE", "CC_PALETTE", 0);
+        paletteItem[0] = 0x53604C; paletteItem[1] = paletteItem[3] = 1;
+        cc_training_append(set + 0x48/4, paletteItem);
+        begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
+        end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+        std::rotate(begin + 1, end - 1, end);
+    }
     set[0x40/4] = set[0x44/4] = 0;
     menuSet = set;
     error = "";
@@ -161,7 +172,7 @@ bool Hook(uintptr_t address, const unsigned char* bytes, size_t length, void* re
 }
 }
 const Selection& Current() { return selection; }
-bool Busy() { return selection.open || pending; }
+bool Busy() { return selection.open || pending || training_palette::Active(); }
 const char* Error() { return error; }
 int PortraitIndex(uint32_t character) {
     if (!installed || character >= 101) return -1;
@@ -182,7 +193,7 @@ std::string CharacterName(uint32_t character) {
     return std::string(name, strnlen(name, 32));
 }
 bool ReadImage(const char* path, std::vector<uint8_t>& bytes) {
-    if (!installed) return false;
+    if (!game_build::RuntimeValidated()) return false;
     uint32_t* file = nullptr;
     if (!reinterpret_cast<int (__cdecl*)(const char*, void*, unsigned, unsigned)>(0x4C8B10)(path,&file,0,0) || !file)
         return false;
@@ -207,7 +218,12 @@ void ObserveMenu(uint32_t* menu, uint32_t* command) {
         }
         return;
     }
-    if (selection.open) { *command = 0; return; }
+    if (selection.open || training_palette::Active()) { *command = 0; return; }
+    if (*command == 1 && menu[0x40/4] == FindItem(menu,"CC_PALETTE")) {
+        training_palette::Open(*reinterpret_cast<uint8_t*>(0x55DF0F));
+        *command = 0;
+        return;
+    }
     if (*command == 1 && menu[0x40/4] == 0) {
         selection.Open({Choice{*reinterpret_cast<uint32_t*>(0x74D840), *reinterpret_cast<uint32_t*>(0x74D84C)},
                         Choice{*reinterpret_cast<uint32_t*>(0x74D86C), *reinterpret_cast<uint32_t*>(0x74D878)}},
@@ -224,7 +240,7 @@ namespace cccaster::game_interface {
 bool RealGameMemory::ConfigureTrainingMenu() {
     using namespace training_character;
     if (installed) return true;
-    if (!game_build::RuntimeValidated() || !ConfigureMenuObserver()) return false;
+    if (!game_build::RuntimeValidated() || !ConfigureMenuObserver() || !training_palette::Install()) return false;
     const unsigned char constructor[]{0x6a,0xff,0x68,0x67,0x75,0x51,0x00};
     const unsigned char reset[]{0x83,0xec,0x10,0xa1,0x58,0xb4,0x54,0x00};
     if (!Hook(0x47D3A0, constructor, sizeof(constructor), reinterpret_cast<void*>(Construct),
@@ -236,6 +252,7 @@ bool RealGameMemory::ConfigureTrainingMenu() {
 }
 bool RealGameMemory::StepTrainingMenu(GameInput& p1, GameInput& p2, bool configuring) {
     using namespace training_character;
+    training_palette::Step(p1,p2,configuring);
     const bool didChange = changed;
     changed = false;
     if (GameMode() != CC_GAME_MODE_IN_GAME) {

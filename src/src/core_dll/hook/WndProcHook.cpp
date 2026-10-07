@@ -1,4 +1,5 @@
 #include "core_dll/hook/WndProcHook.hpp"
+#include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/hook/MonitorPresent.hpp"
@@ -107,7 +108,8 @@ bool WndProcHook::Initialize(HWND hwnd) {
 
 bool WndProcHook::BlocksEscapeExit() {
     namespace options = cccaster::domain::scene::selection_options;
-    return drag.active || drag.escapeHeld || options::active.load() ||
+    return drag.active || drag.escapeHeld || options::active.load() || cccaster::training_palette::Active() ||
+        cccaster::training_palette::escapeHeld ||
         (options::heldKeys.load() & options::KeyMask(VK_ESCAPE));
 }
 

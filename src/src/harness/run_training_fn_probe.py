@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--baseline-dll', type=Path, help='比較用の修正前DLL（元ファイルは保全）')
     parser.add_argument('--inspect-seconds', type=int, default=0)
     parser.add_argument('--menu-inspect', type=int, default=0)
-    parser.add_argument('--menu-down', type=int, default=10, help='CHARACTER追加後の標準キャラ選択復帰位置')
+    parser.add_argument('--menu-down', type=int, default=11, help='CHARACTER・COLOR PALETTE追加後の標準キャラ選択復帰位置。旧DLLとの比較時は明示指定')
     parser.add_argument('--runahead', choices=['0','1'], help='先行表示の比較用設定。省略時は製品の既定')
     parser.add_argument('--check-dummy', action='store_true', help='DUMMY中の入力最適化停止と通常へ戻した再開を確認')
     parser.add_argument('--menu-only', action='store_true')
@@ -214,9 +214,9 @@ def main():
             sample('reset_after_character_select')
         if args.check_dummy:
             replay_marker = '[InputRunahead] restored=' if args.runahead == '1' else '[LocalInputRollback] END '
-            # CHARACTER / RESTART / ENEMY。ゲームメモリは通常のメニュー経由でのみ変更。
+            # CHARACTER / COLOR PALETTE / BATTLE SETTINGS / ENEMY。通常のメニュー経由でのみ変更。
             button(vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT)
-            for _ in range(2): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
+            for _ in range(3): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
             for _ in range(5): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST,.07)
             button(vg.DS4_BUTTONS.DS4_BUTTON_CROSS)
             if read(0x74D7F8,2)!=5: raise RuntimeError('DUMMYへ移行できない')
@@ -226,7 +226,7 @@ def main():
                 raise RuntimeError('DUMMY中に入力最適化が継続した')
             button(vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT)
             # Reopening the native menu selects its first row again.
-            for _ in range(2): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
+            for _ in range(3): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
             for _ in range(5): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST,.07)
             button(vg.DS4_BUTTONS.DS4_BUTTON_CROSS)
             if read(0x74D7F8,2)!=0: raise RuntimeError('通常設定へ復帰できない')

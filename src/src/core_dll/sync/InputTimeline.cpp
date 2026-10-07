@@ -220,7 +220,15 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
                 value = game_interface::DirectInputHook::GetLocalPlayerInput(host_, true);
             }
             if (testing::IsScriptedInputEnabled() && phase_ == game_interface::GamePhase::CharaSelect) {
-                if (std::getenv("CCCASTER_TEST_RANDOM_STAGE") || std::getenv("CCCASTER_TEST_FIXED_STAGE"))
+                if(std::getenv("CCCASTER_TEST_EXTRA_COLOR")) {
+                    // 元の一覧の7ページ目へ進み、保存済み42番(EXTRA 6)を選ぶ。
+                    const auto f=next_-base_;GameInput test{};
+                    if(f==180 || f==240 || (f>=360 && f%24==18))test.buttons=CC_BUTTON_CONFIRM;
+                    if(host_ && f==280)test.direction=4;
+                    if(host_ && f>=292 && f<=340 && (f-292)%12==0)test.direction=2;
+                    value=test.Pack();
+                }
+                else if (std::getenv("CCCASTER_TEST_RANDOM_STAGE") || std::getenv("CCCASTER_TEST_FIXED_STAGE"))
                     value = GameInput{0, static_cast<uint16_t>((next_ - base_) % 24 == 18 ? CC_BUTTON_CONFIRM : 0)}.Pack();
                 if (std::getenv("CCCASTER_TEST_SELECTION_IDLE") && !host_ && next_ - base_ < 420)
                     value = 0; // 自分の操作が相手の7秒無操作に引きずられない実機試験。

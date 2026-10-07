@@ -1,6 +1,7 @@
 #include "core_dll/ui/HudResources.hpp"
 #include "core_dll/ui/StartupFontCache.hpp"
 #include "core_dll/ui/TrainingCharacterView.hpp"
+#include "core_dll/ui/TrainingPaletteView.hpp"
 #include "core_dll/ui/HudInputSpace.hpp"
 #include "core_dll/ui/HudDrawSpace.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
@@ -95,6 +96,7 @@ void Prepare(IDirect3DDevice9* device) {
                                    : emblem::Store::Players(mode == 2);
     for (unsigned side = 0; side < 2; ++side) textures[side].Update(device, players[side].get());
     domain::ui::training_character_view::Prepare(device);
+    domain::ui::training_palette_view::Prepare(device);
 }
 void FinishInput() { inputSpace.End(); }
 void RenderDrawData() {
@@ -106,6 +108,7 @@ void RenderDrawData() {
 void Release() {
     for (auto& texture : textures) texture.Release();
     domain::ui::training_character_view::Release();
+    domain::ui::training_palette_view::Release();
 }
 Layout CurrentLayout() { return layout; }
 ImFont* Font(unsigned role, float scale) {

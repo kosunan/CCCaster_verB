@@ -390,6 +390,7 @@ def main():
     parser.add_argument('--test-root', type=Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')
     parser.add_argument('--network', default='15,25,5', help='片道遅延min,maxミリ秒,損失率（既定15,25,5）')
     parser.add_argument('--spectator', action='store_true')
+    parser.add_argument('--extra-color', action='store_true', help='ホストEXTRA 6を選び、再戦後の両側適用を確認')
     parser.add_argument('--spin-prototype', action='store_true', help='入力公開・採取の共有スピン試作を有効化する')
     parser.add_argument('--legacy-present', action='store_true', help='モニター同期を無効にし、元の単独Present待機を検証する')
     parser.add_argument('--input-runahead', choices=['1', '2', '12'], help='指定した対戦端だけで1F先行表示を検証')
@@ -420,6 +421,7 @@ def main():
     service = Service()
     threading.Thread(target=service.serve_forever, daemon=True).start()
     env = clean_environment()
+    if args.extra_color: env['CCCASTER_TEST_EXTRA_COLOR'] = '1'
     if args.spin_prototype:
         env.update(CCCASTER_SPIN_PUBLICATION='1', CCCASTER_SPIN_CAPTURE='1',
                    CCCASTER_PACE_TRACE='1')
@@ -473,6 +475,16 @@ def main():
             run = subprocess.run(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
         result['exit_code'] = run.returncode
         result.update(evaluate(out, config))
+        if args.extra_color:
+            result['extra_colors'] = {}
+            for side in (1, 2):
+                data = (out / f'game_{side}.log').read_text(encoding='utf-8', errors='replace')
+                # 最後の選択合意以降にも適用が必要。初戦だけの成功では通さない。
+                last_commit = data.rfind('[Select] COMMIT ')
+                applied = re.findall(r'\[ExtraColor\] LOAD slot=0 character=0 .*matched=1 applied=1', data)
+                result['extra_colors'][str(side)] = len(applied) >= 2 and last_commit >= 0 and bool(
+                    re.search(r'\[ExtraColor\] LOAD slot=0 character=0 .*matched=1 applied=1', data[last_commit:]))
+            result['passed'] &= all(result['extra_colors'].values())
         if args.native_loop_comparison or args.native_loop_trace:
             result['native_loops'] = analyze_native_loops(
                 [(out / f'game_{side}.log').read_text(encoding='utf-8', errors='replace')

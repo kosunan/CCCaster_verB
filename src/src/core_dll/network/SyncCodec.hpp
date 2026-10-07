@@ -23,6 +23,7 @@
 #include <vector>
 #include <string>
 #include "shared_contracts/PlayerEmblem.hpp"
+#include "core_dll/engine/ExtraColorNetwork.hpp"
 #include "core_dll/sync/NetplayClock.hpp"
 
 namespace cccaster {
@@ -33,6 +34,8 @@ class Metronome; // 前方宣言
 
 class SyncCodec {
     cccaster::emblem::Exchange _emblems;
+    cccaster::training_palette::network::Exchange _extraColors;
+    bool _extraTurn=false;
   public:
     // ─── 初期化 ─────────────────────────────────────────
     void Initialize(bool isHost, int delayFrames, int maxRollback, Metronome *metronome);

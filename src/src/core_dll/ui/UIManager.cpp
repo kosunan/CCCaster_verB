@@ -5,6 +5,8 @@
 
 #include "core_dll/ui/UIManager.hpp"
 #include "core_dll/ui/TrainingCharacterView.hpp"
+#include "core_dll/ui/TrainingPaletteView.hpp"
+#include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/ui/TrainingStandbyView.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/ui/State_Ui_Logic.hpp"
@@ -39,6 +41,7 @@ void UIManager::Render(UiPhase phase) {
         ControllerUiLogic::Suspend();
     }
     if (StateUiLogic::IsMappingWindowOpen()) { ControllerUiView::Draw(); return; }
+    if (training && phase == UiPhase::InGame && training_palette_view::Draw()) return;
     if (training && phase == UiPhase::InGame && training_character_view::Draw()) return;
     if (cccaster::domain::session::SceneRunner::AppMode() == 4 && phase != UiPhase::InGame) return;
     switch (phase) {
@@ -100,6 +103,14 @@ bool UIManager::IsMappingWindowOpen() {
 // ============================================================================
 
 int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_KILLFOCUS) cccaster::training_palette::escapeHeld = false;
+    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_ESCAPE && cccaster::training_palette::escapeHeld) {
+        cccaster::training_palette::escapeHeld = false;
+        ImGui_ImplWin32_WndProcHandler(hWnd,uMsg,wParam,lParam);
+        return 1;
+    }
+    if (uMsg == WM_KEYDOWN && wParam == VK_ESCAPE && cccaster::training_palette::Active())
+        cccaster::training_palette::escapeHeld = true;
     if (training_standby_view::Active() && (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN ||
         uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP || uMsg == WM_CHAR)) {
         if (uMsg == WM_KEYDOWN) training_standby_view::Key(static_cast<unsigned>(wParam), (lParam & (1u << 30)) != 0);
@@ -145,6 +156,8 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam)) {
         return 1; // ImGui が消費
     }
+    if (cccaster::training_palette::Active() && wParam != VK_F4 &&
+        (uMsg == WM_KEYDOWN || uMsg == WM_KEYUP || uMsg == WM_CHAR)) return 1;
 
     // (2) ホットキー処理
     if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) {
