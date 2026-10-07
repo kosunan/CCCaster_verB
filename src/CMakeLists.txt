@@ -168,6 +168,16 @@ if(WIN32)
     if(MSVC)
         set_property(TARGET cccaster_p2p_protocol cccaster_p2p PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+endif()
+
+# ゲーム・DLLに依存しない単調時計／精密待機部品。
+add_library(cccaster_precise_wait STATIC src/core_dll/common/PreciseWait.cpp src/core_dll/common/DeadlineExecutor.cpp)
+target_include_directories(cccaster_precise_wait PUBLIC ${CMAKE_SOURCE_DIR}/src)
+if(NOT WIN32)
+    target_link_libraries(cccaster_precise_wait PUBLIC Threads::Threads)
+endif()
+
+if(WIN32)
     # 実機用の成果物。DLL 注入と D3D9/DirectInput/MinHook を含むため Windows 専用。
     add_subdirectory(src/launcher)
     add_subdirectory(src/core_dll)

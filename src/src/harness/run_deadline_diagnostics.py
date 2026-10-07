@@ -15,7 +15,7 @@ from run_stage_rematch import free_match_port
 from test_p2p_service import Service
 
 
-def run(output, seconds, detailed=False, cpu_policy='pinned', fixed_stage=None):
+def run(output, seconds, detailed=False, cpu_policy='pinned', fixed_stage=None, extra_env=None, network=None):
     if cpu_policy not in ('pinned', 'unpinned'):
         raise ValueError('CPU配置はpinned/unpinnedのみ')
     root = Path(__file__).resolve().parents[3]
@@ -36,12 +36,16 @@ def run(output, seconds, detailed=False, cpu_policy='pinned', fixed_stage=None):
         env['CCCASTER_DISABLE_GAME_CPU_PIN'] = '1'
     if fixed_stage is not None:
         env['CCCASTER_TEST_FIXED_STAGE'] = str(fixed_stage)
+    if extra_env:
+        env.update(extra_env)
     command = [shutil.which('pwsh'), '-NoProfile', '-File',
                str(root / 'src/src/harness/run_bounded_real_pair.ps1'),
                '-Seconds', str(seconds), '-Port', str(free_match_port()),
                '-UseConnectionCode', '-CloseSide', '1', '-TestRoot', str(runtime),
                '-OutputDirectory', str(output)]
-    result = dict(passed=False, injected_network=None, time_scale=1,
+    if network:
+        command += ['-Network', network]
+    result = dict(passed=False, injected_network=network, time_scale=1,
                   cpu_policy=cpu_policy, fixed_stage=fixed_stage,
                   command=command, binaries=binaries,
                   environment={k: v for k, v in env.items() if k.startswith('CCCASTER_')})
@@ -49,7 +53,7 @@ def run(output, seconds, detailed=False, cpu_policy='pinned', fixed_stage=None):
     started = time.monotonic()
     try:
         result['exit_code'] = subprocess.run(command, env=env).returncode
-        result['sync'] = compare(output, require_rollback=False)
+        result['sync'] = compare(output, require_rollback=bool(network))
         result['passed'] = result['exit_code'] == 0 and result['sync']['passed']
     except Exception as exc:
         result['error'] = str(exc)

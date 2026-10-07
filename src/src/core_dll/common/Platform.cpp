@@ -3,7 +3,7 @@
 // ============================================================================
 // Platform.cpp — OS 依存処理の実装
 //
-// windows.h を include してよいのはこのファイルだけ（Platform.hpp は含めない）。
+// windows.hは実装ファイル内に隔離する（Platform.hppには含めない）。
 // ============================================================================
 
 #include "core_dll/common/Platform.hpp"
@@ -23,6 +23,7 @@
 #include <cstring>
 #include <vector>
 #include "core_dll/timing/GameCpuGuard.hpp"
+#include "core_dll/timing/BoundaryCpuPlan.hpp"
 #include "core_dll/common/DebugLog.hpp"
 
 namespace cccaster::platform {
@@ -38,6 +39,80 @@ uint32_t ThreadId() {
     return GetCurrentThreadId();
 #else
     return 0;
+#endif
+}
+uint32_t CurrentPhysicalCoreMask() {
+#ifdef _WIN32
+    GROUP_AFFINITY current{};
+    if (GetActiveProcessorGroupCount() != 1 || GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) > 32 ||
+        !GetThreadGroupAffinity(GetCurrentThread(), &current) || current.Group != 0 || !current.Mask) return 0;
+    DWORD bytes = 0;
+    GetLogicalProcessorInformation(nullptr, &bytes);
+    std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> cores(
+        (bytes + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) - 1) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    if (bytes && GetLogicalProcessorInformation(cores.data(), &bytes))
+        for (size_t i = 0; i < bytes / sizeof(cores[0]); ++i)
+            if (cores[i].Relationship == RelationProcessorCore && !(current.Mask & ~cores[i].ProcessorMask))
+                return uint32_t(cores[i].ProcessorMask);
+#endif
+    return 0;
+}
+uint32_t BoundaryCpuCandidates(uint32_t gameCore) {
+#ifdef _WIN32
+    if (!gameCore || GetActiveProcessorGroupCount() != 1 ||
+        GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) > 32) return 0;
+    DWORD_PTR process = 0, system = 0;
+    DWORD bytes = 0;
+    GetLogicalProcessorInformation(nullptr, &bytes);
+    std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> entries(
+        (bytes + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) - 1) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &process, &system) || !bytes ||
+        !GetLogicalProcessorInformation(entries.data(), &bytes)) return 0;
+    std::vector<uint32_t> cores;
+    for (const auto &entry : entries)
+        if (entry.Relationship == RelationProcessorCore) cores.push_back(uint32_t(entry.ProcessorMask));
+    return core::timer::BoundaryCpuCandidates(uint32_t(process), gameCore, cores.data(), cores.size());
+#else
+    (void)gameCore;
+    return 0;
+#endif
+}
+TimingCpuPin::TimingCpuPin(int preferredCpu, uint32_t excludedCores) {
+#ifdef _WIN32
+    if (!excludedCores || preferredCpu < -1 || preferredCpu >= 32 ||
+        GetActiveProcessorGroupCount() != 1 || GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) > 32)
+        return;
+    DWORD_PTR process = 0, system = 0;
+    DWORD bytes = 0;
+    GetLogicalProcessorInformation(nullptr, &bytes);
+    std::vector<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> cores(
+        (bytes + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION) - 1) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &process, &system) || !bytes ||
+        !GetLogicalProcessorInformation(cores.data(), &bytes)) return;
+    for (size_t i = 0; i < bytes / sizeof(cores[0]); ++i) {
+        const auto &core = cores[i];
+        if (core.Relationship != RelationProcessorCore || (core.ProcessorMask & (excludedCores | 1u))) continue;
+        auto allowed = core.ProcessorMask & process;
+        if (preferredCpu >= 0) allowed &= uintptr_t{1} << preferredCpu;
+        if (!allowed) continue;
+        auto lease = AcquireGameCore(uint32_t(core.ProcessorMask));
+        if (!lease) continue;
+        const auto single = allowed & (~allowed + 1);
+        const auto previous = SetThreadAffinityMask(GetCurrentThread(), single);
+        if (!previous) { ReleaseGameCore(lease); continue; }
+        previous_ = previous; lease_ = lease;
+        cpu_ = 0;
+        while (!(single & (uintptr_t{1} << cpu_))) ++cpu_;
+        break;
+    }
+#else
+    (void)preferredCpu; (void)excludedCores;
+#endif
+}
+TimingCpuPin::~TimingCpuPin() {
+#ifdef _WIN32
+    if (previous_) SetThreadAffinityMask(GetCurrentThread(), previous_);
+    ReleaseGameCore(static_cast<HANDLE>(lease_));
 #endif
 }
 TimingThread::TimingThread(const char *role) {
@@ -183,46 +258,6 @@ TimingThread::~TimingThread() {
 }
 
 // ============================================================================
-// RealMonotonicUs
-// ============================================================================
-int64_t RealMonotonicUs() {
-    return RealMonotonicTicks() / 60;
-}
-int64_t RealMonotonicTicks() {
-#ifdef _WIN32
-    // マジックスタティックで一度だけ取得する。旧実装の
-    // `static LARGE_INTEGER s_freq; if (s_freq.QuadPart == 0) ...` は
-    // 32bit ビルドで 64bit ストアが2回に割れるため、複数スレッドから
-    // 呼ばれると理論上 torn read になる。呼び出し元が
-    // ゲームスレッド・通信スレッド・harness main と増えたので直しておく。
-    static const int64_t freq = [] {
-        LARGE_INTEGER f{};
-        QueryPerformanceFrequency(&f);
-        return static_cast<int64_t>(f.QuadPart);
-    }();
-    if (freq == 0)
-        return 0; // 取得失敗時のゼロ除算回避
-
-    LARGE_INTEGER now;
-    QueryPerformanceCounter(&now);
-
-    // 素直に `q * 1000000 / freq` と書くと int64 の乗算が先に溢れる。
-    // QPC は起動時からの経過なので、10MHz なら **約 10.7 日で UB に入る**。
-    // 商と剰余に分けて桁を落としてから掛ける。
-    const int64_t q = now.QuadPart;
-    // 10MHz QPCでは厳密な整数倍。32bitのソフトウェア除算2回を省く。
-    // 符号付きticksが表現できる範囲は従来の変換と同じ。
-    if (freq == 10000000)
-        return q * 6;
-    return (q / freq) * 60000000LL + (q % freq) * 60000000LL / freq;
-#else
-    timespec ts{};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return static_cast<int64_t>(ts.tv_sec) * 60000000LL + ts.tv_nsec * 60LL / 1000;
-#endif
-}
-
-// ============================================================================
 // 待機
 // ============================================================================
 void SleepMs(uint32_t ms) {
@@ -238,47 +273,6 @@ void RealSleepMs(uint32_t ms) {
     ::Sleep(static_cast<DWORD>(ms));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-#endif
-}
-
-void PreciseWaitUs(int64_t durationUs) {
-    if (durationUs <= 0)
-        return;
-#ifdef _WIN32
-    struct Timer {
-        HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr, 0x2, TIMER_ALL_ACCESS);
-        Timer() {
-            if (!handle)
-                handle = CreateWaitableTimerW(nullptr, FALSE, nullptr);
-        }
-        ~Timer() {
-            if (handle)
-                CloseHandle(handle);
-        }
-    };
-    thread_local Timer timer;
-    const auto deadline = RealMonotonicUs() + durationUs;
-    if (timer.handle && durationUs > 150) {
-        LARGE_INTEGER due;
-        due.QuadPart = -(durationUs - 100) * 10;
-        if (SetWaitableTimer(timer.handle, &due, 0, nullptr, nullptr, FALSE))
-            WaitForSingleObject(timer.handle, static_cast<DWORD>(durationUs / 1000 + 10));
-    } else if (!timer.handle && durationUs >= 1000)
-        RealSleepMs(static_cast<uint32_t>(durationUs / 1000));
-    while (RealMonotonicUs() < deadline)
-        CpuRelax();
-#else
-    std::this_thread::sleep_for(std::chrono::microseconds(durationUs));
-#endif
-}
-
-void CpuRelax() {
-#if defined(_WIN32)
-    YieldProcessor();
-#elif defined(__i386__) || defined(__x86_64__)
-    __builtin_ia32_pause();
-#else
-    std::this_thread::yield();
 #endif
 }
 

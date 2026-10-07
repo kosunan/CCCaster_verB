@@ -20,6 +20,7 @@ InputTimeline &InputTimeline::GetInstance() {
 }
 void InputTimeline::Reset() {
     std::lock_guard lock(mutex_);
+    ++generation_;
     active_ = false;
     overflow_ = false;
     sampled_ = 0;
@@ -32,6 +33,7 @@ void InputTimeline::Reset() {
 }
 void InputTimeline::Begin(uint32_t base, uint32_t firstCapture, game_interface::GamePhase phase, bool host, int64_t firstTicks) {
     std::lock_guard lock(mutex_);
+    ++generation_;
     phaseParts_ = rateParts_ = 0;
     modelRevision_ = 0; modelReady_ = false;
     follower_.Reset();
@@ -59,6 +61,7 @@ void InputTimeline::Begin(uint32_t base, uint32_t firstCapture, game_interface::
 }
 void InputTimeline::Pause() {
     std::lock_guard lock(mutex_);
+    ++generation_;
     active_ = false;
     PublishSchedule();
     netplay::NetplaySession::GetInstance().WakeInputClock();
@@ -66,16 +69,34 @@ void InputTimeline::Pause() {
 void InputTimeline::Resume() {
     std::lock_guard lock(mutex_);
     if (!overflow_ && base_) {
+        ++generation_;
         active_ = true;
         netplay::NetplaySession::GetInstance().WakeInputClock();
     }
 }
 void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
-    const auto nowUs = nowTicks / 60; // 診断ログだけに使用。
+    PumpTicksImpl(nowTicks, periodCorrectionParts, nullptr, -1);
+}
+InputTimeline::CaptureTarget InputTimeline::NextCapture() {
+    std::lock_guard lock(mutex_);
+    return {generation_, next_, active_ ? cadence_.NextTicks() : 0};
+}
+bool InputTimeline::TryPump(const CaptureTarget &target, int64_t periodCorrectionParts, int worker) {
+    return PumpTicksImpl(0, periodCorrectionParts, &target, worker);
+}
+bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionParts,
+                                  const CaptureTarget *target, int worker) {
     const auto scale = testing::TimeScale();
     static const bool stages = std::getenv("CCCASTER_PACE_TRACE") != nullptr;
     const auto entered = stages ? platform::RealMonotonicUs() : 0;
-    std::unique_lock lock(mutex_);
+    std::unique_lock lock(mutex_, std::defer_lock);
+    if (target) {
+        if (!lock.try_lock()) return false;
+        if (target->generation != generation_ || target->frame != next_ ||
+            target->due != cadence_.NextTicks() || !active_) return true;
+        nowTicks = timer::WasapiClock::GetTimeTicks();
+    } else lock.lock();
+    const auto nowUs = nowTicks / 60; // 診断ログだけに使用。
     const auto locked = stages ? platform::RealMonotonicUs() : 0;
     int64_t pollUs = 0, publishUs = 0;
     const uint32_t firstSample = next_;
@@ -85,7 +106,7 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
     std::array<CaptureSend, 32> sendSamples;
     unsigned sendSampleCount = 0, sendSampleDropped = 0;
 
-    if (!active_ || nowTicks < cadence_.NextTicks()) return;
+    if (!active_ || nowTicks < cadence_.NextTicks()) return false;
     netplay::SharedSyncState::InputSchedule peer;
     {
         auto &shared = netplay::NetplaySession::GetMutableState();
@@ -130,7 +151,7 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
             overflow_ = true;
             active_ = false;
             PublishSchedule();
-            return;
+            return true;
         }
         starting_ = false;
         const bool missed = nowTicks - cadence_.NextTicks() >= periodTicks_ / scale;
@@ -318,9 +339,13 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
         domain::session::DebugLog(
             "[CaptureStage] f=%u lock=%lld poll=%lld work=%lld published=%lld late=%lld", firstSample,
             locked - entered, pollUs, publishUs - locked, publishUs, nowUs - firstDue);
+    if (target && stages && sampled)
+        domain::session::DebugLog("[CaptureRace] f=%u worker=%d due=%lld captured=%lld published=%lld",
+            firstSample, worker, target->due, nowTicks, publishUs * 60);
     // OSによる採取遅延を、実測した過去入力であるかのように扱わない。
     if (sampled > 1)
         domain::session::DebugLog("[InputClock] late ticks=%u held previous input", sampled - 1);
+    return true;
 }
 } // namespace cccaster::core::sync
 

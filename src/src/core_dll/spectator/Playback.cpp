@@ -130,7 +130,7 @@ bool Playback::Step(Phase phase) {
         // 待機中も完成画像だけを提示する。ゲーム状態・入力は進めない。
         for (unsigned i = 0; i != 20; ++i) {
             core::timer::IdlePresentation::Pump(10000);
-            platform::PreciseWaitUs(500);
+            platform::RealSleepUs(500);
         }
     }
     if (!have_) {

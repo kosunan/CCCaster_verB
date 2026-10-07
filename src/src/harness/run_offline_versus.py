@@ -23,6 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--inspect-seconds', type=int, default=0)
     parser.add_argument('--inputs-only', action='store_true', help='入力・D設定・ポーズを確認したら終了し、KO/再戦は重ねない')
+    parser.add_argument('--timing-trace', action='store_true', help='補助時計と通常更新の診断を記録する')
     args = parser.parse_args()
     import vgamepad as vg
     from vgamepad.win import vigem_client as vc
@@ -190,6 +191,8 @@ def main():
             (caster / f'Wireless Controller__{guid}.ini').write_text(mapping, encoding='utf-8')
         env = {key: value for key, value in os.environ.items() if not key.startswith('CCCASTER_')}
         env.update(CCCASTER_INPUT_DIAGNOSTIC='1', CCCASTER_INPUT_TRACE='1', CCCASTER_STARTUP_TRACE='1', CCCASTER_NTFY_SERVER='http://127.0.0.1:1')
+        if args.timing_trace:
+            env.update(CCCASTER_UPDATE_CADENCE='1', CCCASTER_FRAME_TIMING_TRACE='1')
         if log.exists():
             log.replace(out / 'previous_game.log')
         with (out / 'cli.log').open('w') as stream:

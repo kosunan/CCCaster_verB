@@ -75,7 +75,7 @@ void Metronome::SleepUntil(int64_t targetTicks, bool preciseSleep, int64_t spinG
             // 通常戦闘は従来の1ms待機+2msスピンを維持する。トレーニングの
             // キャラセレだけは短いスピン余裕まで高分解能タイマーで眠る。
             if (preciseSleep)
-                cccaster::platform::PreciseWaitUs(spinGuardUs == 2000 ? 1000 :
+                cccaster::platform::RealSleepUs(spinGuardUs == 2000 ? 1000 :
                     std::min<int64_t>(500, std::max<int64_t>(1, (remain - spinGuardUs * 60) / 60)));
             else cccaster::platform::RealSleepMs(1);
             timer::OfflinePacing::AfterSleep();
@@ -98,6 +98,9 @@ int64_t Metronome::WaitForNextTick(bool skipWait, int64_t preparationTicks, int6
     if (cadence_.NextTicks() < now - intervalUs * 180)
         cadence_.ResetTicks(now);
     cadence_.AdvanceCorrected(GetFrameCorrectionParts(), cccaster::testing::TimeScale());
+
+    if (!skipWait && preparationTicks > 0)
+        timer::WasapiClock::PrepareRelease(cadence_.NextTicks());
 
     if (!skipWait) {
         SleepUntil(cadence_.NextTicks() - std::max<int64_t>(0, preparationTicks),

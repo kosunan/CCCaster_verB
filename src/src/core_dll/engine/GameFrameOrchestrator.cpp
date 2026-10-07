@@ -252,7 +252,7 @@ void GameFrameOrchestrator::OnPresent(LPDIRECT3DDEVICE9 pDevice) {
             if (presentDue > now && remaining <= Timing::PresentBudgetUs()) {
 
                 if (remaining > Timing::PresentSpinGuardUs)
-                    cccaster::platform::PreciseWaitUs(remaining - Timing::PresentSpinGuardUs);
+                    cccaster::platform::RealSleepUs(remaining - Timing::PresentSpinGuardUs);
                 // 短区間は相関QPCで待つ。音声APIや共有mutexをスピン回数だけ呼ばない。
 
                 // 最終判定はWASAPI由来時計。補間速度差で早く提示しない。

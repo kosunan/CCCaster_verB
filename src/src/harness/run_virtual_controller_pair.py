@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--seconds', type=int, default=105)
     parser.add_argument('--port', type=int, default=17870)
     parser.add_argument('--scenario', type=int, choices=(0, 1, 2), default=0)
+    parser.add_argument('--spin-prototype', action='store_true')
     parser.add_argument('--network', default='15,25,5')
     parser.add_argument('--idle-select', type=float, default=18,
                         help='選択前の無操作秒数。ランチャーの旧15秒終了の回帰確認')
@@ -148,6 +149,9 @@ def main():
             connect_pads()
             time.sleep(2)
         env = clean_environment()
+        if args.spin_prototype:
+            env.update(CCCASTER_SPIN_PUBLICATION='1', CCCASTER_SPIN_CAPTURE='1',
+                       CCCASTER_PACE_TRACE='1', CCCASTER_DISABLE_MONITOR_PRESENT='1')
         service = Service()
         threading.Thread(target=service.serve_forever, daemon=True).start()
         env['CCCASTER_NTFY_SERVER'] = f'http://127.0.0.1:{service.server_port}'
@@ -241,7 +245,7 @@ def main():
             service.server_close()
         (out / 'ini_before.json').write_text(json.dumps(ini_before, indent=2), encoding='utf-8')
     for script, extra in [('compare_rollback_pair.py', []), ('verify_native_retry_pair.py', [str(args.scenario)])]:
-        completed = subprocess.run([sys.executable, str(ROOT / 'src/src/harness' / script), str(out), *extra],
+        completed = subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'src/src/harness' / script), str(out), *extra],
                                    capture_output=True, text=True, encoding='utf-8', errors='replace')
         (out / (script + '.txt')).write_text(completed.stdout + completed.stderr, encoding='utf-8')
         result[script] = completed.returncode == 0

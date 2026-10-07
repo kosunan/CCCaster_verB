@@ -11,7 +11,7 @@
 //
 // 【設計上の制約】
 //   このヘッダは `windows.h` を include しない。Win32 の型が漏れると、
-//   include した側が結局 Windows 専用になるため。実装は Platform.cpp に隠す。
+//   include した側が結局 Windows 専用になるため。実装は.cppに隠す。
 //
 // SleepMs/RealSleepMsはともに実時間でCPUを休止する。
 // ゲームEXEのフレーム待機は命令分岐でバイパスし、OSの時計・Sleepを加工しない。
@@ -19,6 +19,7 @@
 // ============================================================================
 
 #include <cstdint>
+#include "core_dll/common/PreciseWait.hpp"
 
 namespace cccaster::platform {
 // MMCSSへの参加は呼出しスレッドだけ。プロセス全体やOS設定は変更しない。
@@ -38,12 +39,25 @@ class TimingThread {
     unsigned affinityChanges_ = 0;
 };
 
+// 境界時計用。ゲームが単一物理コアに固定されていなければ0を返す。
+uint32_t CurrentPhysicalCoreMask();
+uint32_t BoundaryCpuCandidates(uint32_t gameCore);
+// CPU0・ゲームの物理コアを避け、CCCaster間のリースも取得する。
+class TimingCpuPin {
+  public:
+    TimingCpuPin(int preferredCpu, uint32_t excludedCores);
+    ~TimingCpuPin();
+    int Cpu() const { return cpu_; }
+    TimingCpuPin(const TimingCpuPin &) = delete;
+    TimingCpuPin &operator=(const TimingCpuPin &) = delete;
+  private:
+    int cpu_ = -1;
+    uintptr_t previous_ = 0;
+    void *lease_ = nullptr;
+};
+
 // ── 時刻 ───────────────────────────────────────────────────
-/// 実時間の単調時刻 [μs]。
-/// Windowsでは加工していないQPCを使う。
-int64_t RealMonotonicUs();
-// 1/60µs単位。QPCの分解能を整数µsへ落とさない。
-int64_t RealMonotonicTicks();
+// 時計と精密待機は独立部品PreciseWait.hppで宣言する。
 // 診断用識別子。時計スピンの外側で取得する。
 uint32_t ProcessId();
 uint32_t ThreadId();
@@ -54,12 +68,6 @@ void SleepMs(uint32_t ms);
 
 /// 実時間のSleep。CPUを明示的に手放したい箇所で使う。
 void RealSleepMs(uint32_t ms);
-
-// 高分解能待機タイマーでCPUを返し、最後の短区間だけ実QPCで確認する。
-void PreciseWaitUs(int64_t durationUs);
-
-/// スピンウェイト中に CPU に譲る（x86 では PAUSE 命令）。
-void CpuRelax();
 
 // ── タイマー分解能 ─────────────────────────────────────────
 /// Windows のタイマー分解能を 1ms に上げる。Linux では何もしない。

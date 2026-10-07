@@ -11,12 +11,14 @@
 #include <cstdint>
 #include <thread>
 #include <atomic>
+#include <memory>
 #include "core_dll/timing/ClockProjection.hpp"
 #include "core_dll/timing/ThreadSignal.hpp"
 
 namespace cccaster {
 namespace core {
 namespace timer {
+class BoundaryRace;
 
 class WasapiClock {
   public:
@@ -35,9 +37,21 @@ class WasapiClock {
     static int64_t GetTimeTicks(ReadSample *sample);
     // 最終200µs用。WASAPIの公開モデルを一度だけ読み、実QPCで待つ。
     static int64_t WaitForRelease(int64_t deadlineTicks);
-    struct ReleaseSample { int64_t ready = 0, due = 0, exit = 0, readyLate = 0, ppm = 0; };
+    // 入力公開待ち/粗待機の前に締切を補助時計へ渡す。ゲームスレッド専用。
+    static void PrepareRelease(int64_t deadlineTicks);
+    // 初期化はゲームスレッドのコア固定後だけ。公開済みプールの取得は入力側も可能。
+    static void InitializeHelpers();
+    static BoundaryRace *SharedHelpers();
+    struct ReleaseSample {
+        int64_t ready, due, exit, readyLate, ppm;
+        int64_t boundary, armed, received;
+        int workers, valid, covered, winner, requested;
+        int64_t stamps[4];
+        int64_t completed, publicationUpper;
+        bool upperFromReader;
+    };
     // ゲームスレッド専用。次Presentで整形し、最終スピンに追加採時を挟まない。
-    inline static ReleaseSample releaseSample{0, 0, 0, 0, 0};
+    inline static ReleaseSample releaseSample{};
 
     /// WASAPI IAudioClock が利用可能かどうか。
     bool IsAvailable() const {
@@ -59,6 +73,10 @@ class WasapiClock {
     void ReleaseAudio();
     void Worker();
     ClockProjection projection_;
+    std::unique_ptr<BoundaryRace> boundary_;
+    std::atomic<BoundaryRace *> sharedBoundary_{nullptr};
+    bool boundaryInitialized_ = false;
+    int64_t preparedAudio_ = 0, preparedQpc_ = 0, preparedPpm_ = 0;
     std::atomic<bool> stopping_{false};
     ThreadSignal wake_;
     std::thread worker_;

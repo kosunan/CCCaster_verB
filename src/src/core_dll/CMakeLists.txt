@@ -98,4 +98,4 @@ if(WIN32)
     target_link_options(cccaster_hook PRIVATE -static -static-libgcc -static-libstdc++ -Wl,--kill-at)
 endif()
 
-target_link_libraries(cccaster_hook PRIVATE cccaster_transport)
+target_link_libraries(cccaster_hook PRIVATE cccaster_transport cccaster_precise_wait)

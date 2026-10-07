@@ -1,4 +1,5 @@
 #include "core_dll/engine/ReplayFileName.hpp"
+#include "core_dll/timing/SpinAssistScope.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
 #include "core_dll/spectator/Playback.hpp"
@@ -69,7 +70,8 @@ void BeginNormalFrame(int64_t due, uint32_t frame, bool play) {
     const auto actual = due ? cccaster::core::timer::WasapiClock::WaitForRelease(due)
                             : cccaster::platform::RealMonotonicTicks();
     Timing::BeginFrame(actual, frame);
-    if (cadence.Armed()) cadence.Capture(actual);
+    // 試作境界の採時と、ゲームスレッドが処理へ戻った実時刻を混同しない。
+    if (cadence.Armed()) cadence.Capture(due ? cccaster::core::timer::WasapiClock::releaseSample.received : actual);
     cccaster::diagnostics::FramePipeline::Begin(frame, actual);
     // Controlled preparation spikes exercise the real schedule, without changing
     // either clock or recorded timestamps. Disabled unless explicitly requested.
@@ -397,7 +399,7 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
                  cccaster::core::timer::WasapiClock::GetTimeTicks() < readyHintTicks + 60 * readyHintSpinGuardUs))
                 cccaster::platform::CpuRelax();
             else
-                cccaster::platform::PreciseWaitUs(std::min<int64_t>(500, remaining));
+                cccaster::platform::RealSleepUs(std::min<int64_t>(500, remaining));
         });
     if (probe) Probe::sample.bounded = Probe::Now();
     if (waitReason) Probe::RecordInputWait(runtime.sequence.Next(),waitReason,inputWaitBegin,Probe::Now());
@@ -437,6 +439,30 @@ bool Wait(const char *reason, int64_t timeoutUs, Predicate predicate, int64_t de
                                               : Error::SyncTimeout,
          reason);
     return false;
+}
+bool WaitForCapture(const char *reason, uint32_t frame, int64_t hint, int64_t guard = 1000) {
+    using namespace cccaster::core::timer;
+    auto &timeline = cccaster::core::sync::InputTimeline::GetInstance();
+    const auto original = [&] { return timeline.HasCaptured(frame) || timeline.HasOverflowed(); };
+    if (!SpinPrototype::Publication()) return Wait(reason, 3000000, original, 0, hint, 0, guard);
+    const auto now = WasapiClock::GetTimeTicks();
+    const auto estimate = cccaster::platform::RealMonotonicTicks() + hint - now;
+    SpinObservationScope assist(true, SpinChannels::Publication, estimate - guard * 60, estimate + guard * 60,
+        [](void *arg, int) {
+            return cccaster::core::sync::InputTimeline::GetInstance().HasCaptured(uint32_t(*static_cast<int64_t *>(arg)));
+        }, frame);
+    const auto workers = assist.Workers();
+    // 公開をacquireで読んだ補助時計の結果もrelease/acquireで受け取る。
+    const auto result = Wait(reason, 3000000, [&] { return assist.Ready() || original(); }, 0, hint, 0, guard);
+    const auto actual = cccaster::platform::RealMonotonicTicks();
+    assist.Finish();
+    int winner = -1;
+    const auto observed = assist.Observed(actual, &winner);
+    static const bool trace = SpinPrototype::Flag("CCCASTER_PACE_TRACE");
+    if (trace && result) cccaster::diagnostics::DeferredNumericLog::Log(
+        "[PublicationRace] f=%u workers=%d winner=%d observed=%lld actual=%lld",
+        frame, workers, winner, observed, actual);
+    return result;
 }
 } // namespace
 
@@ -507,6 +533,16 @@ void SceneRunner::FlushCadence() {
              "[FrameStart] f=%u ready=%lld due=%lld exit=%lld actual=%lld readyLate=%lld ppm=%lld" :
              "[ReleaseGate] f=%u ready=%lld due=%lld exit=%lld actual=%lld readyLate=%lld ppm=%lld",
              s.frame, release.ready, release.due, release.exit, s.now, release.readyLate, release.ppm);
+    if (release.requested) {
+        DebugLog("[DeadlineWork] f=%u worker=%d due=%lld start=%lld done=%lld pub=%lld seen=%lld reader=%d armed=%lld",
+            s.frame, release.winner, release.due, release.boundary, release.completed,
+            release.publicationUpper, release.received, int(release.upperFromReader), release.armed);
+        DebugLog("[BoundaryRace] f=%u requested=%d workers=%d valid=%d covered=%d winner=%d armed=%lld due=%lld boundary=%lld game=%lld received=%lld",
+            s.frame, release.requested, release.workers, release.valid, release.covered, release.winner,
+            release.armed, release.due, release.boundary, release.exit, release.received);
+        DebugLog("[BoundarySlots] f=%u s0=%lld s1=%lld s2=%lld s3=%lld", s.frame,
+            release.stamps[0], release.stamps[1], release.stamps[2], release.stamps[3]);
+    }
     cccaster::diagnostics::DeferredNumericLog::Flush();
     DebugLog("[UpdateCadence] n=%u f=%u prev=%u ticks=%lld interval=%lld error=%lld consecutive=%d spike=%d dropped=%u evidence=%d play=%d",
              s.ordinal, s.frame, s.previous, s.now, s.interval, s.error, int(s.consecutive),
@@ -842,6 +878,8 @@ void SceneRunner::Step() {
         (runtime.context->appMode != 2 && OfflinePacing::Mode() == OfflinePacing::Variant::Normal)) {
         thread_local cccaster::platform::TimingThread priority("game");
         priority.MaintainAffinity();
+        if (cccaster::core::timer::SpinPrototype::Any())
+            cccaster::core::timer::WasapiClock::InitializeHelpers();
     }
     auto &ctx = *runtime.context;
     auto &mem = cccaster::game_interface::GameMem();
@@ -1252,8 +1290,7 @@ void SceneRunner::Step() {
         if (!runtime.sequence.CanAdvance() || timeline.HasOverflowed()) {
             Fail(Error::SyncTimeout, "retry input range exhausted"); return;
         }
-        if (!Wait("local retry clock", 3000000, [&] { return timeline.HasCaptured(frame); },
-                  0, timeline.NextDeadlineTicks())) return;
+        if (!WaitForCapture("local retry clock", frame, timeline.NextDeadlineTicks())) return;
         uint32_t input = 0;
         if (!MatchInputBuffer::GetInstance().TryGetLocalInput(frame, input)) {
             Fail(Error::SyncTimeout, "local retry input missing"); return;
@@ -1379,8 +1416,8 @@ void SceneRunner::Step() {
             Fail(Error::SyncTimeout, "character select input range exhausted");
             return;
         }
-        if (!runtime.stageRematch.active && !Wait("local selection clock", 3000000, [&] { return timeline.HasCaptured(frame); },
-                  0, timeline.NextDeadlineTicks(), 0, 200)) return;
+        if (!runtime.stageRematch.active && !WaitForCapture("local selection clock", frame,
+                  timeline.NextDeadlineTicks(), 200)) return;
         uint32_t localInput = 0;
         if (!runtime.stageRematch.active && !buf.TryGetLocalInput(frame, localInput)) {
             Fail(Error::SyncTimeout, "local selection input missing"); return;
@@ -1751,10 +1788,10 @@ void SceneRunner::Step() {
     } else if (!timeline.IsActive())
         timeline.Resume();
     const auto captureHint = timeline.NextDeadlineTicks();
-    if (!Wait(
-            "metronome input", 3000000,
-            [&] { return timeline.HasCaptured(runtime.sequence.Capture()) || timeline.HasOverflowed(); }, 0,
-            captureHint))
+    if (!timeline.HasCaptured(runtime.sequence.Capture()))
+        cccaster::core::timer::WasapiClock::PrepareRelease(captureHint +
+            60 * cccaster::core::timer::FrameTiming::BattleInputPhaseUs());
+    if (!WaitForCapture("metronome input", runtime.sequence.Capture(), captureHint))
         return;
     if (timeline.HasOverflowed()) {
         Fail(Error::SyncTimeout, "input clock backlog exhausted");

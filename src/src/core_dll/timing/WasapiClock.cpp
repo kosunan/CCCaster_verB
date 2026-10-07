@@ -23,6 +23,7 @@
 //   決定性検証にのみ使うこと。
 
 #include "core_dll/timing/WasapiClock.hpp"
+#include "core_dll/timing/BoundaryRace.hpp"
 #include "core_dll/common/Platform.hpp"
 
 #include "core_dll/timing/ClockContinuity.hpp"
@@ -261,21 +262,64 @@ int64_t WasapiClock::GetTimeUs() {
 int64_t WasapiClock::GetTimeTicks() {
     return GetTimeTicks(nullptr);
 }
-int64_t WasapiClock::WaitForRelease(int64_t deadlineTicks) {
-    ClockAnchor anchor;
-    GetInstance().projection_.Read(anchor);
-    auto now = platform::RealMonotonicTicks();
-    const auto due = anchor.DeadlineTicks(deadlineTicks, now);
-    releaseSample = {now, due, 0, anchor.AtTicks(now) - deadlineTicks, anchor.ppm};
-    while (now < due) {
-#if defined(__i386__) || defined(__x86_64__)
-        __builtin_ia32_pause(); // 最終ループはcall/retを挟まずPAUSE命令1個。
-#else
-        platform::CpuRelax();
-#endif
-        now = platform::RealMonotonicTicks();
+BoundaryRace *WasapiClock::SharedHelpers() {
+    return GetInstance().sharedBoundary_.load(std::memory_order_acquire);
+}
+void WasapiClock::InitializeHelpers() {
+    if (!BoundaryRace::Requested()) return;
+    auto &inst = GetInstance();
+    if (!inst.boundaryInitialized_) {
+        inst.boundaryInitialized_ = true;
+        try { inst.boundary_ = std::make_unique<BoundaryRace>(); }
+        catch (const std::exception &) { domain::session::DebugLog("[BoundaryPool] initialization_failed=1 active=0"); }
+        if (inst.boundary_ && inst.boundary_->Enabled())
+            inst.sharedBoundary_.store(inst.boundary_.get(), std::memory_order_release);
     }
+}
+void WasapiClock::PrepareRelease(int64_t deadlineTicks) {
+    if (!BoundaryRace::Requested() || !deadlineTicks) return;
+    InitializeHelpers();
+    auto &inst = GetInstance();
+    if (!inst.boundary_ || !inst.boundary_->Enabled()) return;
+    if (inst.preparedAudio_ == deadlineTicks) return;
+    ClockAnchor anchor;
+    inst.projection_.Read(anchor);
+    const auto now = platform::RealMonotonicTicks();
+    inst.preparedAudio_ = deadlineTicks;
+    inst.preparedQpc_ = anchor.DeadlineTicks(deadlineTicks, now);
+    inst.preparedPpm_ = anchor.ppm;
+    inst.boundary_->Arm(inst.preparedQpc_, now);
+}
+int64_t WasapiClock::WaitForRelease(int64_t deadlineTicks) {
+    if (BoundaryRace::Requested()) PrepareRelease(deadlineTicks);
+    auto &inst = GetInstance();
+    const bool assisted = inst.boundary_ && inst.boundary_->Enabled() && inst.boundary_->HasWork();
+    ClockAnchor anchor;
+    inst.projection_.Read(anchor);
+    auto now = platform::RealMonotonicTicks();
+    const auto due = assisted ? inst.preparedQpc_ : anchor.DeadlineTicks(deadlineTicks, now);
+    releaseSample = {now, due, 0, anchor.AtTicks(now) - deadlineTicks, anchor.ppm};
+    now = platform::PreciseWaitUntilTicks(due);
     releaseSample.exit = now;
+    releaseSample.boundary = releaseSample.received = now;
+    if (assisted) {
+        const auto result = inst.boundary_->Read(now);
+        releaseSample.exit = result.game;
+        releaseSample.boundary = result.boundary;
+        releaseSample.armed = result.armed;
+        releaseSample.workers = result.workers;
+        releaseSample.valid = result.valid;
+        releaseSample.covered = result.ready;
+        releaseSample.winner = result.winner;
+        releaseSample.completed = result.completed;
+        releaseSample.publicationUpper = result.publicationUpper;
+        releaseSample.upperFromReader = result.upperFromReader;
+        releaseSample.requested = BoundaryRace::Requested();
+        releaseSample.ppm = inst.preparedPpm_;
+        for (int i = 0; i < 4; ++i) releaseSample.stamps[i] = result.stamps[i];
+        releaseSample.received = platform::RealMonotonicTicks();
+        return result.boundary;
+    }
     return now;
 }
 int64_t WasapiClock::GetTimeTicks(ReadSample *sample) {

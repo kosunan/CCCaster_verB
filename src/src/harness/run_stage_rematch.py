@@ -390,6 +390,8 @@ def main():
     parser.add_argument('--test-root', type=Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')
     parser.add_argument('--network', default='15,25,5', help='片道遅延min,maxミリ秒,損失率（既定15,25,5）')
     parser.add_argument('--spectator', action='store_true')
+    parser.add_argument('--spin-prototype', action='store_true', help='入力公開・採取の共有スピン試作を有効化する')
+    parser.add_argument('--legacy-present', action='store_true', help='モニター同期を無効にし、元の単独Present待機を検証する')
     parser.add_argument('--input-runahead', choices=['1', '2', '12'], help='指定した対戦端だけで1F先行表示を検証')
     parser.add_argument('--full-intro', action='store_true', help='登場演出を自然終了させ、描画・周期を記録する')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
@@ -418,6 +420,11 @@ def main():
     service = Service()
     threading.Thread(target=service.serve_forever, daemon=True).start()
     env = clean_environment()
+    if args.spin_prototype:
+        env.update(CCCASTER_SPIN_PUBLICATION='1', CCCASTER_SPIN_CAPTURE='1',
+                   CCCASTER_PACE_TRACE='1')
+    if args.legacy_present:
+        env.update(CCCASTER_DISABLE_MONITOR_PRESENT='1', CCCASTER_PACE_TRACE='1')
     if args.input_runahead: env['CCCASTER_TEST_INPUT_RUNAHEAD_SIDES'] = args.input_runahead
     env.update(CCCASTER_NTFY_SERVER=f'http://127.0.0.1:{service.server_port}',
                CCCASTER_TEST_RETRY_QUICK='1', CCCASTER_TEST_NATIVE_RETRY='1',
