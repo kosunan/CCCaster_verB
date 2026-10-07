@@ -11,6 +11,12 @@ class SelectionOptionsTests(unittest.TestCase):
             events += [f'BACKGROUND animation={value} mode=20' for value in (['OFF', 'ON'] if side == 1 else ['OFF'])]
             hud = ['DETAILED', 'HIDDEN', 'DETAILED'] if side == 1 else ['DETAILED', 'HIDDEN']
             events += [f'HUD mode={value}' for value in hud]
+            events += ['DISPLAY action=resolution applied=1 size=800x600 fullscreen=0',
+                       'DISPLAY action=resolution applied=1 size=960x720 fullscreen=0',
+                       'DISPLAY action=fullscreen applied=1 size=960x720 fullscreen=1',
+                       'DISPLAY action=fullscreen applied=1 size=960x720 fullscreen=0']
+            for name in ('CHARACTER_FILTER', 'SCREEN_FILTER', 'ASPECT_RATIO', 'VIEW_FPS'):
+                events += [f'NATIVE option={name} value=1', f'NATIVE option={name} value=0']
             events += ['CLOSE', f'BATTLE animation={1 if side == 1 else 0} delay=3 hud={hud[-1]}']
             text = '\n'.join('[SelectionOptions] ' + event for event in events)
             result.append(text + '\n[Select] LOCAL epoch=65536\n')
@@ -42,6 +48,13 @@ class SelectionOptionsTests(unittest.TestCase):
 
     def test_missing_or_wrong_hud_does_not_pass(self):
         for old, new in [('HUD mode=HIDDEN', 'HUD mode=NORMAL'), ('hud=HIDDEN', 'hud=DETAILED')]:
+            logs = self.logs()
+            logs[1] = logs[1].replace(old, new)
+            self.assertFalse(verify(logs)['passed'])
+
+    def test_display_and_native_failures(self):
+        for old, new in [('applied=1', 'applied=0'), ('size=800x600', 'size=960x720'),
+                         ('NATIVE option=VIEW_FPS value=1', ''), ('NATIVE option=ASPECT_RATIO value=1', 'NATIVE option=ASPECT_RATIO value=7')]:
             logs = self.logs()
             logs[1] = logs[1].replace(old, new)
             self.assertFalse(verify(logs)['passed'])

@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import time
@@ -45,6 +46,39 @@ def evaluate(folder, config):
         shutil.copyfile(folder / 'game_3.log', view / 'viewer.log')
         result['spectator'] = compare_spectator(view)
         result['passed'] &= result['spectator']['passed']
+    if config.get('input_runahead'):
+        details = {}
+        for side in (1, 2):
+            log = (folder / f'game_{side}.log').read_text(encoding='utf-8')
+            restored = [int(n) for n in re.findall(r'\[InputRunahead\] restored=(\d+) equal=1', log)]
+            active = str(side) in config['input_runahead']
+            # 短縮再戦は操作可能な戦闘が数Fだけ。通常P2Pでは継続適用も必須にする。
+            minimum = 1 if config.get('scenario') else 120
+            details[str(side)] = dict(expected=active, restored=max(restored, default=0),
+                passed=('[InputRunahead] FAIL' not in log and (max(restored, default=0) >= minimum if active else not restored)))
+        result['input_runahead'] = details
+        result['passed'] &= all(d['passed'] for d in details.values())
+    if config.get('present_rollback'):
+        expected=config['present_rollback'];details={}
+        for side in (1,2):
+            log=(folder / f'game_{side}.log').read_text(encoding='utf-8')
+            active=[tuple(map(int,m)) for m in re.findall(r'\[PresentRollback\] ACTIVE lead=(\d+) D=(\d+) epoch=(\d+)',log)]
+            checks=[tuple(map(int,m)) for m in re.findall(r'\[PresentRollback\] CHECK frame=(\d+) from=(\d+) local=(\d+) remote=(\d+) lead=(\d+) world=(\d+)',log)]
+            local=sum(c[2] for c in checks);remote=sum(c[3] for c in checks)
+            valid=bool(active and checks and all(a[0]==expected['lead'] and
+                (expected.get('delay') is None or a[1]==expected['delay']) for a in active))
+            if expected['lead'] and expected.get('delay')==0: valid &= local>0 and remote>0
+            if not expected['lead']: valid &= local==0 and remote>0 and all(c[4]==0 for c in checks)
+            details[str(side)]=dict(active=active,checks=len(checks),local_corrections=local,remote_corrections=remote,passed=valid)
+        result['present_rollback']=details
+        result['passed'] &= all(d['passed'] for d in details.values())
+    if config.get('native_input_writes'):
+        from verify_native_input_writes import verify
+        result['native_input_writes'] = {str(side): verify(
+            (folder / f'game_{side}.log').read_text(encoding='utf-8'),
+            minimum=1 if config.get('scenario') else 120,
+            require_corrections=config.get('present_rollback', {}).get('delay') == 0) for side in (1,2)}
+        result['passed'] &= all(d['passed'] for d in result['native_input_writes'].values())
     return result
 
 

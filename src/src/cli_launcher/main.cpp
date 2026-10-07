@@ -60,6 +60,7 @@ int main(int argc, char *argv[]) {
     }
     bool isHeadless = false;
     bool trainingMode = false;
+    bool localVersusMode = false;
     bool replayMode = false;
     bool spectatorMode = false;
     bool isIpv6 = false;
@@ -90,6 +91,9 @@ int main(int argc, char *argv[]) {
             isHeadless = true;
         } else if (arg == "--replay") {
             replayMode = true;
+            isHeadless = true;
+        } else if (arg == "--offline") {
+            localVersusMode = true;
             isHeadless = true;
         } else if (arg == "--training") {
             trainingMode = true;
@@ -137,8 +141,9 @@ int main(int argc, char *argv[]) {
                   << "パケットロス=" << simLossPercent << "%\n";
     }
 
-    cccaster::main_app::controller::MainController appController(isHeadless, isIpv6, trainingMode || replayMode || isHost, targetIp, port,
-        connectionHash, false, replayMode ? cccaster::public_api::IpcGameMode::Replay
+    cccaster::main_app::controller::MainController appController(isHeadless, isIpv6, trainingMode || localVersusMode || replayMode || isHost, targetIp, port,
+        connectionHash, false, localVersusMode ? cccaster::public_api::IpcGameMode::LocalVersus
+                             : replayMode ? cccaster::public_api::IpcGameMode::Replay
                              : spectatorMode ? cccaster::public_api::IpcGameMode::Spectator
                              : trainingMode ? cccaster::public_api::IpcGameMode::Training
                                             : cccaster::public_api::IpcGameMode::Versus);

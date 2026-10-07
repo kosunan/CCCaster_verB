@@ -229,3 +229,11 @@ void WndProcHook::PumpMessages() {} // harnessにはゲーム窓がない。
 namespace cccaster::domain::ui::training_standby_view {
 bool Step(game_interface::GameInput) { return false; }
 }
+
+#include "core_dll/hook/DisplaySettings.hpp"
+namespace cccaster::game_interface::borderless {
+DisplaySettings GetDisplaySettings() { return {}; }
+bool ChangeResolution(int) { return false; }
+bool SetFullscreen(bool) { return false; }
+void SetScaleFilter(bool) {}
+}

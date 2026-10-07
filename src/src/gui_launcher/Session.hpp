@@ -47,7 +47,7 @@ struct Session {
     std::filesystem::path peerCodePath;
     std::string ipResults[2];
     Message status = {"Ready when you are.", "開始できます。"};
-    bool booting = false, cancelling = false, training = false, spectating = false, replay = false;
+    bool booting = false, cancelling = false, training = false, spectating = false, replay = false, localVersus = false;
     bool revealCloseLog = false;
     bool failed = false;
     bool hosting = false, incomingNotice = false;
@@ -143,6 +143,9 @@ struct Session {
         if (replay) status = log.find("[ REPLAY READY ]") != std::string::npos
             ? Message{"Replay viewer is running. Press F4 in the game for controller settings.", "リプレイ観戦を起動しました。ゲーム内のF4でコントローラ設定を開けます。"}
             : Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."};
+        else if (localVersus) status = log.find("[ OFFLINE READY ]") != std::string::npos
+            ? Message{"Offline versus is running. Both players use this game window.", "オフライン対戦を起動しました。同じゲーム画面で1P・2Pを操作してください。"}
+            : Message{"Launching offline versus...", "オフライン対戦を起動しています..."};
         else if (training && log.find("[ TRAINING READY ]") != std::string::npos)
             status = {"Training is running. Switch to the game window.", "トレーニングを起動しました。ゲーム画面に切り替えてください。"};
         else if (training) status = {"Launching training...", "トレーニングを起動しています..."};
@@ -221,7 +224,7 @@ struct Session {
         if (log.size() > 24000) log.erase(0, log.size() - 24000);
     }
     void Start(bool host, int port, const char* hash, bool offline = false, bool watch = false, int preference = 0, bool replayMode = false,
-               const cccaster::matching::Event* matched = nullptr, bool trainingStandby = false) {
+               const cccaster::matching::Event* matched = nullptr, bool trainingStandby = false, bool localVersusMode = false) {
         if (Running()) return;
         standby.Close(); standbyTraining = false;
         failed = true; // 準備段階の失敗もメイン画面で強調する。
@@ -255,13 +258,13 @@ struct Session {
         if(!normalized.empty())hash=normalized.c_str();
         const auto workerPath = dir / L"CCCaster_B.exe";
         std::wstring args = L"\"" + workerPath.wstring() + L"\" --gui-worker \"" + eventName + L"\" \"" + logPath.wstring() + L"\" ";
-        args += replayMode ? L"replay 0" : offline ? L"training 0" : watch ? L"spectate " + std::wstring(hash, hash + std::strlen(hash))
+        args += localVersusMode ? L"offline 0" : replayMode ? L"replay 0" : offline ? L"training 0" : watch ? L"spectate " + std::wstring(hash, hash + std::strlen(hash))
             : host ? L"host " + std::to_wstring(port) : L"join " + std::wstring(hash, hash + std::strlen(hash));
         if(host&&!offline) args += L" " + std::to_wstring(preference);
         else if(!host&&!watch) args += L" " + std::to_wstring(port);
         if (matched) args += matched->allowSpectators ? L" matched 1" : L" matched 0";
         if (trainingStandby) {
-            if (!offline || replayMode || !standby.Create()) {
+            if (!offline || replayMode || localVersusMode || !standby.Create()) {
                 status = {"Could not prepare training standby.", "トレーニング待受の準備に失敗しました。"};
                 CloseHandle(cancel); cancel = nullptr; return;
             }
@@ -285,10 +288,11 @@ struct Session {
         cccaster::notification::CloseIncomingToast();
         cccaster::notification::FlashIncomingWindow(guiWindow, false);
         failed = false;
-        log.clear(); code.clear(); connectionStage.clear(); p2pStage.clear(); p2pService.clear(); manualCode.clear(); watchCode.clear(); watchStage.clear(); training = offline && !replayMode; spectating = watch; replay = replayMode; booting = offline; cancelling = false;
+        log.clear(); code.clear(); connectionStage.clear(); p2pStage.clear(); p2pService.clear(); manualCode.clear(); watchCode.clear(); watchStage.clear(); training = offline && !replayMode && !localVersusMode; spectating = watch; replay = replayMode; localVersus = localVersusMode; booting = offline; cancelling = false;
         ipResults[0].clear(); ipResults[1].clear();
         peerNoticeSeen = localNoticeSeen = revealCloseLog = false;
-        status = replayMode ? Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."}
+        status = localVersusMode ? Message{"Launching offline versus...", "オフライン対戦を起動しています..."}
+                         : replayMode ? Message{"Launching replay viewer...", "リプレイ観戦を起動しています..."}
                          : offline ? Message{"Launching training...", "トレーニングを起動しています..."}
                          : watch ? Message{"Checking spectator standby...", "観戦待機の準備をしています..."}
                          : host ? Message{"Creating your connection code...", "接続コードを作成しています..."}

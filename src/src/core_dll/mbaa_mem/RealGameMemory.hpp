@@ -28,6 +28,8 @@ class RealGameMemory final : public IGameMemory {
     bool StepTrainingMenu(GameInput&, GameInput&, bool) override;
     int StageAnimation() const override;
     bool SetStageAnimation(bool) override;
+    int DisplayOption(NativeDisplayOption) const override;
+    bool SetDisplayOption(NativeDisplayOption, int) override;
     bool SelectionDelayEditable(bool) const override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;
@@ -53,6 +55,8 @@ class RealGameMemory final : public IGameMemory {
     bool BeginReplay(uint32_t, uint32_t) override;
     void EndReplay() override;
     void BeginSimulation(uint32_t) override;
+    bool ConfigureInputWriteMonitor(bool) override;
+    cccaster::sync::InputWriteHistory* InputWrites() override;
     bool PrepareBattleAudio() override;
     bool SetIntroPreview(bool) override;
     bool CanPredict() const override;
@@ -64,6 +68,10 @@ class RealGameMemory final : public IGameMemory {
     size_t SnapshotSize() const override;
     bool SaveSnapshot(std::span<char>) override;
     bool LoadSnapshot(std::span<char>) override;
+    size_t PresentationSnapshotSize() const override;
+    bool SavePresentationSnapshot(std::span<char>) override;
+    bool LoadPresentationSnapshot(std::span<char>) override;
+    void SetPresentationPreview(bool) override;
     size_t TrainingSnapshotSize() const override;
     bool SaveTrainingSnapshot(std::span<char>) override;
     bool LoadTrainingSnapshot(std::span<char>) override;

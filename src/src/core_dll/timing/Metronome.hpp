@@ -24,8 +24,8 @@ class Metronome {
     // ─── ゲームスレッド精密待機 ──────────────────────────
     /// 次ティックまで Sleep+CPUスピン で精密待機する。
     /// @param skipWait true: 待機せず次ティック時刻のみ進める（キャッチアップ用）
-    /// preparationTicks: 締切前に入力準備を済ませる余裕（1/60µs）。
-    /// 戻り値は次フレームの絶対締切。準備後の最終ゲートでも同じ締切を使う。
+    /// preparationTicks: 最終QPC待機へ切り替える余裕（1/60µs）。
+    /// 戻り値は次フレームの絶対締切。通常経路では入力準備前に残りを待つ。
     int64_t WaitForNextTick(bool skipWait = false, int64_t preparationTicks = 0,
                             int64_t spinGuardUs = 2000);
 

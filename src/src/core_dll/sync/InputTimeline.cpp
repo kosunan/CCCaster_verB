@@ -211,18 +211,22 @@ void InputTimeline::PumpTicks(int64_t nowTicks, int64_t periodCorrectionParts) {
                     // D・背景とHUD3モードを操作。HUDは双方で異なる値のまま戦闘へ進む。
                     const auto f = next_ - base_;
                     GameInput test{};
-                    if (f < 600) {
+                    if (f < 960) {
                         if (host_) {
-                            if (f == 20 || f == 300) test.buttons = CC_BUTTON_START;
+                            if (f == 20 || f == 680) test.buttons = CC_BUTTON_START;
                             if (f == 50 || f == 140 || f == 280) test.direction = 4;
                             if (f == 80 || f == 170 || f == 230 || f == 260) test.direction = 6;
                             if (f == 110 || f == 200) test.direction = 2;
                         } else {
-                            if (f == 320 || f == 530) test.buttons = CC_BUTTON_START;
+                            if (f == 320 || f == 920) test.buttons = CC_BUTTON_START;
                             if (f == 350 || f == 470 || f == 500) test.direction = 6;
                             if (f == 380 || f == 440) test.direction = 2;
                             if (f == 410) test.direction = 4;
                         }
+                        const auto d = f - (host_ ? 300 : 540);
+                        if (d == 0 || d == 60 || d == 140 || d == 200 || d == 260 || d == 320) test.direction = 2;
+                        if (d == 20 || d == 120 || d == 180 || d == 240 || d == 300 || d == 360) test.direction = 4;
+                        if (d == 40 || d == 80 || d == 160 || d == 220 || d == 280 || d == 340) test.direction = 6;
                     } else if (f % 24 == 18) test.buttons = CC_BUTTON_CONFIRM;
                     value = test.Pack();
                 }

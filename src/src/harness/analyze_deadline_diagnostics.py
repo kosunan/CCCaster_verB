@@ -41,7 +41,8 @@ def release_metrics(row):
 
 def analyze(path, trace=None):
     tables = read(path)
-    releases = {s['f']: s for s in tables['ReleaseGate']}
+    boundary = 'FrameStart' if tables['FrameStart'] else 'ReleaseGate'
+    releases = {s['f']: s for s in tables[boundary]}
     updates = [s for s in tables['UpdateCadence'] if s['consecutive'] and s['play']]
     frames = {s['f'] for s in updates}
     rows = []
@@ -62,6 +63,7 @@ def analyze(path, trace=None):
                          **metrics,
                          ready=current['ready'], due=current['due'], actual=current['actual']))
     result = dict(source=str(path.resolve()), samples=len(rows),
+                  boundary=boundary,
                   ready_margin_clock='WASAPI projection at arrival; legacy logs fall back to QPC',
                   release_late_scope='unclamped QPC deadlines only; late arrivals are recorded separately',
                   dropped=max((s['dropped'] for s in tables['UpdateCadence']), default=0),
@@ -84,7 +86,7 @@ def analyze(path, trace=None):
         pid, tid = ids.pop()
         result.update(pid=pid, tid=tid)
         windows = []
-        # 準備スピンと別の、native LeaveCriticalSection直後の最終200µs待機を照合。
+        # FrameStartは入力準備前、旧ReleaseGateはnative CS解放後の最終待機。
         for s in rows:
             if s['deadline_was_clamped']:
                 # 本来のQPC締切は記録されていない。到着後だけを帰属し、遅着を隠さない。

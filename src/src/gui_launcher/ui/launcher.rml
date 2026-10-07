@@ -10,9 +10,10 @@
     <button class="nav-item active" data-page="matching" aria-current="page" id="nav-matching"><span class="nav-number">01</span><span data-en="Matching">マッチング</span></button>
     <button class="nav-item" data-page="spectate" id="nav-spectate"><span class="nav-number">02</span><span data-en="Spectate">観戦</span></button>
     <button class="nav-item" data-page="training" id="nav-training"><span class="nav-number">03</span><span data-en="Training">トレーニング</span></button>
-    <button class="nav-item" data-page="replay" id="nav-replay"><span class="nav-number">04</span><span data-en="Replay">リプレイ観戦</span></button>
-    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">05</span><span data-en="Controllers">コントローラ設定</span></button>
-    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">06</span><span data-en="How to play">操作ガイド</span></button>
+    <button class="nav-item" data-page="offline" id="nav-offline"><span class="nav-number">04</span><span data-en="Offline versus">オフライン対戦</span></button>
+    <button class="nav-item" data-page="replay" id="nav-replay"><span class="nav-number">05</span><span data-en="Replay">リプレイ観戦</span></button>
+    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">06</span><span data-en="Controllers">コントローラ設定</span></button>
+    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">07</span><span data-en="How to play">操作ガイド</span></button>
     <div class="nav-bottom"><button id="language" class="quiet">English</button></div>
   </nav>
   <main id="content">
@@ -71,6 +72,14 @@
       <div class="page-heading"><h2 data-en="Training">トレーニング</h2><span class="pill" data-en="Offline">オフライン</span></div>
       <div class="card feature"><p data-en="Practice as Player 1.">1Pで練習を始めます。</p><button id="training" class="primary launch" data-en="Start training">トレーニングを開始</button>
         <div class="tips"><p><kbd>F4</kbd><span data-en="Controller settings">コントローラ設定</span></p><p><kbd>Ctrl + 0–8</kbd><span data-en="Input delay">入力ディレイの変更</span></p><p><kbd>F1</kbd><span data-en="Cycle information display">情報表示の切替</span></p><p><kbd>FN1 / FN2</kbd><span data-en="Save / load a practice state">練習状態の保存／読込み</span></p></div>
+      </div>
+    </section>
+    <section class="page hidden" id="page-offline">
+      <div class="page-heading"><h2 data-en="Offline versus">オフライン対戦</h2><span class="pill" data-en="Local 2 players">同じPCで2人対戦</span></div>
+      <div class="card feature"><p data-en="Play as Player 1 and Player 2 on this PC. No connection code is needed.">同じPCで1P・2Pを操作して対戦します。接続コードは不要です。</p>
+        <button id="offline" class="primary launch" data-en="Start offline versus">オフライン対戦を開始</button>
+                    <p class="subtle" data-en="Assign each player's controls in Controller settings or press F4 on the character select screen.">コントローラ設定、またはキャラ選択画面のF4で、1P・2Pそれぞれの操作を割り当ててください。</p>
+        <div class="tips"><p><kbd>START / F1</kbd><span data-en="Character select: delay, background and display settings">キャラ選択：ディレイ・背景・表示の設定</span></p><p><kbd>START</kbd><span data-en="In battle: pause menu">対戦中：ポーズメニュー</span></p></div>
       </div>
     </section>
     <section class="page hidden" id="page-replay">

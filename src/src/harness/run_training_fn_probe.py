@@ -18,7 +18,9 @@ def main():
     parser.add_argument('--baseline-dll', type=Path, help='比較用の修正前DLL（元ファイルは保全）')
     parser.add_argument('--inspect-seconds', type=int, default=0)
     parser.add_argument('--menu-inspect', type=int, default=0)
-    parser.add_argument('--menu-down', type=int, default=9)
+    parser.add_argument('--menu-down', type=int, default=10, help='CHARACTER追加後の標準キャラ選択復帰位置')
+    parser.add_argument('--runahead', choices=['0','1'], help='先行表示の比較用設定。省略時は製品の既定')
+    parser.add_argument('--check-dummy', action='store_true', help='DUMMY中の入力最適化停止と通常へ戻した再開を確認')
     parser.add_argument('--menu-only', action='store_true')
     parser.add_argument('--confirm-inspect', type=int, default=0)
     args = parser.parse_args()
@@ -33,8 +35,9 @@ def main():
     # 共有リンクは作らず、元の設定・バイナリ・ログには触れない。
     shutil.copytree(source, game, ignore=shutil.ignore_patterns('cccaster_hook_log.txt', 'broadcast'))
     caster = game / 'cccaster_B'
-    for name in ('CCCaster_B.exe', 'libcccaster_hook.dll'):
+    for name in ('CCCaster_B.exe', 'CCCaster_B_GUI.exe', 'libcccaster_hook.dll'):
         shutil.copy2(ROOT / 'build/bin' / name, caster / name)
+        assert hashlib.sha256((ROOT / 'build/bin' / name).read_bytes()).digest() == hashlib.sha256((caster / name).read_bytes()).digest()
     if baseline:
         shutil.copy2(args.baseline_dll, caster / 'libcccaster_hook.dll')
     (caster / 'cccaster.ini').write_text('[Settings]\nP1Device = Wireless Controller\nP1DeviceGuid =\n', encoding='utf-8')
@@ -77,7 +80,8 @@ def main():
     try:
         time.sleep(1)
         env = {key: value for key, value in os.environ.items() if not key.startswith('CCCASTER_')}
-        env.update(CCCASTER_TRAINING_TRACE='1', CCCASTER_INPUT_DIAGNOSTIC='1')
+        env.update(CCCASTER_TRAINING_TRACE='1', CCCASTER_INPUT_DIAGNOSTIC='1', CCCASTER_INPUT_TRACE='1')
+        if args.runahead is not None: env['CCCASTER_TEST_INPUT_RUNAHEAD']=args.runahead
         with (out / 'launcher.log').open('w') as stream:
             proc = subprocess.Popen([str(caster / 'CCCaster_B.exe'), '--training'], cwd=caster,
                                     env=env, stdout=stream, stderr=subprocess.STDOUT,
@@ -153,6 +157,11 @@ def main():
             while time.monotonic()<deadline:
                 counters=[[read(0x5552A2+s*0xAFC,1),read(0x5552D4+s*0xAFC,1)] for s in range(2)]
                 if all(any(v) for v in counters):
+                    # 先行画像の一時状態だけを読んで確定前にFN1で止めない。
+                    # 1実更新以上待ち、まだ双方が停止している場合だけ保存する。
+                    time.sleep(.035)
+                    counters=[[read(0x5552A2+s*0xAFC,1),read(0x5552D4+s*0xAFC,1)] for s in range(2)]
+                    if not all(any(v) for v in counters): continue
                     result['hitstop_counters_at_press']=counters
                     break
                 time.sleep(.001)
@@ -203,6 +212,31 @@ def main():
             if count(2) != previous:
                 result['errors'].append('キャラセレクト後に古い保存を読み込んだ')
             sample('reset_after_character_select')
+        if args.check_dummy:
+            replay_marker = '[InputRunahead] restored=' if args.runahead == '1' else '[LocalInputRollback] END '
+            # CHARACTER / RESTART / ENEMY。ゲームメモリは通常のメニュー経由でのみ変更。
+            button(vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT)
+            for _ in range(2): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
+            for _ in range(5): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST,.07)
+            button(vg.DS4_BUTTONS.DS4_BUTTON_CROSS)
+            if read(0x74D7F8,2)!=5: raise RuntimeError('DUMMYへ移行できない')
+            before_dummy=text().count(replay_marker)
+            move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST,.3)
+            if text().count(replay_marker)!=before_dummy:
+                raise RuntimeError('DUMMY中に入力最適化が継続した')
+            button(vg.DS4_BUTTONS.DS4_BUTTON_TRIGGER_RIGHT)
+            # Reopening the native menu selects its first row again.
+            for _ in range(2): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_SOUTH,.07)
+            for _ in range(5): move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST,.07)
+            button(vg.DS4_BUTTONS.DS4_BUTTON_CROSS)
+            if read(0x74D7F8,2)!=0: raise RuntimeError('通常設定へ復帰できない')
+            move(vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST,.3)
+            if args.runahead == '1':
+                if text().count(replay_marker)<=before_dummy:
+                    raise RuntimeError('通常設定へ戻っても先行表示実験が再開しない')
+            elif text().count(replay_marker)!=before_dummy:
+                raise RuntimeError('通常設定へ戻ると廃止した自入力再計算が再開した')
+            result['dummy_optimization_gate']=True
         result['state_events'] = [line for line in text().splitlines() if '[TrainingState]' in line]
     except Exception as exc:
         result['errors'].append(str(exc))
@@ -227,6 +261,11 @@ def main():
             s['patch'] == '0x5eb' for s in result['samples'])
         if not baseline and not result['music_patch_verified']:
             result['errors'].append('BGM維持パッチを確認できない')
+        if not baseline and not args.menu_only:
+            from verify_native_input_writes import verify_local_disabled
+            result['native_input_rollback'] = verify_local_disabled(text())
+            if not result['native_input_rollback']['passed']:
+                result['errors'].append('通常Trainingで自入力の再計算が残っているか、初期化がない')
         result['passed'] = not result['errors'] and result['original_ini_unchanged']
         (out / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps({k: v for k, v in result.items() if k != 'samples'}, ensure_ascii=False), flush=True)

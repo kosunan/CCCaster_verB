@@ -43,6 +43,22 @@ class PredictionHistory {
         }
         return mismatch;
     }
+    // 両者の未確定入力を照合する。古い相手入力が未着でも新しい自入力の訂正は拾う。
+    template <class Local, class Remote> uint32_t Reconcile(Local readLocal, Remote readRemote) {
+        uint32_t mismatch = 0;
+        for (uint32_t f = confirmed_ + 1; f < next_; ++f) {
+            auto &e = entries_[f % entries_.size()];
+            if (!e.valid || e.frame != f) return f;
+            uint32_t local = 0, remote = 0;
+            const bool haveLocal = readLocal(f, local), haveRemote = readRemote(f, remote);
+            if (((haveLocal && e.local != local) || (haveRemote && e.remote != remote)) && !mismatch)
+                mismatch = f;
+            if (haveLocal) e.local = local;
+            if (haveRemote) e.remote = remote;
+            if (haveLocal && haveRemote && f == confirmed_ + 1) confirmed_ = f;
+        }
+        return mismatch;
+    }
     bool CanPredict() const {
         return next_ - confirmed_ <= limit_;
     }
@@ -59,6 +75,18 @@ class PredictionHistory {
     uint32_t Prediction() const {
         const auto *e = Get(next_ - 1);
         return e ? e->remote : 0;
+    }
+    uint32_t LocalPrediction() const {
+        const auto *e = Get(next_ - 1);
+        return e ? e->local : 0;
+    }
+    template <class Local, class Remote> bool ReadyToResume(Local readLocal, Remote readRemote, bool allowPrediction) const {
+        uint32_t a, b;
+        if (allowPrediction && limit_ && !CanPredict())
+            return readLocal(confirmed_ + 1, a) && readRemote(confirmed_ + 1, b);
+        for (uint32_t f = confirmed_ + 1; f <= next_; ++f)
+            if (!readLocal(f, a) || !readRemote(f, b)) return false;
+        return true;
     }
     uint32_t Confirmed() const {
         return confirmed_;
@@ -80,6 +108,16 @@ class PredictionHistory {
             remote = prev ? prev->remote : 0;
         }
         e.remote = remote;
+        return true;
+    }
+    template <class Local, class Remote> bool ResolveReplay(uint32_t frame, Local readLocal, Remote readRemote,
+                                                           uint32_t &local, uint32_t &remote) {
+        auto &e = entries_[frame % entries_.size()];
+        if (!e.valid || e.frame != frame) return false;
+        const auto *prev = Get(frame - 1);
+        if (!readLocal(frame, local)) local = prev ? prev->local : 0;
+        if (!readRemote(frame, remote)) remote = prev ? prev->remote : 0;
+        e.local = local; e.remote = remote;
         return true;
     }
 

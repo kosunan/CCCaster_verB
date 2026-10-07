@@ -226,7 +226,9 @@ int main(int argc, char **argv) {
             cccaster::game_interface::DirectInputHook::SetTestInputP2(localInput);
 
         game.Advance();
-        cccaster::domain::session::SceneRunner::Step();
+        cccaster::domain::session::SceneRunner::BeforePresent();
+        if (!cccaster::domain::session::SceneRunner::ContinueReplay())
+            cccaster::domain::session::SceneRunner::Step();
 
         // 実機の [MEM] トレースと同じ形でゲーム状態を記録する。
         // 同じ netFrame で両プロセスの状態が揃っているかを判定するため。

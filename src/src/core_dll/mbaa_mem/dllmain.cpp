@@ -177,7 +177,7 @@ static DWORD InitializeCore(boot::Status &report) {
 
     Stage(report, boot::Stage::Ipc);
     if (cccaster::public_api::IpcManager::OpenAndRead(state)) {
-        if (state.targetGameMode > uint32_t(cccaster::public_api::IpcGameMode::Replay) ||
+        if (state.targetGameMode > uint32_t(cccaster::public_api::IpcGameMode::LocalVersus) ||
             !cccaster::public_api::NetplaySettings::IsValid(state.delayFrames, state.maxRollbackFrames) ||
             !std::memchr(state.peerIp, 0, sizeof(state.peerIp)) ||
             !std::memchr(state.targetIp, 0, sizeof(state.targetIp)))
@@ -186,7 +186,7 @@ static DWORD InitializeCore(boot::Status &report) {
 
         // 起動モード
         ctx.appMode = static_cast<uint8_t>(state.targetGameMode);
-        // 0=Versus, 1=Training, 2=Spectator
+        // IpcGameMode: 0=通信対戦、5=同一PCのオフライン対戦。
 
         // ネットワーク情報
         ctx.isHost = state.isHost;
@@ -340,7 +340,7 @@ static DWORD InitializeCore(boot::Status &report) {
     // 観戦もキャラ選択まではVersusと同じ起動経路。アプリの観戦mode=2をそのまま
     // 渡すと既存最適化の対象外になり、システム情報収集・素材変換を毎回待ってしまう。
     // 観戦・標準REPも同じ起動資産を使う。一覧到達時に元の読込み経路へ復元する。
-    const uint8_t startupMode = ctx.appMode == 2 ||
+    const uint8_t startupMode = ctx.appMode == 2 || ctx.appMode == 5 ||
         (ctx.appMode == 4 && cccaster::game_memory::startup_direct_entry::ReplayEnabled())
         ? uint8_t(0) : ctx.appMode;
     cccaster::game_memory::startup_system_info::Initialize(startupMode);

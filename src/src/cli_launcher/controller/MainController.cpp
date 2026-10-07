@@ -58,7 +58,7 @@ MainController::MainController(bool isHeadless, bool isIpv6, bool isHost, const 
     ui::ConsoleRenderer::EnableVirtualTerminalProcessing();
 
     if (_isHeadless) {
-        _currentState = (gameMode == cccaster::public_api::IpcGameMode::Training || gameMode == cccaster::public_api::IpcGameMode::Replay) ? AppState::GameRunning
+        _currentState = cccaster::public_api::IsLocalGameMode(gameMode) ? AppState::GameRunning
             : gameMode == cccaster::public_api::IpcGameMode::Spectator ? AppState::Spectating_WaitingForHost
             : AppState::NetplayConnection;
     }
@@ -87,8 +87,7 @@ void MainController::LaunchAndMonitorGame() {
     std::cout << "[Release] " CCCASTER_PRODUCT_TITLE "\n" << std::flush;
     // Trainingの開始席はP1。メニューから来た場合や直前の接続役割に依存させない。
     // 起動ナビをP2へ送るとゲームがP2側でTrainingへ入り、P1設定では操作できなくなる。
-    if (_targetGameMode == cccaster::public_api::IpcGameMode::Training ||
-        _targetGameMode == cccaster::public_api::IpcGameMode::Replay)
+    if (cccaster::public_api::IsLocalGameMode(_targetGameMode))
         _isHost = true;
     std::cout << "  \x1b[1;36m[ INFO ]\x1b[0m Launching ..\\MBAA.exe via Launcher\\GameLauncher...\n\n"
               << std::flush;
@@ -123,8 +122,9 @@ void MainController::LaunchAndMonitorGame() {
 
     // DはINIを尊重。Rは利用者指定で当面7固定とし、INIの旧値は保全する。
     const bool replay = _targetGameMode == cccaster::public_api::IpcGameMode::Replay;
-    const bool training = _targetGameMode == cccaster::public_api::IpcGameMode::Training || replay;
-    const int delay = training ? cccaster::public_api::NetplaySettings::DefaultDelay :
+    const bool localVersus = _targetGameMode == cccaster::public_api::IpcGameMode::LocalVersus;
+    const bool offline = cccaster::public_api::IsLocalGameMode(_targetGameMode);
+    const int delay = localVersus ? 0 : offline ? cccaster::public_api::NetplaySettings::DefaultDelay :
         ConfigManager::GetInt("Netplay", "DefaultDelay", cccaster::public_api::NetplaySettings::DefaultDelay);
     const int rollback = cccaster::public_api::NetplaySettings::DefaultRollback;
     if (!cccaster::public_api::NetplaySettings::IsValid(delay, rollback))
@@ -176,7 +176,7 @@ void MainController::LaunchAndMonitorGame() {
         // トレーニングはネット同期を行わない。DLL初期化を確認して終了まで監視する。
         // DLLがポートをバインドして NetplaySession で同期を完了するのを待つ。
         // 計測開始は Launcher の起動時点ではなく、この待ちループの開始時点とする。
-        std::cout << (training ? "  [ OFFLINE ] Waiting for DLL initialization...\n"
+        std::cout << (offline ? "  [ OFFLINE ] Waiting for DLL initialization...\n"
                                : "  \x1b[1;36m[ SYNC ]\x1b[0m Waiting for DLL sync completion (12s timeout)...\n")
                   << std::flush;
         auto syncStart = std::chrono::steady_clock::now();
@@ -191,7 +191,7 @@ void MainController::LaunchAndMonitorGame() {
             if (closeMonitor.Poll(hProcess)) break;
             cccaster::public_api::SharedState readState{};
             if (cccaster::public_api::IpcManager::OpenAndRead(readState)) {
-                if (training ? readState.dllInitialized : readState.syncCompleted) {
+                if (offline ? readState.dllInitialized : readState.syncCompleted) {
                     syncOk = true;
                     break;
                 }
@@ -215,7 +215,8 @@ void MainController::LaunchAndMonitorGame() {
             if (!monitor.StartSpikeDebugIfRequested())
                 std::cerr << "[SpikeDebug] 診断開始に失敗しました。採取なしでゲームを継続します。\n";
             std::cout << (replay ? "  [ REPLAY READY ] Offline initialization completed.\n"
-                                 : training ? "  [ TRAINING READY ] Offline initialization completed.\n"
+                                 : localVersus ? "  [ OFFLINE READY ] Local versus initialization completed.\n"
+                                 : offline ? "  [ TRAINING READY ] Offline initialization completed.\n"
                                    : "  \x1b[32m[ SYNC OK ]\x1b[0m DLL synchronization completed successfully!\n")
                       << std::flush;
 
@@ -231,7 +232,7 @@ void MainController::LaunchAndMonitorGame() {
             // syncOkがfalse、かつゲームがまだ稼働中なら12秒の同期タイムアウトとみなして強制終了する
             if (hProcess && WaitForSingleObject(hProcess, 0) != WAIT_OBJECT_0) {
                 std::cout
-                    << (training ? "  [ INIT TIMEOUT ] DLL initialization did not complete within 15 seconds.\n"
+                    << (offline ? "  [ INIT TIMEOUT ] DLL initialization did not complete within 15 seconds.\n"
                                  : "  \x1b[31m[ SYNC TIMEOUT ]\x1b[0m DLL sync did not complete within 12 seconds.\n")
                     << std::flush;
                 std::cout << "  \x1b[31m[ ABORT ]\x1b[0m Terminating game process...\n" << std::flush;
@@ -243,7 +244,7 @@ void MainController::LaunchAndMonitorGame() {
         closeMonitor.Finish(hProcess, _p2p ? _p2p->socket : nullptr);
 
         // DLLの終了処理はloader lock下。終了を確認した監視元が自分の配信ファイルだけ無効化する。
-        if (!training && hProcess && WaitForSingleObject(hProcess, 0) == WAIT_OBJECT_0) {
+        if (!offline && hProcess && WaitForSingleObject(hProcess, 0) == WAIT_OBJECT_0) {
             const auto base = std::filesystem::path(exeDir) / "broadcast" /
                 ("cccaster-score-" + std::to_string(GetProcessId(hProcess)));
             for (const auto *suffix : {".json", ".txt"}) {
@@ -369,6 +370,15 @@ void MainController::HandleMainMenu() {
                                             }
                                             self->_targetGameMode = cccaster::public_api::IpcGameMode::Versus;
                                             self->_currentState = AppState::NetplayConnection;
+                                        }},
+                                       {"Offline Versus       [Local 2 Players]",
+                                        [self = this]() {
+                                            if (!self->CheckGameExecutable()) {
+                                                self->ShowGameNotFoundError();
+                                                return;
+                                            }
+                                            self->_targetGameMode = cccaster::public_api::IpcGameMode::LocalVersus;
+                                            self->_currentState = AppState::GameRunning;
                                         }},
                                        {"Training Mode        [Offline]",
                                         [self = this]() {

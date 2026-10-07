@@ -7,7 +7,8 @@
 namespace cccaster::sync {
 class RollbackStates {
   public:
-    void Reset(size_t size) {
+    void Reset(size_t size, bool presentation = false) {
+        presentation_ = presentation;
         for (auto &s : slots_) {
             s.frame = 0;
             s.bytes.resize(size);
@@ -16,7 +17,7 @@ class RollbackStates {
     bool Save(uint32_t f, cccaster::game_interface::IGameMemory &mem, uint32_t local = 0, uint32_t remote = 0) {
         auto &s = slots_[f % slots_.size()];
         s.frame = 0;
-        if (!mem.SaveSnapshot(s.bytes))
+        if (!(presentation_ ? mem.SavePresentationSnapshot(s.bytes) : mem.SaveSnapshot(s.bytes)))
             return false;
         std::fegetenv(&s.fp);
         s.local = local; s.remote = remote;
@@ -27,7 +28,7 @@ class RollbackStates {
         auto &s = slots_[f % slots_.size()];
         if (s.frame != f)
             return false;
-        if (!mem.LoadSnapshot(s.bytes))
+        if (!(presentation_ ? mem.LoadPresentationSnapshot(s.bytes) : mem.LoadSnapshot(s.bytes)))
             return false;
         std::fesetenv(&s.fp);
         return true;
@@ -40,6 +41,7 @@ class RollbackStates {
         return write(s.bytes, s.fp, s.local, s.remote);
     }
   private:
+    bool presentation_ = false;
     struct Slot {
         uint32_t frame = 0;
         std::vector<char> bytes;

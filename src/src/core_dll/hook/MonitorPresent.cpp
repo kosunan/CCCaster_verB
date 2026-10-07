@@ -3,6 +3,7 @@
 #include "core_dll/hook/RenderProbe.hpp"
 #include "core_dll/timing/DisplayCadence.hpp"
 #include "core_dll/timing/FrameTiming.hpp"
+#include "core_dll/timing/IdlePresentation.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/StartupTrace.hpp"
@@ -190,7 +191,10 @@ bool Submit(bool skipped, const RECT* source, const RECT* destination, HWND over
     return true;
 }
 void Pump(int64_t remainingUs) {
-    if (ready && active && remainingUs > guardUs) Display();
+    // An image not yet presented may still need its first attempt or a retry
+    // after WASSTILLDRAWING. Suppress only duplicate-image presentation.
+    if (ready && active && remainingUs > guardUs &&
+        core::timer::IdlePresentation::MayPresent(image == lastImage)) Display();
 }
 void Reset() {
     if (swapChain) swapChain->Release();

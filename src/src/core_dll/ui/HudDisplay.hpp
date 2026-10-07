@@ -10,6 +10,21 @@
 namespace cccaster::domain::ui {
 enum class HudDisplayMode { Compact, Detailed, Hidden };
 
+// 確定値の変化を実時間で1秒表示する。描画回数・モニターHzには依存しない。
+struct DelayChangeHighlight {
+    int previous = -1;
+    std::int64_t changedUs = 0;
+    bool changed = false;
+    bool Observe(int delay, std::int64_t nowUs) {
+        if (previous != delay) {
+            changed = previous >= 0;
+            changedUs = nowUs;
+            previous = delay;
+        }
+        return changed && nowUs >= changedUs && nowUs - changedUs < 1000000;
+    }
+};
+
 // キーを離す順番に依存せず、HUD操作で使ったキーだけ解放まで抑止する。
 struct HudShortcutLatch {
     bool control = false, f3 = false;

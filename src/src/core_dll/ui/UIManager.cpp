@@ -61,9 +61,10 @@ void UIManager::Render(UiPhase phase) {
 // --- 入力イベント委譲 ---
 void UIManager::OnDelayInput(int num) {
     auto &mem = cccaster::game_interface::GameMem();
-    if (mem.IsAvailable() && cccaster::domain::session::SceneRunner::AppMode() == 1 &&
-        (mem.GameMode() == CC_GAME_MODE_CHARA_SELECT || mem.GameMode() == CC_GAME_MODE_IN_GAME)) {
-        cccaster::domain::session::SceneRunner::RequestTrainingDelay(num);
+    const auto appMode = cccaster::domain::session::SceneRunner::AppMode();
+    if (mem.IsAvailable() && (appMode == 1 || appMode == 5) &&
+        (mem.GameMode() == CC_GAME_MODE_CHARA_SELECT || (appMode == 1 && mem.GameMode() == CC_GAME_MODE_IN_GAME))) {
+        cccaster::domain::session::SceneRunner::RequestLocalDelay(num);
         return;
     }
     if (mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT &&
@@ -118,7 +119,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
             !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000)) {
             const auto mode = cccaster::domain::session::SceneRunner::AppMode();
             auto &mem = cccaster::game_interface::GameMem();
-            if ((mode == 0 || mode == 1) && mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT)
+            if ((mode == 0 || mode == 1 || mode == 5) && mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT)
                 options::Queue(options::Toggle);
             else HudDisplay::Cycle();
         }

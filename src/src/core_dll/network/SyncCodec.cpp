@@ -199,6 +199,8 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
     }
 
     // ロード中の相手にも、イントロへ先着した相手にも同じ対象世代を通知する。
+    if (gtp.flags & FLAG_PRESENT_ROLLBACK)
+        shared.peerPresentRollback.store(true, std::memory_order_release);
     // 両ビット同時・境界外は無視。再送の順序が逆転しても受信世代を戻さない。
     const auto skipFlags = gtp.flags & (FLAG_LOADING_SKIP_CURRENT | FLAG_LOADING_SKIP_NEXT);
     if (gtp.phaseBaseFrame && gtp.phaseBaseFrame % sync::FrameSequence::STRIDE == 0 &&
@@ -424,6 +426,7 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
     gtp.maxRollback = static_cast<uint8_t>(_maxRollback);
 
     gtp.flags = ready ? FLAG_READY : 0;
+    if (state.localPresentRollback.load(std::memory_order_acquire)) gtp.flags |= FLAG_PRESENT_ROLLBACK;
     if (phaseToken != 0)
         gtp.flags |= FLAG_PHASE_READY;
     const auto skipEpoch = state.localLoadingSkipEpoch.load(std::memory_order_acquire);

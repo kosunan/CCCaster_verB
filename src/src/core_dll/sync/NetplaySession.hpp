@@ -67,6 +67,8 @@ struct SharedSyncState {
     std::atomic<bool> isSynced{false};
     std::atomic<bool> isPeerAlive{false};
     std::atomic<bool> peerReady{false};
+    // wire 10拡張8の任意機能ビット。双方対応時だけ入力の予約を1更新前で作る。
+    std::atomic<bool> localPresentRollback{false}, peerPresentRollback{false};
     std::atomic<int64_t> clockOffsetUs{0};
     std::atomic<int64_t> lastRttUs{0};
     std::atomic<int64_t> meanRttUs{0};

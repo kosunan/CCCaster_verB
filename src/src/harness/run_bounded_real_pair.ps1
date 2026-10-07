@@ -15,7 +15,7 @@ $taskMeasured=[Diagnostics.Stopwatch]::StartNew()
 $taskVerifySides=if($StandbySpectator){@(1,2,3)}else{@(1,2)}
 if($StandbySpectator -and !$UseConnectionCode){throw '観戦待機試験にはUseConnectionCodeが必要'}
 $taskTestEnv=@{}
-foreach($taskKey in 'CCCASTER_SCRIPT_INPUT','CCCASTER_INPUT_TRACE','CCCASTER_MEM_TRACE','CCCASTER_TIME_SCALE','CCCASTER_TEST_NETWORK','CCCASTER_TEST_VIRTUAL_PRODUCT') {
+foreach($taskKey in 'CCCASTER_SCRIPT_INPUT','CCCASTER_INPUT_TRACE','CCCASTER_MEM_TRACE','CCCASTER_TIME_SCALE','CCCASTER_TEST_NETWORK','CCCASTER_TEST_VIRTUAL_PRODUCT','CCCASTER_TEST_INPUT_RUNAHEAD','CCCASTER_TEST_PRESENT_ROLLBACK') {
     $taskTestEnv[$taskKey]=[Environment]::GetEnvironmentVariable($taskKey,'Process')
 }
 # 両側とも起動していないことを、配布ファイルやログに触れる前に確認する。
@@ -59,6 +59,13 @@ try {
     $env:CCCASTER_SCRIPT_INPUT=if($VirtualController -or $ManualInput){'0'}else{'1'};$env:CCCASTER_INPUT_TRACE='1';if(!$VirtualController){Remove-Item Env:CCCASTER_TEST_VIRTUAL_PRODUCT -ErrorAction SilentlyContinue};$env:CCCASTER_MEM_TRACE='1';$env:CCCASTER_TIME_SCALE='1'
     if($Network){$env:CCCASTER_TEST_NETWORK=$Network}else{Remove-Item Env:CCCASTER_TEST_NETWORK -ErrorAction SilentlyContinue}
     foreach($taskSide in 1,2) {
+        if($env:CCCASTER_TEST_PRESENT_ROLLBACK_SIDES) {
+            $env:CCCASTER_TEST_PRESENT_ROLLBACK=if($env:CCCASTER_TEST_PRESENT_ROLLBACK_SIDES.Contains([string]$taskSide)){'1'}else{'0'}
+        }
+        if($env:CCCASTER_TEST_INPUT_RUNAHEAD_SIDES) {
+            if($env:CCCASTER_TEST_INPUT_RUNAHEAD_SIDES.Contains([string]$taskSide)){$env:CCCASTER_TEST_INPUT_RUNAHEAD='1'}
+            else{$env:CCCASTER_TEST_INPUT_RUNAHEAD='0'}
+        }
         $taskDir=Join-Path $taskTest "MBAACC_$taskSide\cccaster_B"
         if($VirtualController){$env:CCCASTER_TEST_VIRTUAL_PRODUCT=if($taskSide -eq 1){$VirtualProduct1}else{$VirtualProduct2}}
         $taskHostMode=if($UseConnectionCode){'--host'}else{'--legacy-host'}

@@ -6,6 +6,7 @@ namespace cccaster::hud {
 void AddFonts();
 void Prepare(IDirect3DDevice9* device);
 void FinishInput();
+void RenderDrawData();
 void Release();
 Layout CurrentLayout();
 ImFont* Font(unsigned role, float scale);

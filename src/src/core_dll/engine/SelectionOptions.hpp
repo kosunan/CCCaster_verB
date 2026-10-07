@@ -1,6 +1,7 @@
 #pragma once
 #include "core_dll/mbaa_mem/GameInput.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
+#include "core_dll/mbaa_mem/NativeDisplayOptions.hpp"
 #include <atomic>
 
 namespace cccaster::domain::scene::selection_options {
@@ -10,17 +11,20 @@ struct Result {
     int delayStep = 0;
     int animation = -1; // -1:変更なし、0:OFF、1:ON
     int hudStep = 0;
+    int resolutionStep = 0;
+    int fullscreen = -1;
+    int nativeStep = 0;
 };
 // ゲームスレッドで消費するローカル入力だけを処理する。
 class Menu {
     game_interface::GameInput previous_{};
     bool release_ = false;
 public:
-    static constexpr unsigned RowCount = 3;
+    static constexpr unsigned RowCount = 9, VisibleRows = 5;
     bool open = false;
     unsigned row = 0;
     Result Step(game_interface::GameInput input, unsigned action, bool available, bool mapping,
-                bool delayEditable, bool animationOn) {
+                bool delayEditable, bool animationOn, bool fullscreen = false) {
         const auto pressed = input.buttons & ~previous_.buttons;
         const auto direction = input.direction != previous_.direction ? input.direction : 0;
         previous_ = input;
@@ -49,11 +53,20 @@ public:
                 if (row == 0 && delayEditable) result.delayStep = right ? 1 : -1;
                 if (row == 1) result.animation = right ? 1 : 0;
                 if (row == 2) result.hudStep = right ? 1 : -1;
+                if (row == 3) result.resolutionStep = right ? 1 : -1;
+                if (row == 4) result.fullscreen = right ? 1 : 0;
+                if (row >= 5) result.nativeStep = right ? 1 : -1;
             }
             if (row == 1 && (pressed & (CC_BUTTON_A | CC_BUTTON_CONFIRM)))
                 result.animation = animationOn ? 0 : 1;
             if (row == 2 && !result.hudStep && (pressed & (CC_BUTTON_A | CC_BUTTON_CONFIRM)))
                 result.hudStep = 1;
+            if (row == 3 && !result.resolutionStep && (pressed & (CC_BUTTON_A | CC_BUTTON_CONFIRM)))
+                result.resolutionStep = 1;
+            if (row == 4 && (pressed & (CC_BUTTON_A | CC_BUTTON_CONFIRM)))
+                result.fullscreen = fullscreen ? 0 : 1;
+            if (row >= 5 && !result.nativeStep && (pressed & (CC_BUTTON_A | CC_BUTTON_CONFIRM)))
+                result.nativeStep = 1;
             return result;
         }
         // 閉じたSTART/Bをキャラ決定・キャンセルへ流さず、全解放を待つ。
@@ -76,9 +89,13 @@ inline unsigned KeyMask(unsigned key) {
 inline Menu menu;
 inline bool visible = false, delayEditable = false, animationOn = true;
 inline int animationValue = -1, delay = 2;
+inline bool displayAvailable = false, fullscreen = false;
+inline int windowWidth = 0, windowHeight = 0;
+inline std::array<int, 4> nativeValues{-1,-1,-1,-1};
 inline void Queue(Action action) { actions.fetch_or(action); }
 inline void Reset() {
     menu = {}; actions = 0; active = false; heldKeys = 0; visible = false;
     delayEditable = false; animationValue = -1;
+    displayAvailable = false;
 }
 }

@@ -9,6 +9,7 @@
 #include "core_dll/timing/WasapiClock.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
 #include "core_dll/timing/SpinProbe.hpp"
+#include "core_dll/timing/FramePipeline.hpp"
 
 namespace cccaster::game_interface::game_release_gate {
 // Carnival140: 4333E8 -> 4BDBC0 -> D3D Present、4333F7でCS解放。
@@ -22,6 +23,9 @@ inline constexpr unsigned char Expected[] = {0xff,0x15,0x70,0xb0,0x51,0x00};
 
 inline void Release() {
     using Timing = core::timer::FrameTiming;
+    // Normal frames have already waited before input preparation. This hook now
+    // records the native entry only; legacy pacing experiments retain their gate.
+    diagnostics::FramePipeline::NativeEntered();
     if (!Timing::releaseDueTicks) return;
     const auto due = Timing::releaseDueTicks;
     const auto frame = Timing::releaseFrame;

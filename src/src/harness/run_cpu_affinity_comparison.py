@@ -40,7 +40,7 @@ def affinity(text, policy):
 
 def frame_metrics(path):
     tables = read(path)
-    releases = {r['f']: r for r in tables['ReleaseGate']}
+    releases = {r['f']: r for r in (tables['FrameStart'] or tables['ReleaseGate'])}
     values = {}
     for u in tables['UpdateCadence']:
         if not u['consecutive'] or not u['play']:

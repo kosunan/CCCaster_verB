@@ -25,6 +25,16 @@ def verify(texts):
         battle_hud = re.findall(r'BATTLE animation=\d+ delay=\d+ hud=(\w+)', '\n'.join(events))
         if not battle_hud or any(mode != expected_hud[-1] for mode in battle_hud):
             errors.append(f'P{side}: 戦闘開始後のHUDが不正: {battle_hud}')
+        display = re.findall(r'DISPLAY action=(\w+) applied=(\d+) size=(\d+)x(\d+) fullscreen=(\d+)', '\n'.join(events))
+        if len(display) != 4 or [(d[0], d[1], d[4]) for d in display] != [
+                ('resolution', '1', '0'), ('resolution', '1', '0'), ('fullscreen', '1', '1'), ('fullscreen', '1', '0')]:
+            errors.append(f'P{side}: 解像度・全画面切替が不正: {display}')
+        elif any(int(d[2]) < 640 or int(d[3]) < 480 for d in display) or display[0][2:4] == display[1][2:4] or display[1][2:4] != display[-1][2:4]:
+            errors.append(f'P{side}: 解像度の変更・全画面からの復帰寸法が不正: {display}')
+        for name, count in [('CHARACTER_FILTER', 4), ('SCREEN_FILTER', 2), ('ASPECT_RATIO', 7), ('VIEW_FPS', 2)]:
+            values = [int(v) for v in re.findall(r'NATIVE option=' + name + r' value=(\d+)', '\n'.join(events))]
+            if len(values) != 2 or any(v >= count for v in values) or values[0] != (values[-1]+1) % count:
+                errors.append(f'P{side}: {name}の往復変更が不正: {values}')
         battle = re.findall(r'BATTLE animation=(\d+) delay=(\d+)', '\n'.join(events))
         if not battle or any(pair != ('1' if side == 1 else '0', '3') for pair in battle):
             errors.append(f'P{side}: 戦闘開始後の背景設定またはD合意が不正: {battle}')

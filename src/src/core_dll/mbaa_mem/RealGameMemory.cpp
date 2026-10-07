@@ -9,6 +9,7 @@
 // ============================================================================
 
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
+#include "core_dll/mbaa_mem/NativeInputWrites.hpp"
 #include "core_dll/mbaa_mem/RoundTest.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
@@ -76,6 +77,24 @@ bool RealGameMemory::SelectionDelayEditable(bool host) const {
     // 0x4281B7..0x4281C1のカラー確定(mode4)以降は既存合意でも変更不可。
     return GameMode() == CC_GAME_MODE_CHARA_SELECT &&
         *(host ? CC_P1_SELECTOR_MODE_ADDR : CC_P2_SELECTOR_MODE_ADDR) < 4;
+}
+
+int RealGameMemory::DisplayOption(NativeDisplayOption option) const {
+    const auto* definition = DisplayDefinition(option);
+    // 同じ設定構造体の版・基点をStageAnimationと共通の条件で検証する。
+    if (!definition || StageAnimation() < 0) return -1;
+    const auto base = *reinterpret_cast<uintptr_t*>(0x554140);
+    const auto value = *reinterpret_cast<uint32_t*>(base + definition->offset);
+    return value < unsigned(definition->count) ? int(value) : -1;
+}
+bool RealGameMemory::SetDisplayOption(NativeDisplayOption option, int value) {
+    const auto* definition = DisplayDefinition(option);
+    if (!definition || value < 0 || value >= definition->count ||
+        GameMode() != CC_GAME_MODE_CHARA_SELECT || DisplayOption(option) < 0) return false;
+    const auto base = *reinterpret_cast<uintptr_t*>(0x554140);
+    *reinterpret_cast<uint32_t*>(base + definition->offset) = value;
+    DebugLog("[SelectionOptions] NATIVE option=%s value=%d", definition->name, value);
+    return true;
 }
 
 void RealGameMemory::SetTrainingHold(bool hold) {
@@ -395,6 +414,46 @@ bool RealGameMemory::LoadSnapshot(std::span<char> data) {
     return SnapshotDumper().Load(data.first(size));
 }
 
+namespace {
+// I+18..677: raw4枠と0x41F0C0が更新する3組の論理入力。
+// vtable/DirectInputオブジェクトは保存しない。元の入力変換を実行した実値だけを戻す。
+struct PresentationInputState {
+    uintptr_t base;
+    std::array<char, 0x660> values;
+};
+}
+size_t RealGameMemory::PresentationSnapshotSize() const {
+    const auto size = SnapshotSize();
+    return size ? size + sizeof(PresentationInputState) : 0;
+}
+void RealGameMemory::SetPresentationPreview(bool enabled) {
+    // 音声履歴・音声時計も進めない既存の表示専用経路。
+    cccaster::sync::SetIntroPreviewEffects(enabled);
+}
+bool RealGameMemory::SavePresentationSnapshot(std::span<char> data) {
+    const auto size = SnapshotSize();
+    auto* input = InputBasePtr();
+    if (!size || data.size() != size + sizeof(PresentationInputState) || !input ||
+        IsBadReadPtr(input + 0x18, 0x660) || !SaveSnapshot(data.first(size))) return false;
+    PresentationInputState state{};
+    state.base = reinterpret_cast<uintptr_t>(input);
+    std::memcpy(state.values.data(), input + 0x18, state.values.size());
+    std::memcpy(data.data() + size, &state, sizeof(state));
+    return true;
+}
+bool RealGameMemory::LoadPresentationSnapshot(std::span<char> data) {
+    const auto size = SnapshotSize();
+    if (!size || data.size() != size + sizeof(PresentationInputState)) return false;
+    PresentationInputState state{};
+    std::memcpy(&state, data.data() + size, sizeof(state));
+    auto* input = InputBasePtr();
+    if (!input || state.base != reinterpret_cast<uintptr_t>(input) ||
+        IsBadWritePtr(input + 0x18, state.values.size())) return false;
+    if (!LoadSnapshot(data.first(size)) || input != InputBasePtr()) return false;
+    std::memcpy(input + 0x18, state.values.data(), state.values.size());
+    return true;
+}
+
 // Trainingは戦闘状態だけを保存し、現在の敵設定・ダミー録画と独立させる。
 // 通信の記録末尾を戻すSaveSnapshot/LoadSnapshotの形式は変更しない。
 static bool DummyPlayback() {
@@ -511,7 +570,12 @@ bool RealGameMemory::SetIntroPreview(bool active) {
     cccaster::sync::SetIntroPreviewEffects(active);
     return true;
 }
+bool RealGameMemory::ConfigureInputWriteMonitor(bool enabled) {
+    return native_input_writes::Configure(enabled);
+}
+cccaster::sync::InputWriteHistory* RealGameMemory::InputWrites() { return native_input_writes::History(); }
 void RealGameMemory::BeginSimulation(uint32_t f) {
+    native_input_writes::Begin(f);
     // 起動時に設定する試験オプション。毎FのCRT環境変数参照を締切後に持ち込まない。
     static const bool quickRetry = std::getenv("CCCASTER_TEST_RETRY_QUICK") != nullptr;
     static const bool quickKo = std::getenv("CCCASTER_TEST_ROUND_KO") != nullptr;

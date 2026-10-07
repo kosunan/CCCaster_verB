@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <d3d9.h>
+#include "core_dll/hook/DisplaySettings.hpp"
 
 namespace cccaster::game_interface::borderless {
 // ウィンドウとD3D資源はゲームスレッドだけで操作する。

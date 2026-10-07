@@ -14,7 +14,7 @@ class FrameTiming {
         static FrameTiming value;
         return value;
     }
-    // 通常更新の解放境界で採取する。設定周期や描画処理単体の時間ではない。
+    // Normal frame entry, before input preparation and snapshots.
     static FrameTiming &Simulation() {
         static FrameTiming value;
         return value;
@@ -34,19 +34,35 @@ class FrameTiming {
         }();
         return budget;
     }
-    // 入力採取予定から通常更新まで3msの準備枠を取り、最後の3msはスピンする。
+    // Allow 3ms for independent input publication before the game-thread frame starts.
     static constexpr int64_t SimulationGuardUs = 3000;
     static constexpr int64_t SimulationSpinGuardUs = 3000;
+    // HasCaptured is the publication barrier. Normal battle frames can start as
+    // soon as it succeeds; no fixed publication allowance is needed afterwards.
+    // Keep the old 3ms phase only for measurements of the previous behavior.
+    static int64_t BattleInputPhaseUs() {
+        static const int64_t phase = []() -> int64_t {
+            const auto *value = std::getenv("CCCASTER_TEST_INPUT_PHASE_US");
+            if (value && std::strtol(value, nullptr, 10) == 3000) return 3000;
+            return 0;
+        }();
+        return phase;
+    }
     // 表示側は従来の起床余裕を維持。
     static constexpr int64_t PresentSpinGuardUs = 1000;
     inline static int64_t releaseUs = 0, workUs = 0;
     // SceneRunnerが通常更新にだけ設定するWASAPI絶対時刻。Presentで1回消費する。
     inline static int64_t presentDueTicks = 0;
-    // 入力反映・記録を締切前に済ませ、Presentフック出口で残りを待つ。
-    static constexpr int64_t ReleasePreparationUs = 200;
+    // The final projected-QPC spin follows the coarse wait immediately, before work.
+    static constexpr int64_t FinalSpinUs = 200;
     inline static int64_t releaseDueTicks = 0;
     inline static uint32_t releaseFrame = 0;
     inline static int64_t releasedTicks = 0;
+    static void BeginFrame(int64_t ticks, uint32_t frame) {
+        releaseDueTicks = 0;
+        releasedTicks = ticks;
+        releaseFrame = frame;
+    }
     void Reset() {
         *this = FrameTiming{};
     }

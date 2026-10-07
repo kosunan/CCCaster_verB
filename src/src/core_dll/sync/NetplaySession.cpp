@@ -170,6 +170,11 @@ void NetplaySession::Start(bool isHost, const std::string &targetIp, uint16_t ta
     _state.isSynced.store(false);
     _state.isPeerAlive.store(false);
     _state.peerReady.store(false);
+    const auto presentRollback = std::getenv("CCCASTER_TEST_PRESENT_ROLLBACK");
+    // 自入力を次の採取まで予測して1更新前へ差し替える方式は通常使用しない。
+    // 既存実験の比較時だけ明示指定で有効化する。相手入力の通常ロールバックは維持。
+    _state.localPresentRollback.store(presentRollback && presentRollback[0] == '1');
+    _state.peerPresentRollback.store(false);
     _state.clockOffsetUs.store(0);
     _state.lastRttUs.store(0);
     _state.meanRttUs.store(0);

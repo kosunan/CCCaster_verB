@@ -390,6 +390,7 @@ def main():
     parser.add_argument('--test-root', type=Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')
     parser.add_argument('--network', default='15,25,5', help='片道遅延min,maxミリ秒,損失率（既定15,25,5）')
     parser.add_argument('--spectator', action='store_true')
+    parser.add_argument('--input-runahead', choices=['1', '2', '12'], help='指定した対戦端だけで1F先行表示を検証')
     parser.add_argument('--full-intro', action='store_true', help='登場演出を自然終了させ、描画・周期を記録する')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
     parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
@@ -417,6 +418,7 @@ def main():
     service = Service()
     threading.Thread(target=service.serve_forever, daemon=True).start()
     env = clean_environment()
+    if args.input_runahead: env['CCCASTER_TEST_INPUT_RUNAHEAD_SIDES'] = args.input_runahead
     env.update(CCCASTER_NTFY_SERVER=f'http://127.0.0.1:{service.server_port}',
                CCCASTER_TEST_RETRY_QUICK='1', CCCASTER_TEST_NATIVE_RETRY='1',
                CCCASTER_TEST_REMATCH='2' if args.scenario == 'character' else '0')
@@ -448,7 +450,8 @@ def main():
            '-UseConnectionCode', '-CloseSide', '1', '-OutputDirectory', str(out), '-TestRoot', str(runtime)]
     if args.spectator:
         cmd.append('-StandbySpectator')
-    config = dict(scenario=args.scenario, spectator=args.spectator, full_intro=args.full_intro,
+    config = dict(scenario=args.scenario, spectator=args.spectator, full_intro=args.full_intro, input_runahead=args.input_runahead,
+                  native_input_writes=False,
                   baseline=args.baseline, loading_input=args.loading_input,
                   round_frames=args.round_frames, round_max_epoch=0 if args.fixed_duration else 3)
     (out / 'checkpoint_config.json').write_text(json.dumps(config), encoding='utf-8')

@@ -1,5 +1,7 @@
 #include <string>
 #pragma once
+#include "core_dll/rollback/InputWriteHistory.hpp"
+#include "core_dll/mbaa_mem/NativeDisplayOptions.hpp"
 /**
  * @file IGameMemory.hpp
  * @brief ゲームメモリへの読み書き口
@@ -60,6 +62,8 @@ class IGameMemory {
     virtual bool StepTrainingMenu(GameInput&, GameInput&, bool) { return false; }
     virtual int StageAnimation() const { return -1; } // -1:未対応、0:OFF、1:ON
     virtual bool SetStageAnimation(bool) { return false; }
+    virtual int DisplayOption(NativeDisplayOption) const { return -1; }
+    virtual bool SetDisplayOption(NativeDisplayOption, int) { return false; }
     virtual bool SelectionDelayEditable(bool) const { return true; }
 
     // ── 書き込み ──
@@ -92,6 +96,8 @@ class IGameMemory {
     }
     virtual void EndReplay() {}
     virtual void BeginSimulation(uint32_t) {}
+    virtual bool ConfigureInputWriteMonitor(bool) { return true; }
+    virtual cccaster::sync::InputWriteHistory* InputWrites() { return nullptr; }
     virtual bool PrepareBattleAudio() { return true; }
     // 観戦の待機画像だけを作る1更新。音声・音声時計の外部効果を発生させない。
     virtual bool SetIntroPreview(bool) { return true; }
@@ -113,6 +119,12 @@ class IGameMemory {
     virtual bool LoadSnapshot(std::span<char>) {
         return false;
     }
+    // 先行表示の復元には、通常の戦闘状態に加え標準入力の作業領域も含める。
+    // 入力を生成/書き換えるAPIではなく、同じ更新境界へ戻すための保存・復元。
+    virtual size_t PresentationSnapshotSize() const { return SnapshotSize(); }
+    virtual bool SavePresentationSnapshot(std::span<char> data) { return SaveSnapshot(data); }
+    virtual bool LoadPresentationSnapshot(std::span<char> data) { return LoadSnapshot(data); }
+    virtual void SetPresentationPreview(bool) {}
     // Trainingは現在の敵設定・ダミー録画から独立した戦闘状態を保存する。
     virtual size_t TrainingSnapshotSize() const { return SnapshotSize(); }
     virtual bool SaveTrainingSnapshot(std::span<char> data) { return SaveSnapshot(data); }

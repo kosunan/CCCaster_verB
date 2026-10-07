@@ -180,7 +180,8 @@ void LauncherModel::Command(const Json& c) {
                     return;
                 }
             }
-            if (mode == "training" || mode == "replay") session_.Start(true,0,"",true,false,0,mode=="replay");
+            if (mode == "training" || mode == "replay" || mode == "offline")
+                session_.Start(true,0,"",true,false,0,mode=="replay",nullptr,false,mode=="offline");
             else {
                 const bool watch = mode == "spectate", host = mode == "host";
                 if (!watch && mode != "host" && mode != "join") throw std::invalid_argument("mode");

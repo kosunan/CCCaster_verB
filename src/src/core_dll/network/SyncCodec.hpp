@@ -150,6 +150,7 @@ class SyncCodec {
     // 追加の任意フラグなのでwire 10拡張8のサイズ・必須同期処理は変えない。
     static constexpr uint8_t FLAG_LOADING_SKIP_CURRENT = 0x04;
     static constexpr uint8_t FLAG_LOADING_SKIP_NEXT = 0x08;
+    static constexpr uint8_t FLAG_PRESENT_ROLLBACK = 0x10;
 
   private:
     static void BuildUnifiedPacket(std::vector<uint8_t> &pkt, uint8_t phase, uint8_t type, int64_t timestampTicks,

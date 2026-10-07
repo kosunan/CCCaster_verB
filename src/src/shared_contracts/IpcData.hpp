@@ -19,7 +19,10 @@ constexpr uint32_t IPC_VERSION_MAGIC = 0xCC100003;
 /**
  * @brief ゲーム起動時にDLLへ指示するモードの列挙型です。
  */
-enum class IpcGameMode : uint32_t { Versus = 0, Training = 1, Spectator = 2, VersusCPU = 3, Replay = 4 };
+enum class IpcGameMode : uint32_t { Versus = 0, Training = 1, Spectator = 2, VersusCPU = 3, Replay = 4, LocalVersus = 5 };
+inline constexpr bool IsLocalGameMode(IpcGameMode mode) {
+    return mode == IpcGameMode::Training || mode == IpcGameMode::Replay || mode == IpcGameMode::LocalVersus;
+}
 
 /**
  * @brief セッション終了時の業務エラー（切断理由）を表す列挙型です。
@@ -38,7 +41,7 @@ struct SharedState {
     uint32_t magicVersion; // Magic number to verify version match
 
     // Application State
-    uint32_t targetGameMode; // 0: Versus, 1: Training, 2: Spectate
+    uint32_t targetGameMode; // IpcGameMode（通信対戦と同一PCのLocalVersusは別モード）
 
     // Network Info
     bool isHost;

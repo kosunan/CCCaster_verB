@@ -60,6 +60,32 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(report['stop_reason'], 'timeout')
         self.assertFalse(report['passed'])
 
+    def test_runahead_requires_requested_side_only_and_restoration(self):
+        self.write();snapshot(self.runtime, self.output, False)
+        config = dict(input_runahead='1')
+        self.assertFalse(evaluate(self.output, config)['passed'])
+        host = self.output / 'game_1.log'
+        host.write_text(host.read_text() + '[InputRunahead] restored=120 equal=1 workUs=700 world=1000\n')
+        self.assertTrue(evaluate(self.output, config)['passed'])
+        peer = self.output / 'game_2.log'
+        original = peer.read_text()
+        peer.write_text(original + '[InputRunahead] restored=1 equal=1 workUs=700 world=1000\n')
+        self.assertFalse(evaluate(self.output, config)['passed'])
+        peer.write_text(original)
+        host.write_text(host.read_text() + '[InputRunahead] FAIL restore\n')
+        self.assertFalse(evaluate(self.output, config)['passed'])
+
+    def test_present_rollback_requires_both_local_and_remote_correction_at_d0(self):
+        self.rows += ['[PresentRollback] ACTIVE lead=1 D=0 epoch=65536',
+                      '[PresentRollback] CHECK frame=65539 from=65538 local=0 remote=1 lead=1 world=1000']
+        self.write();snapshot(self.runtime,self.output,False)
+        config=dict(present_rollback=dict(lead=1,delay=0))
+        self.assertFalse(evaluate(self.output,config)['passed'])
+        self.rows += ['[PresentRollback] CHECK frame=65541 from=65540 local=1 remote=0 lead=1 world=1002']
+        self.write();snapshot(self.runtime,self.output,False)
+        self.assertTrue(evaluate(self.output,config)['passed'])
+        self.assertFalse(evaluate(self.output,dict(present_rollback=dict(lead=0,delay=0)))['passed'])
+
     def test_partial_tail_is_deferred_but_completed_corruption_fails(self):
         self.write()
         path = self.runtime / 'MBAACC_2/cccaster_B/cccaster_hook_log.txt'
@@ -71,6 +97,16 @@ class CheckpointTests(unittest.TestCase):
             log.write(b'\n')
         snapshot(self.runtime, self.output, False)
         self.assertFalse(evaluate(self.output, {})['passed'])
+
+    def test_normal_mode_requires_remote_correction_without_self_correction(self):
+        self.rows += ['[PresentRollback] ACTIVE lead=0 D=0 epoch=65536',
+                      '[PresentRollback] CHECK frame=65539 from=65538 local=0 remote=1 lead=0 world=1000']
+        self.write(); snapshot(self.runtime, self.output, False)
+        config = dict(present_rollback=dict(lead=0, delay=0))
+        self.assertTrue(evaluate(self.output, config)['passed'])
+        self.rows += ['[PresentRollback] CHECK frame=65541 from=65540 local=1 remote=0 lead=0 world=1002']
+        self.write(); snapshot(self.runtime, self.output, False)
+        self.assertFalse(evaluate(self.output, config)['passed'])
 
     def test_sync_alone_does_not_satisfy_rematch(self):
         self.write()

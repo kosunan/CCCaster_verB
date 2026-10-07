@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 
 void HookLog(const char* message);
 
@@ -11,7 +12,9 @@ namespace {
 HWND window = nullptr;
 bool active = false, changing = false, enterHeld = false, startBorderless = false;
 bool aspectQueryAvailable = true;
+bool smoothScaling = true;
 RECT savedClient{0, 0, 640, 480};
+Resolution returnClient{640, 480};
 LONG_PTR savedStyle = 0, savedExStyle = 0;
 HMENU savedMenu = nullptr;
 RECT savedRect{};
@@ -69,6 +72,7 @@ bool Enter() {
     savedStyle = GetWindowLongPtr(window, GWL_STYLE);
     savedExStyle = GetWindowLongPtr(window, GWL_EXSTYLE);
     savedMenu = GetMenu(window);
+    returnClient = {int(savedClient.right), int(savedClient.bottom)};
     changing = true;
     active = true;
     const bool ok = SetStyle(GWL_STYLE, (savedStyle & ~(WS_OVERLAPPEDWINDOW | WS_MINIMIZE | WS_MAXIMIZE)) | WS_POPUP) &&
@@ -103,6 +107,59 @@ RECT FitAspect(LONG width, LONG height, LONG sourceWidth, LONG sourceHeight) {
 }
 RECT FitContent(LONG width, LONG height) { return FitAspect(width, height, savedClient.right, savedClient.bottom); }
 bool Active() { return active; }
+void SetScaleFilter(bool enabled) { smoothScaling = enabled; }
+DisplaySettings GetDisplaySettings() {
+    if (!aspectQueryAvailable || !IsWindow(window) || changing) return {};
+    RECT client{};
+    if (!GetClientRect(window, &client)) return {};
+    return {true, active, active ? returnClient : Resolution{int(client.right), int(client.bottom)}};
+}
+bool SetFullscreen(bool enabled) {
+    if (!GetDisplaySettings().available) return false;
+    if (active == enabled) return true;
+    if (enabled) return Enter();
+    Restore();
+    return !active;
+}
+bool ChangeResolution(int direction) {
+    const auto state = GetDisplaySettings();
+    if (!state.available || !direction) return false;
+    MONITORINFO info{sizeof(info)};
+    if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info)) return false;
+    const auto style = (active ? savedStyle : GetWindowLongPtr(window, GWL_STYLE)) & ~(WS_MAXIMIZE | WS_MINIMIZE);
+    const auto exStyle = active ? savedExStyle : GetWindowLongPtr(window, GWL_EXSTYLE);
+    const auto menu = active ? savedMenu : GetMenu(window);
+    RECT frame{};
+    if (!AdjustWindowRectEx(&frame, DWORD(style), menu != nullptr, DWORD(exStyle))) return false;
+    const auto &work = info.rcWork;
+    const Resolution limit{int(work.right-work.left-(frame.right-frame.left)),
+                           int(work.bottom-work.top-(frame.bottom-frame.top))};
+    const auto size = NextResolution(state.windowSize, limit, direction);
+    if (!size.width) return false;
+    RECT rect = active ? savedRect : RECT{};
+    if (!active && !GetWindowRect(window, &rect)) return false;
+    const LONG w = size.width + frame.right-frame.left;
+    const LONG h = size.height + frame.bottom-frame.top;
+    const LONG x = std::clamp(rect.left+(rect.right-rect.left-w)/2, work.left, work.right-w);
+    const LONG y = std::clamp(rect.top+(rect.bottom-rect.top-h)/2, work.top, work.bottom-h);
+    if (active) {
+        // 描画用savedClientは保持し、全画面中に元画像の比率を変えない。
+        savedRect = {x,y,x+w,y+h};
+        savedStyle = style;
+        savedPlacement.showCmd = SW_SHOWNORMAL;
+        returnClient = size;
+        Trace("resolution-on-return", savedRect);
+        return true;
+    }
+    changing = true;
+    if (IsZoomed(window) || IsIconic(window)) ShowWindow(window, SW_RESTORE);
+    const bool ok = SetWindowPos(window, nullptr, x,y,w,h,SWP_NOZORDER | SWP_NOACTIVATE);
+    changing = false;
+    RECT client{};
+    const bool applied = ok && GetClientRect(window, &client) && client.right == size.width && client.bottom == size.height;
+    if (applied) Trace("resolution", client);
+    return applied;
+}
 void SetAspectQueryAvailable(bool available) { aspectQueryAvailable = available; }
 bool RenderingClientRect(HWND hwnd, RECT& rect) {
     if (!active || hwnd != window) return false;
@@ -171,7 +228,7 @@ bool HandleMessage(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         (enterHeld || (l & (1u << 29)) || (GetKeyState(VK_MENU) & 0x8000))) {
         enterHeld = true;
         if (!(l & (1u << 30)) && !changing) {
-            if (active) Restore(); else Enter();
+            SetFullscreen(!active);
         }
         return true;
     }
@@ -226,7 +283,7 @@ bool Present(IDirect3DDevice9* device, HRESULT& result, DWORD flags) {
     if (SUCCEEDED(result)) result = device->ColorFill(destination, nullptr, D3DCOLOR_XRGB(0, 0, 0));
     const RECT content = FitContent(client.right, client.bottom);
     if (SUCCEEDED(result)) {
-        result = device->StretchRect(source, nullptr, destination, &content, D3DTEXF_LINEAR);
+        result = device->StretchRect(source, nullptr, destination, &content, smoothScaling ? D3DTEXF_LINEAR : D3DTEXF_NONE);
         if (result == D3DERR_INVALIDCALL) // 線形拡大非対応のドライバ向け。
             result = device->StretchRect(source, nullptr, destination, &content, D3DTEXF_NONE);
     }

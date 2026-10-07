@@ -47,6 +47,11 @@ class DeadlineAnalysisTest(unittest.TestCase):
             self.assertEqual(row['late_change_us'], 5)
             self.assertEqual(row['release_late_us'], 6)
             self.assertEqual(report['ready_after_deadline'], 1)
+            self.assertEqual(report['boundary'], 'ReleaseGate')
+            path.write_text('\n'.join(lines).replace('[ReleaseGate]', '[FrameStart]'), encoding='utf-8')
+            current = analyze(path)
+            self.assertEqual(current['boundary'], 'FrameStart')
+            self.assertEqual(current['stats'], report['stats'])
             path.write_text('\n'.join(lines).replace('interval=1000600', 'interval=1000000'), encoding='utf-8')
             with self.assertRaises(ValueError):
                 analyze(path)

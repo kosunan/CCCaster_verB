@@ -90,10 +90,10 @@ void RmlView::Translate(const std::string& language) {
     Text("language",language_=="ja"?"English":"日本語"); peopleSignature_.clear();requestSignature_.clear();
 }
 void RmlView::Navigate(const std::string& page) {
-    if(page!="matching"&&page!="spectate"&&page!="training"&&page!="replay"&&page!="settings"&&page!="guide"&&page!="controller")return;
+    if(page!="matching"&&page!="spectate"&&page!="training"&&page!="offline"&&page!="replay"&&page!="settings"&&page!="guide"&&page!="controller")return;
     if(page_=="controller"&&page!="controller")send_({{"type","controller"},{"action","close"}});
     page_=page;
-    for(const char* name:{"matching","spectate","training","replay","settings","guide","controller"}) {
+    for(const char* name:{"matching","spectate","training","offline","replay","settings","guide","controller"}) {
         Show((std::string("page-")+name).c_str(),page_==name);
         if(auto* e=Find(std::string("nav-")+name))e->SetClass("active",page_==name);
     }
@@ -182,7 +182,7 @@ void RmlView::ProcessEvent(Rml::Event& event) {
             }
         }
         else if(id=="watch")send_({{"type","launch"},{"mode","spectate"},{"code",Value("spectator-code")}});
-        else if(id=="training"||id=="replay")send_({{"type","launch"},{"mode",id}});
+        else if(id=="training"||id=="replay"||id=="offline")send_({{"type","launch"},{"mode",id}});
         else if(id=="cancel-session")command("cancel_session");
         else if(id=="use-reply"||id=="manual-start")send_({{"type","manual_reply"},{"code",id=="manual-start"?"start":Value("manual-peer")}});
         else if(id=="dismiss-notice")command("dismiss_notice");
@@ -301,7 +301,7 @@ void RmlView::State(const Json& value) {
     Show("direct-lookup",value.value("connectionLookup",false));
     Disable("direct-port",busy||outgoing||registered);
     if(registered) {SetValue("direct-port",std::to_string(m["port"].get<int>()),true);SetValue("matching-port",std::to_string(m["port"].get<int>()),true);}
-    for(const char* id:{"watch","training","replay"})Disable(id,running||value.value("connectionLookup",false));
+    for(const char* id:{"watch","training","replay","offline"})Disable(id,running||value.value("connectionLookup",false));
     Disable("profile-fields",running||registered);SetValue("player-name",p["name"]);Show("profile-error",p["error"]);Disable("emblem-remove",running||registered||p["emblemId"].get<uint64_t>()==0);
     Show("profile-locked",running||registered);
     const auto imageId=p["emblemId"].get<uint64_t>();const auto source="emblem:"+std::to_string(imageId);

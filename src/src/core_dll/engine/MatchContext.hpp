@@ -17,7 +17,7 @@ namespace cccaster::domain::session {
 
 struct MatchContext {
     // ---- 起動時確定（不変）----
-    uint8_t appMode = 0; // 0=Versus, 1=Training, 2=Spectator (IpcGameModeと一致)
+    uint8_t appMode = 0; // IpcGameModeと一致。0=通信対戦、5=同一PCのオフライン対戦。
     bool isHost = false;
     uint8_t _pad0 = 0;
     char playerName[cccaster::public_api::PlayerNameSize] = {};
