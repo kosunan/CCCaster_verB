@@ -47,6 +47,7 @@
 // ============================================================================
 
 #include "core_dll/hook/DxHook.hpp"
+#include "core_dll/mbaa_mem/NativeResolution.hpp"
 #include "core_dll/hook/RenderProbe.hpp"
 #include "core_dll/hook/DriverLockProbe.hpp"
 #include "core_dll/hook/ScenePairMerge.hpp"
@@ -683,8 +684,16 @@ HRESULT APIENTRY DxHook::Hooked_Reset(LPDIRECT3DDEVICE9 pDevice,
     Reset_t pOrigReset = (Reset_t)original_Reset;
     HRESULT hr = pOrigReset(pDevice, pPresentationParameters);
 
+    D3DSURFACE_DESC backbuffer{};
+    IDirect3DSurface9* surface = nullptr;
+    if (SUCCEEDED(hr) && SUCCEEDED(pDevice->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&surface))) {
+        surface->GetDesc(&backbuffer);
+        surface->Release();
+    }
+    native_resolution::ResetFinished(hr,backbuffer.Width,backbuffer.Height);
+
     // Reset 後コールバック（リソース再生成）
-    if (onPostReset) {
+    if (SUCCEEDED(hr) && onPostReset) {
         onPostReset(pDevice);
     }
 

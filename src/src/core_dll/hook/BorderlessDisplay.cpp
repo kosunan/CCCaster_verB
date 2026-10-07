@@ -121,9 +121,23 @@ bool SetFullscreen(bool enabled) {
     Restore();
     return !active;
 }
-bool ChangeResolution(int direction) {
+Resolution ResolutionLimit() {
     const auto state = GetDisplaySettings();
-    if (!state.available || !direction) return false;
+    if (!state.available) return {};
+    MONITORINFO info{sizeof(info)};
+    if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info)) return {};
+    const auto style = (active ? savedStyle : GetWindowLongPtr(window, GWL_STYLE)) & ~(WS_MAXIMIZE | WS_MINIMIZE);
+    const auto exStyle = active ? savedExStyle : GetWindowLongPtr(window, GWL_EXSTYLE);
+    const auto menu = active ? savedMenu : GetMenu(window);
+    RECT frame{};
+    if (!AdjustWindowRectEx(&frame, DWORD(style), menu != nullptr, DWORD(exStyle))) return {};
+    const auto &work = info.rcWork;
+    return {int(work.right-work.left-(frame.right-frame.left)),
+            int(work.bottom-work.top-(frame.bottom-frame.top))};
+}
+bool ApplyRenderResolution(Resolution size) {
+    const auto state = GetDisplaySettings();
+    if (!state.available || size.width <= 0 || size.height <= 0) return false;
     MONITORINFO info{sizeof(info)};
     if (!GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &info)) return false;
     const auto style = (active ? savedStyle : GetWindowLongPtr(window, GWL_STYLE)) & ~(WS_MAXIMIZE | WS_MINIMIZE);
@@ -132,23 +146,21 @@ bool ChangeResolution(int direction) {
     RECT frame{};
     if (!AdjustWindowRectEx(&frame, DWORD(style), menu != nullptr, DWORD(exStyle))) return false;
     const auto &work = info.rcWork;
-    const Resolution limit{int(work.right-work.left-(frame.right-frame.left)),
-                           int(work.bottom-work.top-(frame.bottom-frame.top))};
-    const auto size = NextResolution(state.windowSize, limit, direction);
-    if (!size.width) return false;
     RECT rect = active ? savedRect : RECT{};
     if (!active && !GetWindowRect(window, &rect)) return false;
     const LONG w = size.width + frame.right-frame.left;
     const LONG h = size.height + frame.bottom-frame.top;
-    const LONG x = std::clamp(rect.left+(rect.right-rect.left-w)/2, work.left, work.right-w);
-    const LONG y = std::clamp(rect.top+(rect.bottom-rect.top-h)/2, work.top, work.bottom-h);
+    const LONG x = std::clamp(rect.left+(rect.right-rect.left-w)/2, work.left, std::max(work.left,work.right-w));
+    const LONG y = std::clamp(rect.top+(rect.bottom-rect.top-h)/2, work.top, std::max(work.top,work.bottom-h));
     if (active) {
-        // 描画用savedClientは保持し、全画面中に元画像の比率を変えない。
+        // 全画面の描画元も新しいバックバッファの比率へ即時更新する。
+        savedClient = {0,0,size.width,size.height};
         savedRect = {x,y,x+w,y+h};
         savedStyle = style;
         savedPlacement.showCmd = SW_SHOWNORMAL;
         returnClient = size;
-        Trace("resolution-on-return", savedRect);
+        ReleaseResources();
+        Trace("render-resolution", savedClient);
         return true;
     }
     changing = true;

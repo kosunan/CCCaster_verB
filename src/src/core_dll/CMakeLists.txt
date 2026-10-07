@@ -20,6 +20,7 @@ add_library(cccaster_hook SHARED
     mbaa_mem/GameMemory.cpp
     mbaa_mem/MbaaMemTrace.cpp
     mbaa_mem/RealGameMemory.cpp
+    mbaa_mem/NativeResolution.cpp
     mbaa_mem/NativeInputWrites.cpp
     mbaa_mem/NativeFpsCounter.cpp
     mbaa_mem/TrainingMetrics.cpp

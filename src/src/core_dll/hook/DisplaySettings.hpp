@@ -25,9 +25,10 @@ inline Resolution NextResolution(Resolution current, Resolution limit, int direc
     }
     return next.width ? next : direction > 0 ? first : last;
 }
-// ゲームスレッド専用。全画面中の解像度は通常窓への復帰先だけを変更する。
+// ゲームスレッド専用。描画解像度の再設定成功後に窓と全画面の比率を合わせる。
 DisplaySettings GetDisplaySettings();
-bool ChangeResolution(int direction);
+Resolution ResolutionLimit();
+bool ApplyRenderResolution(Resolution size);
 bool SetFullscreen(bool enabled);
 void SetScaleFilter(bool enabled);
 }

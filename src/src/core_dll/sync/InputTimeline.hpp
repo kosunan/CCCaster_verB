@@ -30,6 +30,8 @@ class InputTimeline {
     int64_t NextDeadlineTicks();
     int64_t CapturedDeadlineTicks(uint32_t frame);
     int64_t CapturedDeadlineUs(uint32_t frame);
+    // 左側メニュー用。同じFで採取した、F4遮断後・キャラ選択フィルター前の入力。
+    bool TryGetMenuInput(uint32_t frame, game_interface::GameInput &input);
     void TraceCapturedPhase(uint32_t frame);
     bool IsActive() const {
         return active_.load(std::memory_order_acquire);
@@ -57,6 +59,7 @@ class InputTimeline {
         int64_t phaseParts = 0, rateParts = 0;
         uint32_t revision = 0;
         bool ready = false;
+        game_interface::GameInput menuInput{};
     };
     std::array<CaptureTime, MatchInputBuffer::RING_SIZE> captureTimes_{};
     int64_t phaseParts_ = 0, rateParts_ = 0;

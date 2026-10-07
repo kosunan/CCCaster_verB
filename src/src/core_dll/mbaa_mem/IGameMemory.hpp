@@ -64,6 +64,8 @@ class IGameMemory {
     virtual bool SetStageAnimation(bool) { return false; }
     virtual int DisplayOption(NativeDisplayOption) const { return -1; }
     virtual bool SetDisplayOption(NativeDisplayOption, int) { return false; }
+    virtual ScreenResolution RenderResolution() const { return {}; }
+    virtual bool ChangeRenderResolution(int) { return false; }
     virtual bool SelectionDelayEditable(bool) const { return true; }
 
     // ── 書き込み ──

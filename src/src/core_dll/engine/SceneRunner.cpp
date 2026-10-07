@@ -158,18 +158,23 @@ bool StepSelectionOptions(GameInput input, bool available, bool editable) {
     const auto result = options::menu.Step(input, options::actions.exchange(0), available, mapping,
         editable && !SettingsCommands::pending.load(), options::animationOn, displayState.fullscreen);
     options::active = options::menu.open;
-    if (result.resolutionStep || result.fullscreen >= 0) {
-        const bool applied = result.resolutionStep ? display::ChangeResolution(result.resolutionStep)
-            : display::SetFullscreen(result.fullscreen == 1);
+    if (result.resolutionStep) {
+        const bool accepted = mem.ChangeRenderResolution(result.resolutionStep);
+        DebugLog("[SelectionOptions] RESOLUTION accepted=%d",int(accepted));
+    }
+    const auto resolution = available ? mem.RenderResolution() : cccaster::game_interface::ScreenResolution{};
+    if (result.fullscreen >= 0) {
+        const bool applied = !resolution.pending && display::SetFullscreen(result.fullscreen == 1);
         displayState = display::GetDisplaySettings();
-        DebugLog("[SelectionOptions] DISPLAY action=%s applied=%d size=%dx%d fullscreen=%d",
-            result.resolutionStep ? "resolution" : "fullscreen", int(applied),
+        DebugLog("[SelectionOptions] DISPLAY action=fullscreen applied=%d size=%dx%d fullscreen=%d", int(applied),
             displayState.windowSize.width, displayState.windowSize.height, int(displayState.fullscreen));
     }
     options::displayAvailable = displayState.available;
     options::fullscreen = displayState.fullscreen;
-    options::windowWidth = displayState.windowSize.width;
-    options::windowHeight = displayState.windowSize.height;
+    options::resolutionAvailable = resolution.available;
+    options::resolutionPending = resolution.pending;
+    options::renderWidth = resolution.width;
+    options::renderHeight = resolution.height;
     for (unsigned i = 0; i < options::nativeValues.size(); ++i) {
         const auto option = static_cast<cccaster::game_interface::NativeDisplayOption>(i);
         auto value = available ? mem.DisplayOption(option) : -1;
@@ -1502,9 +1507,15 @@ void SceneRunner::Step() {
         }
         // キャラ確定後は戻る操作を閉じ、ステージ操作はホストだけが所有する。
         auto own = GameInput::Unpack(localInput & SettingsCommands::GameMask);
-        if (!runtime.stageRematch.active && StepSelectionOptions(own, true,
-                !local.confirmed && !runtime.selectionReleased && mem.SelectionDelayEditable(ctx.isHost)))
-            own = {};
+        if (!runtime.stageRematch.active) {
+            GameInput menuInput;
+            if (!timeline.TryGetMenuInput(frame, menuInput)) {
+                Fail(Error::SyncTimeout, "local selection menu input missing"); return;
+            }
+            if (StepSelectionOptions(menuInput, true,
+                    !local.confirmed && !runtime.selectionReleased && mem.SelectionDelayEditable(ctx.isHost)))
+                own = {};
+        }
         if (local.confirmed) {
             own.buttons &= ~(CC_BUTTON_B | CC_BUTTON_CANCEL);
             if (!ctx.isHost || local.stageConfirmed) own = {};

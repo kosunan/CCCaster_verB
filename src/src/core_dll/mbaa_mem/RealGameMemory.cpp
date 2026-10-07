@@ -22,6 +22,7 @@
 #include "core_dll/common/ScriptedInput.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include "core_dll/mbaa_mem/SpectatorIntroDraw.hpp"
+#include "core_dll/mbaa_mem/NativeResolution.hpp"
 
 #include <windows.h>
 #include <cstring>
@@ -96,6 +97,8 @@ bool RealGameMemory::SetDisplayOption(NativeDisplayOption option, int value) {
     DebugLog("[SelectionOptions] NATIVE option=%s value=%d", definition->name, value);
     return true;
 }
+ScreenResolution RealGameMemory::RenderResolution() const { return native_resolution::Read(); }
+bool RealGameMemory::ChangeRenderResolution(int direction) { return native_resolution::Request(direction); }
 
 void RealGameMemory::SetTrainingHold(bool hold) {
     if (hold == trainingHold_) return;

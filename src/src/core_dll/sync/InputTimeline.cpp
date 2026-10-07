@@ -229,25 +229,31 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
                     value = 0; // UI確認用にキャラセレで待機。
                 if (std::getenv("CCCASTER_TEST_SELECTION_OPTIONS")) {
                     // 新メニューを通常のローカル入力で操作してから対戦へ進む。
-                    // D・背景とHUD3モードを操作。HUDは双方で異なる値のまま戦闘へ進む。
+                    // Aを12F保持しても各項目の変更は1回。HUDは双方で異なる値のまま戦闘へ進む。
                     const auto f = next_ - base_;
                     GameInput test{};
-                    if (f < 960) {
+                    if (f < 1100) {
                         if (host_) {
-                            if (f == 20 || f == 680) test.buttons = CC_BUTTON_START;
+                            if (f == 20 || f == 760) test.buttons = CC_BUTTON_START;
                             if (f == 50 || f == 140 || f == 280) test.direction = 4;
-                            if (f == 80 || f == 170 || f == 230 || f == 260) test.direction = 6;
+                            if (f == 80 || f == 170) test.direction = 6;
+                            if ((f >= 230 && f < 242) || (f >= 260 && f < 272))
+                                test.buttons = CC_BUTTON_A | CC_BUTTON_CONFIRM;
                             if (f == 110 || f == 200) test.direction = 2;
                         } else {
-                            if (f == 320 || f == 920) test.buttons = CC_BUTTON_START;
-                            if (f == 350 || f == 470 || f == 500) test.direction = 6;
+                            if (f == 320 || f == 1000) test.buttons = CC_BUTTON_START;
+                            if (f == 350) test.direction = 6;
+                            if ((f >= 470 && f < 482) || (f >= 500 && f < 512))
+                                test.buttons = CC_BUTTON_A | CC_BUTTON_CONFIRM;
                             if (f == 380 || f == 440) test.direction = 2;
                             if (f == 410) test.direction = 4;
                         }
                         const auto d = f - (host_ ? 300 : 540);
-                        if (d == 0 || d == 60 || d == 140 || d == 200 || d == 260 || d == 320) test.direction = 2;
-                        if (d == 20 || d == 120 || d == 180 || d == 240 || d == 300 || d == 360) test.direction = 4;
-                        if (d == 40 || d == 80 || d == 160 || d == 220 || d == 280 || d == 340) test.direction = 6;
+                        if (d == 0 || d == 60 || d == 160 || d == 200 || d == 260 || d == 320 || d == 380) test.direction = 2;
+                        if (d == 100) test.direction = 8; // 全画面のまま解像度へ戻り、実バックバッファを往復変更。
+                        if (d == 20 || d == 120 || d == 180 || d == 240 || d == 300 || d == 360 || d == 420) test.direction = 4;
+                        for (const unsigned press : {40u, 80u, 140u, 220u, 280u, 340u, 400u})
+                            if (d >= press && d < press + 12) test.buttons = CC_BUTTON_A | CC_BUTTON_CONFIRM;
                     } else if (f % 24 == 18) test.buttons = CC_BUTTON_CONFIRM;
                     value = test.Pack();
                 }
@@ -260,6 +266,8 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
         const auto raw = value;
         const bool mapping = domain::ui::StateUiLogic::IsMappingWindowOpen();
         value = gate_.Apply(GameInput::Unpack(value), mapping).Pack();
+        // キャラ選択の連打ガードはAの保持を断続入力にするため、メニューのエッジ判定には渡さない。
+        const auto menuInput = GameInput::Unpack(value);
         if (phase_ != game_interface::GamePhase::Rematch)
             value = domain::scene::SceneInputFilter::Apply(phase_, value);
         if (testing::IsInputTraceEnabled()) {
@@ -294,7 +302,7 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
         if (loading) MatchInputBuffer::GetInstance().WriteLoadingInput(next_, value);
         else MatchInputBuffer::GetInstance().WriteLocal(next_, value, 0, false);
         captureTimes_[next_ % captureTimes_.size()] = {next_, cadence_.NextTicks(), phaseError_, phaseShift_, phaseTheta_, phaseRtt_,
-            phaseParts_,rateParts_,modelRevision_,modelReady_};
+            phaseParts_,rateParts_,modelRevision_,modelReady_,menuInput};
         phaseShift_ = 0;
         sampled_.store(next_++, std::memory_order_release);
         if (stages)
@@ -350,6 +358,14 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
 } // namespace cccaster::core::sync
 
 namespace cccaster::core::sync {
+bool InputTimeline::TryGetMenuInput(uint32_t frame, game_interface::GameInput &input) {
+    std::lock_guard lock(mutex_);
+    const auto &sample = captureTimes_[frame % captureTimes_.size()];
+    if (!active_ || phase_ != game_interface::GamePhase::CharaSelect || frame <= base_ ||
+        frame >= next_ || sample.frame != frame) return false;
+    input = sample.menuInput;
+    return true;
+}
 int64_t InputTimeline::CapturedDeadlineUs(uint32_t frame) {
     std::lock_guard lock(mutex_);
     const auto &sample = captureTimes_[frame % captureTimes_.size()];

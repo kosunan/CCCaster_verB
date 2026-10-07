@@ -90,12 +90,14 @@ inline Menu menu;
 inline bool visible = false, delayEditable = false, animationOn = true;
 inline int animationValue = -1, delay = 2;
 inline bool displayAvailable = false, fullscreen = false;
-inline int windowWidth = 0, windowHeight = 0;
+inline bool resolutionAvailable = false, resolutionPending = false;
+inline int renderWidth = 0, renderHeight = 0;
 inline std::array<int, 4> nativeValues{-1,-1,-1,-1};
 inline void Queue(Action action) { actions.fetch_or(action); }
 inline void Reset() {
     menu = {}; actions = 0; active = false; heldKeys = 0; visible = false;
     delayEditable = false; animationValue = -1;
     displayAvailable = false;
+    resolutionAvailable = resolutionPending = false;
 }
 }

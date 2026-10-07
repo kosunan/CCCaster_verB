@@ -31,7 +31,7 @@ void CharaSelectUiView::Draw() {
         // 左側のポートレート下部。中央の顔一覧と下端の操作案内を避ける。
         constexpr float x = 8, y = 196, width = 164;
         constexpr float footer = 33 + options::Menu::VisibleRows*34;
-        c.Plate({x,y,width,footer+47},Blue,true);
+        c.Plate({x,y,width,footer+37},Blue,true);
         c.Text(x+9,y+8,"SELECT OPTIONS",10,Blue,1);
         char position[16];
         std::snprintf(position,sizeof(position),"%u/%u",options::menu.row+1,options::Menu::RowCount);
@@ -55,7 +55,8 @@ void CharaSelectUiView::Draw() {
             }
             else if (row >= 3 && !options::displayAvailable) std::snprintf(value,sizeof(value),"--");
             else if (row == 4) std::snprintf(value,sizeof(value),"< %s >",options::fullscreen ? "ON" : "OFF");
-            else if (row == 3) std::snprintf(value,sizeof(value),"< %dx%d >",options::windowWidth,options::windowHeight);
+            else if (row == 3 && !options::resolutionAvailable) std::snprintf(value,sizeof(value),"--");
+            else if (row == 3) std::snprintf(value,sizeof(value),"< %dx%d >",options::renderWidth,options::renderHeight);
             else if (row == 2) std::snprintf(value,sizeof(value),"< %s >",HudDisplay::Name());
             else if (row == 1) std::snprintf(value,sizeof(value),"<  %s  >",options::animationValue < 0 ? "--" : options::animationOn ? "ON" : "OFF");
             else std::snprintf(value,sizeof(value),"<  %d F  >",options::delay);
@@ -64,14 +65,13 @@ void CharaSelectUiView::Draw() {
                 const auto pending = cccaster::core::sync::SettingsCommands::pending.load();
                 c.Text(x+10,top+14,pending ? "SYNCING" : options::delayEditable ? "0 - 8" : "LOCKED",8,
                        pending ? Gold : Muted,3);
-            } else c.Text(x+10,top+14,row == 3 ? (options::fullscreen ? "ON RETURN" : "WINDOWED") :
+            } else c.Text(x+10,top+14,row == 3 ? (options::resolutionPending ? "APPLYING" : "LOCAL") :
                           row == 4 ? "BORDERLESS" : "LOCAL",8,Muted,3);
         }
         c.Rule(x+8,y+footer,width-16);
         c.Text(x+9,y+footer+8,"ARROWS / D-PAD   B: BACK",9,Muted,3,width-18);
         c.Rule(x+8,y+footer+23,width-16);
         c.Text(x+9,y+footer+28,"DELAY ADDS 0 - 8 FRAMES OF INPUT LAG",7,Muted,5,width-18);
-        c.Text(x+9,y+footer+38,"DELAY 2 = 2 EXTRA FRAMES",7,Muted,5,width-18);
     }
 }
 

@@ -30,6 +30,8 @@ class RealGameMemory final : public IGameMemory {
     bool SetStageAnimation(bool) override;
     int DisplayOption(NativeDisplayOption) const override;
     bool SetDisplayOption(NativeDisplayOption, int) override;
+    ScreenResolution RenderResolution() const override;
+    bool ChangeRenderResolution(int) override;
     bool SelectionDelayEditable(bool) const override;
     void WriteInput(GameInput p1, GameInput p2) override;
     void SetTrainingHold(bool) override;

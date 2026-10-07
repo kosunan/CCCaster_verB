@@ -26,11 +26,20 @@ def verify(texts):
         if not battle_hud or any(mode != expected_hud[-1] for mode in battle_hud):
             errors.append(f'P{side}: 戦闘開始後のHUDが不正: {battle_hud}')
         display = re.findall(r'DISPLAY action=(\w+) applied=(\d+) size=(\d+)x(\d+) fullscreen=(\d+)', '\n'.join(events))
-        if len(display) != 4 or [(d[0], d[1], d[4]) for d in display] != [
-                ('resolution', '1', '0'), ('resolution', '1', '0'), ('fullscreen', '1', '1'), ('fullscreen', '1', '0')]:
-            errors.append(f'P{side}: 解像度・全画面切替が不正: {display}')
-        elif any(int(d[2]) < 640 or int(d[3]) < 480 for d in display) or display[0][2:4] == display[1][2:4] or display[1][2:4] != display[-1][2:4]:
-            errors.append(f'P{side}: 解像度の変更・全画面からの復帰寸法が不正: {display}')
+        if len(display) != 2 or [(d[0], d[1], d[4]) for d in display] != [
+                ('fullscreen', '1', '1'), ('fullscreen', '1', '0')]:
+            errors.append(f'P{side}: 全画面切替が不正: {display}')
+        requests = re.findall(r'RESOLUTION accepted=(\d+)', '\n'.join(events))
+        resolutions = re.findall(r'\[NativeResolution\] COMPLETE applied=(\d+) requested=(\d+)x(\d+) backbuffer=(\d+)x(\d+) fullscreen=(\d+) window=(\d+)x(\d+) hr=(\w+)',text)
+        if requests != ['1']*4 or len(resolutions) != 4:
+            errors.append(f'P{side}: 描画解像度の要求／完了数が不正: {requests} / {resolutions}')
+        elif any(r[0] != '1' or r[1:3] != r[3:5] or r[1:3] != r[6:8] or int(r[8],16) != 0 for r in resolutions):
+            errors.append(f'P{side}: Reset失敗／実バックバッファ寸法／復帰寸法が不一致: {resolutions}')
+        elif ([r[5] for r in resolutions] != ['0','0','1','1'] or resolutions[0][1:3] == resolutions[1][1:3] or
+              resolutions[0][1:3] != resolutions[2][1:3] or resolutions[1][1:3] != resolutions[3][1:3]):
+            errors.append(f'P{side}: 通常窓・全画面中の解像度往復が不正: {resolutions}')
+        elif len(display) == 2 and any(d[2:4] != resolutions[-1][1:3] for d in display):
+            errors.append(f'P{side}: 全画面切替時の窓寸法が不正: {display}')
         for name, count in [('CHARACTER_FILTER', 4), ('SCREEN_FILTER', 2), ('ASPECT_RATIO', 7), ('VIEW_FPS', 2)]:
             values = [int(v) for v in re.findall(r'NATIVE option=' + name + r' value=(\d+)', '\n'.join(events))]
             if len(values) != 2 or any(v >= count for v in values) or values[0] != (values[-1]+1) % count:

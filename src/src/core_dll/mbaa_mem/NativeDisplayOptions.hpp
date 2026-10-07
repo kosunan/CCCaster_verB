@@ -3,6 +3,10 @@
 #include <cstdint>
 
 namespace cccaster::game_interface {
+struct ScreenResolution {
+    int width = 0, height = 0;
+    bool available = false, pending = false;
+};
 enum class NativeDisplayOption : unsigned { CharacterFilter, ScreenFilter, AspectRatio, ViewFps, Count };
 struct NativeDisplayDefinition {
     std::uint32_t offset;
