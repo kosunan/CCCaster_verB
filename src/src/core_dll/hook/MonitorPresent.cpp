@@ -191,10 +191,8 @@ bool Submit(bool skipped, const RECT* source, const RECT* destination, HWND over
     return true;
 }
 void Pump(int64_t remainingUs) {
-    // An image not yet presented may still need its first attempt or a retry
-    // after WASSTILLDRAWING. Suppress only duplicate-image presentation.
-    if (ready && active && remainingUs > guardUs &&
-        core::timer::IdlePresentation::MayPresent(image == lastImage)) Display();
+    // 初回・再試行・同じ完成画像の再提示とも、スピン前の余裕がある間だけ行う。
+    if (ready && active && remainingUs > guardUs) Display();
 }
 void Reset() {
     if (swapChain) swapChain->Release();

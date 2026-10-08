@@ -52,7 +52,7 @@ else()
     target_link_libraries(harness PRIVATE Threads::Threads)
 endif()
 
-target_link_libraries(harness PRIVATE cccaster_transport cccaster_precise_wait)
+target_link_libraries(harness PRIVATE cccaster_transport cccaster_precise_wait ZLIB::ZLIB)
 
 if(WIN32)
     add_executable(probe_suspended_image probe_suspended_image.cpp)

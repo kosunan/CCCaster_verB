@@ -25,6 +25,19 @@ struct Sprite {
     std::vector<Tile> tiles;
     unsigned type = 0, bank = 0;
 };
+struct MotionFrame {
+    unsigned sprite = NoPixel, duration = 1, state = 0;
+    int x = 0, y = 0;
+    float scaleX = 1, scaleY = 1, rotationX = 0, rotationY = 0, rotationZ = 0;
+    uint8_t rotationOrder = 0;
+};
+struct Motion {
+    unsigned id = 0, duration = 0, missing = 0;
+    std::string name;
+    std::vector<MotionFrame> frames;
+    bool object = false;
+    float left = 0, top = 0, right = 0, bottom = 0;
+};
 struct Edit {
     Palette palette{};
     std::map<uint32_t, Palette> effects;
@@ -40,8 +53,10 @@ struct Edit {
 };
 struct Asset {
     uintptr_t owner = 0;
+    uint64_t generation = 0; // 同じアドレスへの再読込みと、編集画面の開き直しを区別する。
     std::map<unsigned, Page> pages;
     std::vector<Sprite> sprites;
+    std::vector<Motion> motions;
     Edit original, applied;
     unsigned character = 0, component = 0, baseColor = 0;
     uint32_t layout = 0;

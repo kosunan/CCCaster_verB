@@ -4,9 +4,35 @@ from pathlib import Path
 from run_stage_rematch import analyze, analyze_intro_text, analyze_assembly_text, analyze_loading, analyze_spectator_drawing, analyze_intro_wait, analyze_round_starts, evaluate_behavior
 from run_stage_rematch import analyze_direct_rematch
 from run_stage_rematch import analyze_native_loops
+from run_stage_rematch import analyze_extra_colors
 
 
 class StageRematchAnalysis(unittest.TestCase):
+    def test_extra_color_permission_keeps_own_color_and_stops_rejected_transfer(self):
+        for blocked in ('', '1', '2', '12'):
+            for side in (1, 2):
+                receives, peer_receives = str(side) not in blocked, str(3-side) not in blocked
+                selected = 6 if side == 1 else 0
+                sent = selected if peer_receives else 0
+                size = 47628 if sent else 12
+                policy = f'[ExtraColor] POLICY receive={int(receives)} peerReceive={int(peer_receives)} selected={selected} sent={sent}\n'
+                send = f'[ExtraColor] SEND epoch=65536 serial=3 character=0 extra={sent} bytes={size} hash=abcd fast=1 qpc=1\n'
+                applied = '[ExtraColor] LOAD slot=0 character=0 layout=abcd matched=1 applied=1\n' if side == 1 or receives else ''
+                good = (policy + send + '[Select] COMMIT p1=0/0/0\n' + applied + '[ExtraColor] READY epoch=65536 waitUs=0 fast=1 qpc=1\n') * 2
+                self.assertTrue(analyze_extra_colors(good, side, blocked)['passed'], (blocked, side))
+                for bad in ('', good.replace(policy, ''), good.replace('[Select] COMMIT ', ''),
+                            good.replace('READY', 'WAITING')):
+                    # 受信拒否側でも遷移完了が必要。確定ログは元の同期判定器が別途必須にする。
+                    if '[Select] COMMIT ' not in bad and not applied and bad:
+                        continue
+                    self.assertFalse(analyze_extra_colors(bad, side, blocked)['passed'], (blocked, side, bad))
+                if applied:
+                    self.assertFalse(analyze_extra_colors(good.replace(applied, ''), side, blocked)['passed'])
+                else:
+                    self.assertFalse(analyze_extra_colors(good + '[ExtraColor] LOAD slot=0 character=0 layout=abcd matched=1 applied=1\n', side, blocked)['passed'])
+                if side == 1 and not peer_receives:
+                    self.assertFalse(analyze_extra_colors(good.replace('bytes=12', 'bytes=47628'), side, blocked)['passed'])
+
     def test_native_loops_require_each_side_to_use_the_requested_code(self):
         enabled = '[NativeLoops] enabled=1 scene=1 sse2=1'
         disabled = '[NativeLoops] disabled=1'

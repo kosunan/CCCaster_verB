@@ -59,6 +59,8 @@ def main():
     parser.add_argument('--inspect-seconds', type=int, default=0)
     parser.add_argument('--interactive', action='store_true')
     parser.add_argument('--palette', action='store_true', help='マウスの画面操作と読取り検査を組み合わせてパレット／鉛筆を確認')
+    parser.add_argument('--palette-animation', action='store_true', help='左右プレビューの再生・停止・コマ送り・オブジェクトを画面操作と読取りで確認')
+    parser.add_argument('--palette-close', action='store_true', help='編集中の実キャラ不変・閉じる際の一括反映・開き直してUndo/Redoを確認')
     parser.add_argument('--extra', action='store_true', help='ACT取込み・永続保存・再ロードを画面操作と読取りで確認')
     parser.add_argument('--extra-restore', action='store_true', help='既存の保存ファイルを別プロセスで復元して検査')
     parser.add_argument('--extra-select', action='store_true', help='既存カラー一覧の7ページ目から42番(EXTRA 6)を選び、実データ適用を検査')
@@ -66,6 +68,7 @@ def main():
     parser.add_argument('--color-page-fixtures', action='store_true', help='独立コピーの37〜41番に識別用の5色を一時配置し、終了時に元へ戻す')
     parser.add_argument('--hidden', action='store_true',help='隠し8体とイクリプスを検査')
     args = parser.parse_args()
+    if args.palette_animation or args.palette_close: args.palette=True
     if args.extra_restore: args.extra=True
     import vgamepad as vg
     from vgamepad.win import vigem_client as vc
@@ -126,6 +129,7 @@ def main():
                      intro=read(0x55D20B,1), p1x=read(0x555238), p2x=read(0x555D34),
                      p1pattern=read(0x555140), p2pattern=read(0x555C3C),
                      assets=[read(0x557D30 + i*12) for i in range(4)],
+                     presentation=[[read(0x5642C8 + i*0x20 + j*4) for j in range(7)] for i in range(4)],
                      actors=[dict(exists=read(0x555130+i*0xAFC), character=read(0x555135+i*0xAFC,1),
                                   moon=read(0x55513C+i*0xAFC,2)) for i in range(4)],
                      enemy_status=read(0x77C1E8),
@@ -212,11 +216,28 @@ def main():
         other = 'p'+str(2-side)
         if after_change[other] != before_change[other]: raise RuntimeError(label+': 相手の選択が変更された')
         if after_change['actors'][side]['moon'] != moon: raise RuntimeError(label+': 実体のムーンが不一致')
+        if after_change['actors'][side]['character'] != character: raise RuntimeError(label+': ボスの戦闘番号が不一致')
         for key in ('mode','stage','bgm_thread','bgm_patch','enemy_status'):
             if after_change[key] != before_change[key]: raise RuntimeError(label+': '+key+'が変化')
         time.sleep(.25)
         if read(0x55D1CC) <= after_change['sim']: raise RuntimeError(label+': 更新停止')
         return after_change
+
+    def check_boss_presentation(value):
+        # 0x426340の命名規則を.p索引に照合した収録数。巨大秋葉は顔だけ、ヘルメスは固有画像。
+        # 根拠: test/source/boss_assets/audit.py。子キャラのCUTなしは標準TagType=2の分岐。
+        expected = {16:(True,False,0),32:(True,True,3),53:(True,True,3),58:(True,True,3),
+                    59:(True,True,3),72:(True,True,7),73:(True,True,3),85:(True,True,31)}
+        for slot,actor in enumerate(value['actors']):
+            character=actor['character']
+            if not actor['exists'] or character not in expected: continue
+            face,color,mask=expected[character]
+            if slot>=2 and character==85: mask=0
+            images=value['presentation'][slot]
+            actual=(bool(images[0]),bool(images[1]),sum(1<<i for i,p in enumerate(images[2:]) if p))
+            if actual!=(face,color,mask):
+                raise RuntimeError(f'{value["label"]}: slot={slot} char={character} 表示資産が不一致 {actual}')
+            if not value['assets'][slot]: raise RuntimeError('ボスの戦闘データが未ロード')
 
     try:
         print('Logs:', out, flush=True)
@@ -259,6 +280,7 @@ def main():
             log.unlink()
         env = {key:value for key,value in os.environ.items() if not key.startswith('CCCASTER_')}
         env.update(CCCASTER_TRAINING_TRACE='1', CCCASTER_INPUT_DIAGNOSTIC='1')
+        if args.palette_animation: env['CCCASTER_PALETTE_PREVIEW_TRACE']='1'
         with (out / 'launcher.log').open('w') as stream:
             proc = subprocess.Popen([str(caster / 'CCCaster_B.exe'), '--training'], cwd=caster, env=env,
                                     stdout=stream, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -341,10 +363,34 @@ def main():
             last_palettes = original_palettes
             last_apply_count = 0
             result['palette_checks'] = []
+            animation_checks={}
+            def animation():
+                rows=re.findall(r'\[PaletteAnimation\] slot=(\d+) motion=(\d+) object=(\d+) frame=(\d+) state=(\d+) sprite=(\d+) still=(\d+) playing=(\d+)',text())
+                if not rows: raise RuntimeError('アニメーション描画記録なし')
+                return dict(zip(('slot','motion','object','frame','state','sprite','still','playing'),map(int,rows[-1])))
             if args.extra_restore: shutil.copy2(caster/'extra_colors/character_0/extra_6.cccolor',out/'saved_extra_6.cccolor')
             open_menu(); menu_item('CC_PALETTE'); press('a')
-            print('PALETTE ready. Commands: palette_applied / pixel_applied / cancelled / p2_applied / restored / reopen / done; normal pad commands also available',flush=True)
+            print('PALETTE ready. Commands: palette_applied / pixel_applied / cancelled / p2_applied / restored / reopen / done; close: preview_only / retained / reopened / undo_closed / redo_closed / pixel_retained; normal pad commands also available',flush=True)
             for line in iter(input, 'done'):
+                if args.palette_animation and line.startswith('animation_'):
+                    first=animation(); world=read(0x55D1CC);actors=read_bytes(0x555130,0xAFC*4)
+                    time.sleep(.35);second=animation()
+                    if read(0x55D1CC)!=world or read_bytes(0x555130,0xAFC*4)!=actors: raise RuntimeError('プレビュー中に戦闘状態が進行した')
+                    if line in ('animation_playing','animation_object'):
+                        if not first['playing'] or first['frame']==second['frame'] or first['still']!=second['still']: raise RuntimeError('再生／静止画の独立性不一致')
+                        if line=='animation_object' and not first['object']: raise RuntimeError('オブジェクトモーション未選択')
+                    elif line=='animation_paused':
+                        if first['playing'] or first!=second: raise RuntimeError('一時停止していない')
+                    elif line=='animation_step':
+                        paused=animation_checks['animation_paused']['after']
+                        if first['playing'] or first!=second or first['frame']!=paused['frame']+1: raise RuntimeError('1F送り不一致')
+                    elif line=='animation_static':
+                        paused=animation_checks['animation_step']['after']
+                        if first['playing'] or first!=second or first['frame']!=paused['frame'] or first['motion']!=paused['motion'] or first['still']==paused['still']:
+                            raise RuntimeError('静止画切替がアニメーションと独立していない')
+                    else: raise RuntimeError('不明なアニメーション検査: '+line)
+                    animation_checks[line]=dict(before=first,after=second,world=world)
+                    print('PASS '+line,flush=True);continue
                 if line == 'reopen':
                     if not read(0x74D7FC): open_menu()
                     menu_item('CC_PALETTE'); press('a')
@@ -358,6 +404,12 @@ def main():
                     data=(out/'saved_extra_6.cccolor').read_bytes()
                     expected=b'\0'*4+data[28:1048]
                     wait(lambda: read_bytes(read(0x557D34)+0x10,1024)==expected,reason='再ロードしたエクストラのパレットが不一致')
+                if args.palette_close and line in ('palette_applied','pixel_applied','p2_applied','undo_closed','redo_closed','restored'):
+                    # 両側の画像一括更新はパッド解放の固定待機より長い場合がある。
+                    wait(lambda: text().rfind('[TrainingPalette] CLOSE')>text().rfind('[TrainingPalette] OPEN '),
+                         reason='編集画面を閉じる際の反映が完了しない')
+                    # 長い一括反映中に離したBをゲームが読み取ってから次の操作へ進む。
+                    time.sleep(.2)
                 current = [read_bytes(read(0x557D34+i*12)+0x10,1024) for i in range(2)]
                 applies = re.findall(r'\[TrainingPalette\] APPLY slot=(\d+) pages=(\d+) pixels=(\d+) uploaded=(\d+)',text())
                 if args.extra and line == 'act_applied':
@@ -380,7 +432,18 @@ def main():
                     if not applies or applies[-1][0]!='0' or applies[-1][3]!='1': raise RuntimeError('P1適用未成功')
                 elif line == 'pixel_applied':
                     if current!=last_palettes: raise RuntimeError('ピクセル編集でパレットを変更した')
-                    if len(applies)!=last_apply_count+1 or int(applies[-1][2])<=0 or applies[-1][3]!='1': raise RuntimeError('ピクセルの適用未成功')
+                    if len(applies)<=last_apply_count or int(applies[-1][2])<=0 or applies[-1][3]!='1': raise RuntimeError('ピクセルの適用未成功')
+                elif args.palette_close and line in ('preview_only','retained','reopened','pixel_retained'):
+                    opened=text().rfind('[TrainingPalette] OPEN ')
+                    closed=text().rfind('[TrainingPalette] CLOSE')
+                    should_open=line in ('preview_only','reopened')
+                    if opened<0 or (opened>closed)!=should_open: raise RuntimeError('編集画面の開閉状態が不一致')
+                    if current!=last_palettes or len(applies)!=last_apply_count: raise RuntimeError('開閉だけで編集中の色・画素が変化した')
+                    if line=='pixel_retained' and (not applies or int(applies[-1][2])<=0): raise RuntimeError('閉じた後に鉛筆が残っていない')
+                elif args.palette_close and line=='undo_closed':
+                    if current!=original_palettes or len(applies)<=last_apply_count: raise RuntimeError('再表示後のUndoが閉じる際に反映されない')
+                elif args.palette_close and line=='redo_closed':
+                    if current[0]==original_palettes[0] or current[1]!=original_palettes[1] or len(applies)<=last_apply_count: raise RuntimeError('Redoが閉じる際に反映されない')
                 elif line == 'cancelled':
                     if current!=last_palettes: raise RuntimeError('取消が実パレットを変更した')
                     if len(applies)!=last_apply_count: raise RuntimeError('取消がピクセルを適用した')
@@ -390,13 +453,26 @@ def main():
                 elif line == 'restored':
                     if current!=original_palettes: raise RuntimeError('元のパレットに戻らない')
                 else: raise RuntimeError('不明な検査コマンド: '+line)
+                if args.palette_close and line in ('palette_applied','pixel_applied','p2_applied','undo_closed','redo_closed','restored'):
+                    if text().rfind('[TrainingPalette] OPEN ')>text().rfind('[TrainingPalette] CLOSE'): raise RuntimeError('閉じる前に実キャラへ反映された')
+                    expected=2 if line=='restored' else 1
+                    if len(applies)!=last_apply_count+expected: raise RuntimeError('閉じる際の一括反映回数が不一致')
                 result['palette_checks'].append(dict(check=line,applies=applies,
                     changed_entries=[sum(a[j:j+4]!=b[j:j+4] for j in range(0,1024,4)) for a,b in zip(original_palettes,current)]))
                 last_palettes=current
                 last_apply_count=len(applies)
                 print('PASS '+line,flush=True)
             required={'extra_loaded'} if args.extra_restore else {'act_applied','extra_saved','extra_loaded'} if args.extra else {'palette_applied','pixel_applied','cancelled','p2_applied','restored'}
+            if args.palette_close: required={'palette_applied','preview_only','retained','reopened','undo_closed','redo_closed','pixel_applied','pixel_retained','p2_applied','restored'}
             if required-{item['check'] for item in result['palette_checks']}: raise RuntimeError('必要な画面操作が未確認')
+            if args.palette_animation:
+                result['animation_checks']=animation_checks
+                if {'animation_playing','animation_paused','animation_step','animation_static','animation_object'}-animation_checks.keys():
+                    raise RuntimeError('必要なアニメーション操作が未確認')
+            if text().rfind('[TrainingPalette] OPEN ')>text().rfind('[TrainingPalette] CLOSE'):
+                press('b')
+                wait(lambda: text().rfind('[TrainingPalette] CLOSE')>text().rfind('[TrainingPalette] OPEN '),reason='カラー編集を閉じられない')
+                time.sleep(.2)
             press('b'); resumed(); initial_world=read(0x55D1CC)
             time.sleep(.3)
             if read(0x55D1CC)<=initial_world: raise RuntimeError('編集後に戦闘が進行しない')
@@ -422,11 +498,12 @@ def main():
             result['interactive_only'] = True
         elif args.hidden:
             # ムーン9を持つ通常キャラと姫アルク、および追加した全8体。
-            cases=[(0,30,9),(1,51,9),(0,16,9),(1,32,0),(0,53,8),(1,58,9),
-                   (0,59,9),(1,72,9),(0,73,9),(1,85,9),(0,0,0),(1,11,0),(0,53,8)]
+            bosses=[(16,9),(32,0),(53,8),(58,9),(59,9),(72,9),(73,9),(85,9)]
+            cases=[(0,30,9),(1,51,9)]+[(side,c,m) for side in range(2) for c,m in bosses]+[(0,0,0),(1,11,0),(0,53,8)]
             for i,(side,character,moon) in enumerate(cases):
                 changed=choose(side,character,moon,f'hidden_{i}_{character}_{moon}',already_open=i==0)
-                if character==85 and not changed['actors'][3]['exists']: raise RuntimeError('ボス子キャラ未生成')
+                check_boss_presentation(changed)
+                if character==85 and not changed['actors'][side+2]['exists']: raise RuntimeError('ボス子キャラ未生成')
                 # 変身・攻撃を含む通常入力後にもメニューへ戻れることを次ケースで確認する。
                 press('a'); time.sleep(.5)
             # 元のキャラ選択画面への復帰を通常メニュー入力で検査。

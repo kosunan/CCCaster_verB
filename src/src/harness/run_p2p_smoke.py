@@ -32,7 +32,7 @@ def run_real(args, output):
         env.update(CCCASTER_INPUT_SEND_TRACE='1', CCCASTER_UPDATE_CADENCE='1',
                    CCCASTER_MONITOR_PRESENT_TRACE='1')
     if args.legacy_input_handoff:
-        env.update(CCCASTER_TEST_INPUT_PHASE_US='3000', CCCASTER_TEST_BATTLE_IDLE_PRESENT='1')
+        env.update(CCCASTER_TEST_INPUT_PHASE_US='3000')
     if args.monitor_hz:
         env['CCCASTER_TEST_MONITOR_HZ'] = str(args.monitor_hz)
     config = dict(spectator=args.standby_spectator and not args.no_spectators, input_runahead=args.input_runahead)
@@ -111,7 +111,7 @@ def main():
     parser.add_argument('--extra-color',action='store_true',help='保存済みホストEXTRA 6の転送・両側適用を検査')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
     parser.add_argument('--input-handoff-trace', action='store_true', help='採取・公開からゲーム注入までを実QPCで記録する')
-    parser.add_argument('--legacy-input-handoff', action='store_true', help='比較専用：旧3ms位相と戦闘待機中の追加Present')
+    parser.add_argument('--legacy-input-handoff', action='store_true', help='比較専用：旧3msの入力公開位相')
     parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
                         help='検証専用の表示要求Hz。実モニター設定は変更しない')
     parser.add_argument('--test-root', type=pathlib.Path, default=ROOT / 'test/runtime', help='独立したMBAACC_1〜3の親フォルダー')

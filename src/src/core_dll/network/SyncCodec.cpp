@@ -17,6 +17,7 @@
 #include "core_dll/ui/State_Ui_Logic.hpp"
 #include <cstring>
 #include <algorithm>
+#include <cstdlib>
 #include "core_dll/sync/FrameSequence.hpp"
 #include "core_dll/mbaa_mem/GamePhase.hpp"
 
@@ -100,7 +101,8 @@ void SyncCodec::Initialize(bool isHost, int delayFrames, int maxRollback, Metron
 
 void SyncCodec::Reset() {
     _emblems.Start(cccaster::emblem::Store::Get(0));
-    _extraColors.Reset();_extraTurn=false;
+    const char* receive=std::getenv("CCCASTER_RECEIVE_EXTRA_COLORS");
+    _extraColors.Reset(!receive || std::strcmp(receive,"0")!=0);_extraTurn=false;
     _peerClosed = false;
     _clock.Reset();
     _lastModelEvaluation = UINT32_MAX;

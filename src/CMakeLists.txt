@@ -56,6 +56,14 @@ message("Building CCCaster in ${CMAKE_BUILD_TYPE} mode")
 # ==========================================
 include(FetchContent)
 
+# カラー通信の可逆圧縮。DLL追加配布を避けるため静的版を使用する。
+set(ZLIB_USE_STATIC_LIBS ON)
+if(MINGW AND CMAKE_HOST_WIN32 AND NOT DEFINED ZLIB_ROOT)
+    get_filename_component(_cccaster_compiler_bin "${CMAKE_C_COMPILER}" DIRECTORY)
+    get_filename_component(ZLIB_ROOT "${_cccaster_compiler_bin}" DIRECTORY)
+endif()
+find_package(ZLIB 1.2.9 REQUIRED)
+
 # ==========================================
 # ターゲット環境の検証
 # ==========================================

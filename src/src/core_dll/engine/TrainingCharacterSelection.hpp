@@ -12,6 +12,14 @@ constexpr uint32_t MoonValue(uint32_t character, unsigned slot) {
     return slot < 3 ? slot : character == 53 ? 8 : 9;
 }
 constexpr unsigned MoonSlot(uint32_t moon) { return moon < 3 ? moon : 3; }
+// BOSS RUSHの差分番号は既存番号+50。戦闘定義は専用、顔・色見本・CUT画像は元キャラを使う。
+// 巨大秋葉16・HERMES32・姫アルク51は固有の参照を保持する。
+constexpr uint32_t PresentationCharacter(uint32_t character) {
+    switch (character) {
+    case 53: case 58: case 59: case 72: case 73: case 85: return character - 50;
+    default: return character;
+    }
+}
 constexpr uint32_t CursorCharacter(uint32_t character) {
     switch (character) {
     case 16: case 53: return 3;

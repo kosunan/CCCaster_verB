@@ -26,6 +26,12 @@ __attribute__((naked)) void cc_training_describe(void* description, void* loadin
 __attribute__((naked)) void cc_training_free_slot(unsigned slot) {
     __asm__ __volatile__("movl 4(%esp),%eax; movl $0x41C2E0,%ecx; jmp *%ecx");
 }
+__attribute__((naked)) void cc_training_load_presentation(unsigned slot, unsigned character, unsigned side, unsigned cutin) {
+    // 0x426340: ECX=slot, EDX=画像用キャラ、スタック=side/CUT番号、呼出側で8バイト解放。
+    // 元関数が同じslotの旧画像を解放する。HA6/PAT/CG/PALには触れない。
+    __asm__ __volatile__("movl 4(%esp),%ecx; movl 8(%esp),%edx; pushl 16(%esp); pushl 16(%esp);"
+                         "movl $0x426340,%eax; call *%eax; addl $8,%esp; ret");
+}
 __attribute__((naked)) uint32_t cc_training_file_size(void* file) {
     __asm__ __volatile__("pushl %esi; movl 8(%esp),%esi; movl $0x413DB0,%eax;"
                          "call *%eax; popl %esi; ret");
@@ -159,6 +165,21 @@ __attribute__((force_align_arg_pointer)) void __stdcall RoundReset(void* battle)
         for (unsigned slot = 0; slot < 4; ++slot) cc_training_free_slot(slot);
         // 通常ロード0x448FB0のうちキャラ資産だけ。背景読込み0x4B6BF0は不要。
         reinterpret_cast<int (__fastcall*)(void*, void*)>(0x4489E0)(description, nullptr);
+        // ボス専用番号にない表示画像を補う。相手・子キャラも全て再ロードされるため4枠を処理。
+        // 全般的な画像ロードや共有キャラ定義を書き換えず、このTraining切替だけで適用する。
+        for (unsigned slot = 0; slot < 4; ++slot) {
+            const auto* actor = reinterpret_cast<const uint8_t*>(0x555130 + slot * 0xAFC);
+            if (!actor[0]) continue;
+            const auto character = uint32_t(actor[5]);
+            const auto presentation = PresentationCharacter(character);
+            if (presentation == character) continue;
+            cc_training_load_presentation(slot, presentation, slot % 2, presentation);
+            const auto* images = reinterpret_cast<const uint32_t*>(0x5642C8 + slot * 0x20);
+            unsigned cutMask = 0;
+            for (unsigned i = 0; i < 5; ++i) if (images[2+i]) cutMask |= 1u << i;
+            DebugLog("[TrainingCharacter] PRESENTATION slot=%u char=%u source=%u face=%u color=%u cutMask=%u",
+                     slot, character, presentation, images[0] != 0, images[1] != 0, cutMask);
+        }
         changed = true;
         DebugLog("[TrainingCharacter] LOAD end side=%u char=%u moon=%u elapsedUs=%lld stage=%u",
                  side, choice.character, choice.moon, platform::RealMonotonicUs()-started, *CC_STAGE_SELECTOR_ADDR);
@@ -243,6 +264,8 @@ bool RealGameMemory::ConfigureTrainingMenu() {
     if (!game_build::RuntimeValidated() || !ConfigureMenuObserver() || !training_palette::Install()) return false;
     const unsigned char constructor[]{0x6a,0xff,0x68,0x67,0x75,0x51,0x00};
     const unsigned char reset[]{0x83,0xec,0x10,0xa1,0x58,0xb4,0x54,0x00};
+    const unsigned char presentation[]{0x81,0xec,0x14,0x01,0x00,0x00,0xa1,0x58,0xb4,0x54,0x00};
+    if (std::memcmp(reinterpret_cast<void*>(0x426340), presentation, sizeof(presentation))) return false;
     if (!Hook(0x47D3A0, constructor, sizeof(constructor), reinterpret_cast<void*>(Construct),
               reinterpret_cast<void**>(&originalConstructor)) ||
         !Hook(0x423380, reset, sizeof(reset), reinterpret_cast<void*>(RoundReset),

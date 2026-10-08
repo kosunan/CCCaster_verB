@@ -157,6 +157,8 @@ void MainController::LaunchAndMonitorGame() {
     cccaster::main_app::GameLauncher monitor;
     SessionCloseMonitor closeMonitor;
     SetEnvironmentVariableA("CCCASTER_SPECTATE_OFF", _allowSpectators ? nullptr : "1");
+    SetEnvironmentVariableA("CCCASTER_RECEIVE_EXTRA_COLORS",
+        ConfigManager::GetInt("Connection","ShowOpponentExtraColors",1)!=0 ? "1" : "0");
 
     if (!monitor.BootAndMonitor(absPath, [this](uint32_t pid) {
         if (!_p2p || !_p2p->socket) return true;

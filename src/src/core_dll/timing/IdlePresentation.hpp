@@ -7,8 +7,6 @@ namespace cccaster::core::timer {
 struct IdlePresentation {
     using Callback = void (*)(int64_t remainingUs);
     inline static thread_local Callback callback = nullptr;
-    inline static thread_local bool repeatsAllowed = true;
-    static bool MayPresent(bool repeat) { return !repeat || repeatsAllowed; }
     // 呼出側は粗い待機区間に限る。提示側にもスピン開始までの残り時間だけを渡す。
     static void Pump(int64_t remainingUs, int64_t spinGuardUs = 0) {
         const auto availableUs = remainingUs - (spinGuardUs > 0 ? spinGuardUs : 0);
@@ -16,13 +14,10 @@ struct IdlePresentation {
     }
     struct Scope {
         Callback previous;
-        bool previousRepeats;
-        explicit Scope(Callback value, bool repeats = true)
-            : previous(callback), previousRepeats(repeatsAllowed) {
+        explicit Scope(Callback value) : previous(callback) {
             callback = value;
-            repeatsAllowed = repeats;
         }
-        ~Scope() { callback = previous; repeatsAllowed = previousRepeats; }
+        ~Scope() { callback = previous; }
         Scope(const Scope&) = delete;
         Scope& operator=(const Scope&) = delete;
     };

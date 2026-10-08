@@ -4,6 +4,8 @@
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/engine/ExtraColorPage.hpp"
+#include "core_dll/common/Platform.hpp"
+#include <cstdlib>
 
 extern "C" int __cdecl cc_native_color_original(unsigned,unsigned,unsigned);
 extern "C" void __cdecl cc_native_color_refresh(unsigned);
@@ -19,6 +21,10 @@ struct Side {
 std::array<Side,2> sides;
 uint32_t publishedEpoch=0,serial=1,publishedCharacter=UINT32_MAX,publishedRevision=0;
 int publishedChoice=-2;
+bool publishedFast=false;
+uint32_t readyEpoch=0;
+int64_t readyWaitStarted=0;
+bool readyLogged=false;
 std::string notice;
 uint32_t* Cursor(unsigned side){return side ? CC_P2_SELECTOR_MODE_ADDR : CC_P1_SELECTOR_MODE_ADDR;}
 bool Owned(unsigned side){return side<2 && (mode==1 || mode==5 || (mode==0 && side==unsigned(!host)));}
@@ -28,7 +34,7 @@ const char* Notice(){return notice.c_str();}
 void Tick() {
     if(mode!=0 && mode!=1 && mode!=5)return;
     if(*CC_GAME_MODE_ADDR!=CC_GAME_MODE_CHARA_SELECT){inSelect=false;return;}
-    if(!inSelect){sides={};notice.clear();publishedChoice=-2;inSelect=true;}
+    if(!inSelect){sides={};notice.clear();publishedChoice=-2;readyWaitStarted=0;readyLogged=false;inSelect=true;}
     for(unsigned side=0;side<2;++side) {
         if(!Owned(side))continue;
         auto& state=sides[side];auto* cursor=Cursor(side);
@@ -48,7 +54,7 @@ void Tick() {
 }
 bool Editable(unsigned side) {
     return Owned(side) && *CC_GAME_MODE_ADDR==CC_GAME_MODE_CHARA_SELECT && Cursor(side)[0]<4 &&
-        Cursor(side)[0]>=CC_SELECT_COLOR && (mode!=0 || network::Store::Supported());
+        Cursor(side)[0]>=CC_SELECT_COLOR;
 }
 bool Visible(unsigned side){return Owned(side) && *CC_GAME_MODE_ADDR==CC_GAME_MODE_CHARA_SELECT;}
 unsigned Character(unsigned side){return side<2 ? sides[side].character : UINT32_MAX;}
@@ -56,7 +62,7 @@ int Choice(unsigned side){return side<2 ? sides[side].choice : -1;}
 bool Available(unsigned side,unsigned extra){return side<2 && extra<6 && bool(sides[side].colors[extra]);}
 const ExtraColor* Saved(unsigned side,unsigned extra){return Available(side,extra) ? sides[side].colors[extra].get() : nullptr;}
 unsigned MenuColor(unsigned side){return sides[side].menuColor>=36 ? unsigned(sides[side].menuColor) : (std::min)(35u,Cursor(side)[6]);}
-bool NativePage(unsigned side){return Owned(side) && (mode!=0 || network::Store::Supported());}
+bool NativePage(unsigned side){return Owned(side);}
 const uint32_t* PreviewPalette(uint32_t* cg,const uint32_t* original) {
     if(*CC_GAME_MODE_ADDR!=CC_GAME_MODE_CHARA_SELECT)return original;
     auto* base=*reinterpret_cast<uint8_t**>(0x74D808);if(!base)return original;
@@ -122,25 +128,44 @@ void Publish(uint32_t epoch,uint32_t revision) {
     if(mode!=0)return;
     Tick();const auto& state=sides[unsigned(!host)];
     if(!epoch || state.character>100)return;
-    if(publishedEpoch==epoch && publishedCharacter==state.character && publishedChoice==state.choice && publishedRevision==revision)return;
-    const auto* color=state.choice>=0 ? state.colors[state.choice].get() : nullptr;
-    const auto blob=network::Make(epoch,++serial,state.character,state.choice<0 ? UINT32_MAX : unsigned(state.choice),color,revision);
+    // 初期通知のACKまで受信設定を再送する。カラー本体が先着して設定通知を失うのを防ぐ。
+    if(!network::Store::PolicyAcknowledged())return;
+    const int choice=network::Store::PeerAcceptsColors() ? state.choice : -1;
+    const bool fast=network::Store::FastSupported() && !std::getenv("CCCASTER_TEST_EXTRA_COLOR_LEGACY");
+    if(publishedEpoch==epoch && publishedCharacter==state.character && publishedChoice==choice && publishedRevision==revision && publishedFast==fast)return;
+    const auto* color=choice>=0 ? state.colors[choice].get() : nullptr;
+    const auto previous=network::Store::Local();
+    const bool sameColor=previous && publishedCharacter==state.character && publishedChoice==choice && publishedFast==fast;
+    const auto blob=sameColor ? network::Rebind(*previous,epoch,++serial,revision) :
+        network::Make(epoch,++serial,state.character,choice<0 ? UINT32_MAX : unsigned(choice),color,revision,fast);
     if(!blob){notice="Cannot transfer this extra color.";return;}
-    network::Store::Local(blob);publishedEpoch=epoch;publishedCharacter=state.character;publishedChoice=state.choice;publishedRevision=revision;
-    domain::session::DebugLog("[ExtraColor] SEND epoch=%u serial=%u character=%u extra=%d bytes=%u hash=%08x",
-        epoch,serial,state.character,state.choice+1,unsigned(blob->bytes.size()),blob->hash);
+    network::Store::Local(blob);publishedEpoch=epoch;publishedCharacter=state.character;publishedChoice=choice;publishedRevision=revision;publishedFast=fast;
+    domain::session::DebugLog("[ExtraColor] SEND epoch=%u serial=%u character=%u extra=%d bytes=%u hash=%08x fast=%u qpc=%lld",
+        epoch,serial,state.character,choice+1,unsigned(blob->bytes.size()),blob->hash,unsigned(fast),platform::RealMonotonicUs());
+    domain::session::DebugLog("[ExtraColor] POLICY receive=%u peerReceive=%u selected=%d sent=%d",unsigned(network::Store::AcceptsColors()),
+        unsigned(network::Store::PeerAcceptsColors()),state.choice+1,choice+1);
 }
 bool Ready(uint32_t epoch,uint32_t localCharacter,uint32_t peerCharacter,uint32_t localRevision,uint32_t peerRevision) {
     const bool ready=network::Store::Ready(epoch,localCharacter,peerCharacter,localRevision,peerRevision);
+    if(readyEpoch!=epoch){readyEpoch=epoch;readyWaitStarted=0;readyLogged=false;}
+    const auto now=platform::RealMonotonicUs();
+    if(!ready && !readyWaitStarted)readyWaitStarted=now;
+    if(ready && !readyLogged) {
+        domain::session::DebugLog("[ExtraColor] READY epoch=%u waitUs=%lld fast=%u qpc=%lld",epoch,readyWaitStarted ? now-readyWaitStarted : 0,
+            unsigned(publishedFast),now);
+        readyWaitStarted=0;readyLogged=true;
+    }
     notice=ready ? "" : "SYNCING EXTRA COLORS...";return ready;
 }
 std::shared_ptr<const ExtraColor> Resolve(unsigned side,unsigned character) {
     if(side>=2)return {};
-    if(mode==0) {
-        const auto blob=side==unsigned(!host) ? network::Store::Local() : network::Store::Peer();
+    if(mode==0 && side!=unsigned(!host)) {
+        const auto blob=network::Store::Peer();
         if(!blob || blob->Character()!=character || blob->Extra()>=6)return {};
         ExtraColor value;
-        if(DecodeExtra(std::span(blob->bytes).subspan(12),value))return std::make_shared<const ExtraColor>(std::move(value));
+        if(network::DecodeColor(std::span(blob->bytes).subspan(12),blob->fast,value)) {
+            return std::make_shared<const ExtraColor>(std::move(value));
+        }
         return {};
     }
     const auto& state=sides[side];

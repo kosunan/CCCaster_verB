@@ -918,14 +918,8 @@ void SceneRunner::Step() {
     }
     auto &inputBuffer = MatchInputBuffer::GetInstance();
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
-    // Even DONOTWAIT Present can spend a frame inside the driver. Keep those
-    // repeat-image calls out of a participant's battle wait. New-image attempts
-    // and busy-GPU retries remain available. Spectators keep their policy.
-    static const bool testIdlePresent = std::getenv("CCCASTER_TEST_BATTLE_IDLE_PRESENT") != nullptr;
-    const bool battleWait = earlyPhase == GamePhase::InGame &&
-        (ctx.appMode == 0 || ctx.appMode == 1 || ctx.appMode == 5);
-    cccaster::core::timer::IdlePresentation::Scope battlePresentation(
-        cccaster::core::timer::IdlePresentation::callback, !battleWait || testIdlePresent);
+    // 戦闘中も完成画像をモニター周期で再提示する。追加提示の可否は
+    // 待機側のスピン開始までの残り時間と、MonitorPresentの提示コストで判断する。
     if (runtime.loadingStarted && earlyPhase != GamePhase::Loading) {
         DebugLog("[LoadingInput] END role=%d elapsedUs=%lld qpc=%lld", int(ctx.isHost),
             cccaster::platform::RealMonotonicUs() - runtime.loadingStarted, cccaster::platform::RealMonotonicUs());

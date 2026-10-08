@@ -1,4 +1,4 @@
-param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct1='05C4054C', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct2='09CC054C', [string]$BuildManifest='')
+param([int]$Seconds=45,[int]$Port=17800,[string]$Network='', [string]$TestRoot='', [ValidateRange(0,2)][int]$CloseSide=0, [switch]$DebugSpikes, [switch]$VirtualController, [switch]$ManualInput, [string]$OutputDirectory='', [switch]$UseConnectionCode, [string]$ConnectIp='127.0.0.1', [switch]$StandbySpectator, [switch]$NoSpectators, [string]$CheckpointConfig='', [string]$Python='python', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct1='05C4054C', [ValidatePattern('^[0-9A-Fa-f]{8}$')][string]$VirtualProduct2='09CC054C', [string]$BuildManifest='', [ValidateSet('','1','2','12')][string]$NoOpponentExtraColorSides='')
 $taskDebugStarted=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
@@ -111,6 +111,7 @@ try {
                 Set-Content -LiteralPath (Join-Path $taskOut 'connection_code.txt')
         }
         if($DebugSpikes){$taskArgs+=' --debug-spikes'}
+        $taskArgs+=if($NoOpponentExtraColorSides.Contains([string]$taskSide)){' --no-opponent-extra-colors'}else{' --show-opponent-extra-colors'}
         if($env:CCCASTER_TEST_BASELINE_HOST_SCENE_PAIRS) {
             if($taskSide -eq 1){$env:CCCASTER_DISABLE_SCENE_MERGE='1'}else{Remove-Item Env:CCCASTER_DISABLE_SCENE_MERGE -ErrorAction SilentlyContinue}
         }

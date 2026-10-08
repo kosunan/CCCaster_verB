@@ -210,7 +210,7 @@ void RmlView::ProcessEvent(Rml::Event& event) {
         else if(id=="training-standby")send_({{"type","settings"},{"key","TrainingStandby"},{"value",checked}});
         else if(id=="connection-preference")send_({{"type","settings"},{"key","ConnectionPreference"},{"value",Number(Value("connection-preference"))}});
         else {
-            const std::map<std::string,std::string> keys={{"sound","Sound"},{"flash","FlashTaskbar"},{"popup","DesktopPopup"},{"allow-spectators","AllowSpectators"},{"software-rendering","SoftwareRendering"}};
+            const std::map<std::string,std::string> keys={{"sound","Sound"},{"flash","FlashTaskbar"},{"popup","DesktopPopup"},{"allow-spectators","AllowSpectators"},{"show-opponent-extra-colors","ShowOpponentExtraColors"},{"software-rendering","SoftwareRendering"}};
             if(auto it=keys.find(id);it!=keys.end())send_({{"type","settings"},{"key",it->second},{"value",checked}});
         }
     }
@@ -310,9 +310,10 @@ void RmlView::State(const Json& value) {
         if(emblem->GetAttribute<std::string>("src","")!=source)emblem->SetAttribute("src",source);
     }
     Show("matching-emblem",imageId!=0);Show("matching-emblem-placeholder",imageId==0);
-    for(auto [id,key]:std::vector<std::pair<const char*,const char*>>{{"sound","Sound"},{"flash","FlashTaskbar"},{"popup","DesktopPopup"},{"allow-spectators","AllowSpectators"},{"software-rendering","SoftwareRendering"}})check(id,c[key]);
+    for(auto [id,key]:std::vector<std::pair<const char*,const char*>>{{"sound","Sound"},{"flash","FlashTaskbar"},{"popup","DesktopPopup"},{"allow-spectators","AllowSpectators"},{"show-opponent-extra-colors","ShowOpponentExtraColors"},{"software-rendering","SoftwareRendering"}})check(id,c[key]);
     SetValue("connection-preference",std::to_string(c["ConnectionPreference"].get<int>()));SetValue("ntfy-server",c["NtfyServer"]);
     Disable("allow-spectators",busy||outgoing||!m["incoming"].empty());Disable("save-server",busy||registered);
+    Disable("show-opponent-extra-colors",busy||registered);
     Text("renderer-status",value["display"]["software"].get<bool>()?t("CPU描画","CPU rendering"):t("GPU描画","GPU rendering"));
     Show("session-card",running||s["failed"].get<bool>()||!s["log"].get<std::string>().empty()||s["status"]!=t("開始できます。","Ready when you are."));
     Find("session-card")->SetClass("failed",s["failed"]);Text("session-status",s["status"]);

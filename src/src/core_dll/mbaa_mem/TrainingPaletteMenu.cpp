@@ -5,6 +5,7 @@
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
 #include "core_dll/engine/ExtraColorStore.hpp"
+#include "core_dll/engine/TrainingPaletteMotion.hpp"
 #include "core_dll/mbaa_mem/ExtraColorSelection.hpp"
 #include <MinHook.h>
 #include <d3d9.h>
@@ -23,11 +24,14 @@ __attribute__((naked)) void cc_palette_upload_hook() {
 namespace cccaster::training_palette {
 namespace {
 std::array<Asset, 4> assets;
+struct Draft { ExtraColor color; std::array<uint64_t,2> generations{}; bool pending=false; };
+std::array<Draft,2> drafts;
 std::mutex captureMutex;
 bool installed = false, suppress = false;
 bool& open = editorOpen;
 uint32_t previous = 0;
 unsigned session = 0, initialSlot = 0;
+uint64_t assetGeneration = 0;
 const char* error = "";
 struct Identity { unsigned character=0, component=0, base=0; std::string resource; std::vector<Palette> standard; };
 std::array<Identity,4> identities;
@@ -99,12 +103,14 @@ void Capture(uint32_t* cg, const uint32_t* palette, const uint8_t* mask) {
         if (reinterpret_cast<uintptr_t>(cg) == *reinterpret_cast<uint32_t*>(0x557D34 + i*12)) { slot = i; break; }
     if (slot == 4) return;
     assets[slot] = {}; // 同じアドレスが再利用されても旧画像へ適用しない。
+    drafts[slot%2]={};
     if (!Readable(cg, 0x3308) || !cg[0x3300/4]) return;
     const unsigned unit = cg[0x32f0/4], count = cg[2];
     if (!unit || unit > 256 || 256 % unit || !count || count > 512 || (mask && !Readable(mask,count))) return;
     const auto* pal = palette ? palette : cg + 4;
     if (!Readable(pal,1024)) return;
     Asset asset; asset.owner = reinterpret_cast<uintptr_t>(cg);
+    asset.generation=++assetGeneration;
     asset.character=identities[slot].character;asset.component=identities[slot].component;
     asset.baseColor=identities[slot].base;asset.resource=identities[slot].resource;
     asset.standard=identities[slot].standard;
@@ -185,6 +191,7 @@ void Capture(uint32_t* cg, const uint32_t* palette, const uint8_t* mask) {
 }
 bool Upload(unsigned slot,const Edit& edit);
 __attribute__((force_align_arg_pointer)) void __fastcall LoadCharacters(uint32_t* description,uint32_t* loading) {
+    drafts={};
     for(unsigned slot=0;slot<4;++slot) {
         auto& identity=identities[slot];identity={};assets[slot]={};
         const auto* part=description+slot*11;
@@ -237,11 +244,47 @@ const Asset* Get(unsigned slot) {
     return Current(slot) && !assets[slot].sprites.empty() ? &assets[slot] : nullptr;
 }
 void Open(unsigned slot) {
+    // キャラ読込み完了後、ゲームスレッド上で定義をコピーする。UIは生ポインターを保持しない。
+    for(unsigned i=0;i<4;++i)if(Current(i) && !assets[i].sprites.empty()) {
+        const auto read=[](uint32_t address,void* dest,size_t size) {
+            if(!Readable(Ptr<void>(address),size))return false;
+            std::memcpy(dest,Ptr<void>(address),size);return true;
+        };
+        uint32_t file=0,ha6=0,table=0;
+        if(read(0x555130+i*0xAFC+0x330,&file,4) && read(file,&ha6,4) && ha6 && ha6<=UINT32_MAX-4 && read(ha6+4,&table,4))
+            assets[i].motions=ReadMotions(assets[i],table,read);
+        else assets[i].motions.clear();
+        unsigned objects=0;for(const auto& motion:assets[i].motions)objects+=motion.object;
+        domain::session::DebugLog("[TrainingPalette] MOTIONS slot=%u total=%u objects=%u",i,unsigned(assets[i].motions.size()),objects);
+    }
     open = true; suppress = true; error = "";
     initialSlot = slot % 2; ++session;
     domain::session::DebugLog("[TrainingPalette] OPEN slot=%u",slot);
 }
-void Cancel() {
+const ExtraColor* Pending(unsigned slot) {
+    if(slot>=4)return nullptr;
+    const auto& draft=drafts[slot%2];
+    if(!draft.pending)return nullptr;
+    for(unsigned n=0;n<2;++n) {
+        const auto* asset=Get(slot%2+n*2);
+        if(draft.generations[n]!=(asset ? asset->generation : 0))return nullptr;
+    }
+    return &draft.color;
+}
+void StagePackage(unsigned slot,const ExtraColor& value) {
+    if(!open || !Get(slot))return;
+    auto& draft=drafts[slot%2];draft.color=value;draft.pending=true;
+    for(unsigned n=0;n<2;++n) {
+        const auto* asset=Get(slot%2+n*2);
+        draft.generations[n]=asset ? asset->generation : 0;
+    }
+}
+void Close() {
+    // B・Escape・F4・閉じるボタンは同じ経路。失敗した下書きは捨てない。
+    if(open)for(unsigned side=0;side<2;++side)if(const auto* value=Pending(side)) {
+        if(!ApplyPackage(side,*value,false))return;
+    }
+    drafts={};
     if (open) domain::session::DebugLog("[TrainingPalette] CLOSE");
     open = false; suppress = true;
 }
@@ -249,8 +292,9 @@ void Step(game_interface::GameInput& p1, game_interface::GameInput& p2, bool con
     const auto buttons = p1.buttons | p2.buttons;
     const bool wasOpen = open;
     if (*CC_GAME_MODE_ADDR != CC_GAME_MODE_IN_GAME) { open = false; suppress = false; previous = 0; return; }
-    if (open && (configuring || !*Ptr<uint32_t>(0x74D7FC))) Cancel();
-    if (open && !suppress && ((buttons & ~previous) & (CC_BUTTON_B | CC_BUTTON_CANCEL | CC_BUTTON_START))) Cancel();
+    if (open && configuring) Close();
+    if (open && !*Ptr<uint32_t>(0x74D7FC)) { open=false; suppress=true; }
+    if (open && !suppress && ((buttons & ~previous) & (CC_BUTTON_B | CC_BUTTON_CANCEL | CC_BUTTON_START))) Close();
     previous = buttons;
     if (open || suppress || wasOpen) {
         const bool released = !buttons && !p1.direction && !p2.direction;
@@ -310,9 +354,9 @@ bool Apply(unsigned slot,const Edit& edit,unsigned baseColor) {
     if(!open || !Get(slot) || !*Ptr<uint32_t>(0x74D7FC)){error="Character changed. Reopen the editor.";return false;}
     if(!Upload(slot,edit))return false;
     if(baseColor<36)assets[slot].baseColor=baseColor;
-    Cancel();return true;
+    Close();return true;
 }
-bool ApplyPackage(unsigned slot,const ExtraColor& value) {
+bool ApplyPackage(unsigned slot,const ExtraColor& value,bool close) {
     const auto* main=Get(slot);
     if(!open || !main || main->character!=value.character || !*Ptr<uint32_t>(0x74D7FC)) {
         error="Character changed. Reopen the editor.";return false;
@@ -325,6 +369,7 @@ bool ApplyPackage(unsigned slot,const ExtraColor& value) {
         }
     }
     for(const auto& [i,before]:previousEdits)for(const auto& part:value.parts)if(part.component==assets[i].component) {
+        if(part.edit==assets[i].applied)continue;
         if(!Upload(i,part.edit)) {
             const auto* failure=error;
             for(const auto& [restore,edit]:previousEdits)Upload(restore,edit);
@@ -332,7 +377,7 @@ bool ApplyPackage(unsigned slot,const ExtraColor& value) {
         }
     }
     for(const auto& [i,before]:previousEdits)assets[i].baseColor=value.baseColor;
-    Cancel();return true;
+    if(close)Close();return true;
 }
 }
 extern "C" __attribute__((force_align_arg_pointer)) const uint32_t* __cdecl cc_palette_capture(

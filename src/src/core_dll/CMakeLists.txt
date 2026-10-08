@@ -91,7 +91,7 @@ add_library(cccaster_hook SHARED
 target_include_directories(cccaster_hook PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 # Link everything to the hook DLL
-target_link_libraries(cccaster_hook PRIVATE minhook imgui d3d9 dwmapi dinput8 dxguid cfgmgr32 hid ws2_32 mswsock ole32 winmm bcrypt comdlg32)
+target_link_libraries(cccaster_hook PRIVATE minhook imgui d3d9 dwmapi dinput8 dxguid cfgmgr32 hid ws2_32 mswsock ole32 winmm bcrypt comdlg32 ZLIB::ZLIB)
 target_include_directories(cccaster_hook PRIVATE
     ${minhook_SOURCE_DIR}/include
     ${imgui_SOURCE_DIR}
