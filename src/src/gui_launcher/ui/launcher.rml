@@ -1,19 +1,19 @@
 <rml>
 <head><title>CCCaster</title><link type="text/rcss" href="launcher.rcss" /></head>
 <body>
+<div class="menu-backdrop" aria-hidden="true"><div class="backdrop-orbit"><div class="backdrop-orbit-inner"></div></div><div class="backdrop-pillar pillar-one"></div><div class="backdrop-pillar pillar-two"></div><div class="backdrop-pillar pillar-three"></div><div class="backdrop-pillar pillar-four"></div><div class="backdrop-pillar pillar-five"></div><div class="backdrop-floor"></div></div>
 <header class="masthead">
   <div class="brand"><span class="brand-mark">C</span><div><h1>CCCaster <span>verB</span></h1><p>MELTY BLOOD Actress Again Current Code</p></div></div>
   <span id="version" class="version"></span>
 </header>
 <div class="shell">
   <nav aria-label="メインメニュー">
-    <button class="nav-item active" data-page="matching" aria-current="page" id="nav-matching"><span class="nav-number">01</span><span data-en="Matching">マッチング</span></button>
-    <button class="nav-item" data-page="spectate" id="nav-spectate"><span class="nav-number">02</span><span data-en="Spectate">観戦</span></button>
-    <button class="nav-item" data-page="training" id="nav-training"><span class="nav-number">03</span><span data-en="Training">トレーニング</span></button>
-    <button class="nav-item" data-page="offline" id="nav-offline"><span class="nav-number">04</span><span data-en="Offline versus">オフライン対戦</span></button>
-    <button class="nav-item" data-page="replay" id="nav-replay"><span class="nav-number">05</span><span data-en="Replay">リプレイ観戦</span></button>
-    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">06</span><span data-en="Controllers">コントローラ設定</span></button>
-    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">07</span><span data-en="How to play">操作ガイド</span></button>
+    <div class="menu-title">MAIN MENU</div>
+    <button class="nav-item active" data-page="matching" aria-current="page" id="nav-matching"><span class="nav-number">01</span><span class="nav-label" data-en="MATCHING">マッチング</span></button>
+    <button class="nav-item" data-page="spectate" id="nav-spectate"><span class="nav-number">02</span><span class="nav-label" data-en="SPECTATE">観戦</span></button>
+    <button class="nav-item" data-page="offline" id="nav-offline"><span class="nav-number">03</span><span class="nav-label" data-en="OFFLINE">オフライン</span></button>
+    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">04</span><span class="nav-label" data-en="CONTROLLERS">コントローラ設定</span></button>
+    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">05</span><span class="nav-label" data-en="HOW TO PLAY">操作ガイド</span></button>
     <div class="nav-bottom"><button id="language" class="quiet">English</button></div>
   </nav>
   <main id="content">
@@ -68,24 +68,23 @@
         <p class="subtle" data-en="Both players must allow spectators. Up to 8 viewers.">観戦には対戦者双方の許可が必要です（最大8人）。</p>
       </div>
     </section>
-    <section class="page hidden" id="page-training">
-      <div class="page-heading"><h2 data-en="Training">トレーニング</h2><span class="pill" data-en="Offline">オフライン</span></div>
-      <div class="card feature"><p data-en="Practice as Player 1.">1Pで練習を始めます。</p><button id="training" class="primary launch" data-en="Start training">トレーニングを開始</button>
-        <div class="tips"><p><kbd>F4</kbd><span data-en="Controller settings">コントローラ設定</span></p><p><kbd>Ctrl + 0–8</kbd><span data-en="Input delay">入力ディレイの変更</span></p><p><kbd>F1</kbd><span data-en="Cycle information display">情報表示の切替</span></p><p><kbd>FN1 / FN2</kbd><span data-en="Save / load a practice state">練習状態の保存／読込み</span></p></div>
-      </div>
-    </section>
     <section class="page hidden" id="page-offline">
-      <div class="page-heading"><h2 data-en="Offline versus">オフライン対戦</h2><span class="pill" data-en="Local 2 players">同じPCで2人対戦</span></div>
-      <div class="card feature"><p data-en="Play as Player 1 and Player 2 on this PC. No connection code is needed.">同じPCで1P・2Pを操作して対戦します。接続コードは不要です。</p>
-        <button id="offline" class="primary launch" data-en="Start offline versus">オフライン対戦を開始</button>
-                    <p class="subtle" data-en="Assign each player's controls in Controller settings or press F4 on the character select screen.">コントローラ設定、またはキャラ選択画面のF4で、1P・2Pそれぞれの操作を割り当ててください。</p>
-        <div class="tips"><p><kbd>START / F1</kbd><span data-en="Character select: delay, background and display settings">キャラ選択：ディレイ・背景・表示の設定</span></p><p><kbd>START</kbd><span data-en="In battle: pause menu">対戦中：ポーズメニュー</span></p></div>
-      </div>
-    </section>
-    <section class="page hidden" id="page-replay">
-      <div class="page-heading"><h2 data-en="Replay">リプレイ観戦</h2></div>
-      <div class="card feature"><p data-en="Choose a saved match in the game’s replay list. Directions and A select and play; B goes back.">ゲーム内の一覧から、方向入力とAで選択・再生、Bで戻ります。</p>
-        <button id="replay" class="primary launch" data-en="Open replay list">リプレイ一覧を開く</button><p class="subtle" data-en="Online matches are saved automatically.">オンライン対戦は自動保存されます。</p>
+      <div class="offline-actions">
+        <button id="training" class="offline-launch practice-launch">
+          <span class="menu-selection" aria-hidden="true"></span>
+          <span id="training-icon" class="mode-icon target-icon" aria-hidden="true"><span class="target-ring"><span class="target-center"></span></span></span>
+          <span class="mode-copy"><span class="mode-title">TRAINING</span><span class="mode-label" data-en="Training">トレーニング</span></span><span class="start-symbol" aria-hidden="true"></span>
+        </button>
+        <button id="offline" class="offline-launch versus-launch">
+          <span class="menu-selection" aria-hidden="true"></span>
+          <span id="offline-icon" class="mode-icon pads-icon" aria-hidden="true"><span class="pad pad-one"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span><span class="pad pad-two"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span></span>
+          <span class="mode-copy"><span class="mode-title">VERSUS</span><span class="mode-label" data-en="Local versus">オフライン対戦</span></span><span class="start-symbol" aria-hidden="true"></span>
+        </button>
+        <button id="replay" class="offline-launch replay-launch">
+          <span class="menu-selection" aria-hidden="true"></span>
+          <span id="replay-icon" class="mode-icon replay-icon" aria-hidden="true"><span class="replay-screen"><span class="replay-play"></span><span class="replay-progress"></span></span></span>
+          <span class="mode-copy"><span class="mode-title">REPLAY</span><span class="mode-label" data-en="Replays">リプレイ鑑賞</span></span><span class="start-symbol" aria-hidden="true"></span>
+        </button>
       </div>
     </section>
 
@@ -107,7 +106,7 @@
     </section>
     <section class="page hidden" id="page-settings"><div class="page-heading settings-heading"><h2 data-en="Profile &amp; settings">プロフィール・設定</h2><button id="settings-back" data-page="matching" class="quiet" data-en="Back to matching">マッチングに戻る</button></div>
       <div class="card"><h3 data-en="Player profile">プレイヤー情報</h3><p id="profile-locked" class="subtle hidden" data-en="End standby and any connection to change your name or image.">名前と画像を変えるには、待機・接続を終了してください。</p><fieldset id="profile-fields"><label><span data-en="Player name">プレイヤー名</span><input id="player-name" maxlength="31" autocomplete="off" /></label><p class="subtle" data-en="Up to 31 ASCII characters. Saved when you leave the field.">半角英数字・記号31文字まで。入力欄を離れると保存します。</p><div class="row"><img id="emblem" width="96" height="48" aria-label="エンブレム" src="emblem:0" /><div class="grow"><button id="emblem-choose" data-en="Choose image">画像を選ぶ</button><button id="emblem-remove" class="quiet" data-en="Remove image">画像を削除</button><p class="subtle" data-en="24 x 12 px, 24-bit uncompressed BMP. Saved automatically.">24×12px・24bit・非圧縮BMP。選ぶと自動保存します。</p></div></div><details id="emblem-preset-details"><summary id="emblem-preset-toggle" data-en="Flag presets (24)">国旗プリセット（24種類）</summary><div class="details-body"><p class="subtle" data-en="Select a flag to use it as your player image.">選んだ国旗をプレイヤー画像にします。</p><div id="emblem-presets"></div></div></details></fieldset><p id="profile-error" class="error-text hidden" data-en="Could not load the saved emblem.">保存済みエンブレムを読み込めませんでした。</p></div>
-      <div class="card"><h3 data-en="Connection">接続</h3><label><span data-en="Connection priority">接続方式の優先</span><select id="connection-preference"><option value="0" data-en="Automatic (LAN / IPv6 / IPv4)">自動（LAN／IPv6／IPv4）</option><option value="1" data-en="Prefer IPv4">IPv4優先</option><option value="2" data-en="Prefer IPv6">IPv6優先</option></select></label><label class="check"><input id="allow-spectators" type="checkbox" /><span data-en="Allow spectators">観戦を許可する</span></label><p class="subtle" data-en="Both players must allow watching. Change this before requesting a match.">観戦には双方の許可が必要です。申し込み前に変更してください。</p><details><summary data-en="Notification service" class="summary">通知サービス</summary><label><span>ntfy</span><input id="ntfy-server" type="text" maxlength="255" /></label><button id="save-server" data-en="Save server">通知先を保存</button></details></div>
+      <div class="card"><h3 data-en="Connection">接続</h3><label><span data-en="Connection priority">接続方式の優先</span><select id="connection-preference"><option value="0" data-en="Automatic (LAN / IPv6 / IPv4)">自動（LAN／IPv6／IPv4）</option><option value="1" data-en="Prefer IPv4">IPv4優先</option><option value="2" data-en="Prefer IPv6">IPv6優先</option></select></label><label class="check"><input id="boss-characters" type="checkbox" /><span data-en="Boss characters">ボスキャラ</span></label><p class="subtle" data-en="Adds a boss row in character select. Both players must enable this for online matches. Also applies to Training.">キャラ選択にボスの列を追加します。ネット対戦は双方がONの場合に選択できます。トレーニングにも適用されます。</p><label class="check"><input id="allow-spectators" type="checkbox" /><span data-en="Allow spectators">観戦を許可する</span></label><p class="subtle" data-en="Both players must allow watching. Change this before requesting a match.">観戦には双方の許可が必要です。申し込み前に変更してください。</p><details><summary data-en="Notification service" class="summary">通知サービス</summary><label><span>ntfy</span><input id="ntfy-server" type="text" maxlength="255" /></label><button id="save-server" data-en="Save server">通知先を保存</button></details></div>
       <div class="card"><h3 data-en="Extra colors">エクストラカラー</h3><label class="check"><input id="show-opponent-extra-colors" type="checkbox" /><span data-en="Show opponent's extra colors">相手のエクストラカラーを表示する</span></label><p class="subtle" data-en="When off, do not receive the opponent's colors and display their original standard color. You can still use your own extra colors; your opponent controls whether to see them.">OFFでは相手のカラーデータを受信せず、元の標準色で表示します。自分のエクストラカラーは常に使用でき、相手側での表示は相手の設定に従います。</p><p class="subtle" data-en="Change this before starting a match or standby.">対戦・待ち受けの開始前に変更してください。</p></div>
       <div class="card"><h3 data-en="Incoming notifications">着信通知</h3><label class="check"><input id="sound" type="checkbox" /><span data-en="Play notification sound">通知音を鳴らす</span></label><label class="check"><input id="flash" type="checkbox" /><span data-en="Flash taskbar button">タスクバーを点滅</span></label><label class="check"><input id="popup" type="checkbox" /><span data-en="Show desktop popup">画面の隅に通知を表示</span></label><button id="test-notification" data-en="Test notification">通知を試す</button></div>
       <div class="card"><h3 data-en="Display">表示</h3><label class="check"><input id="software-rendering" type="checkbox" /><span data-en="Use CPU rendering on next launch">次回起動からCPUで描画する</span></label><p class="subtle" data-en="If the screen is blank, press F8 to switch to CPU rendering.">画面が映らないときは、F8でCPU描画へ切り替えられます。</p><span id="renderer-status" class="pill"></span></div>

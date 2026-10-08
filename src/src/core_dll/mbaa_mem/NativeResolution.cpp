@@ -3,6 +3,7 @@
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/common/DebugLog.hpp"
+#include "core_dll/engine/SelectionPreferences.hpp"
 #include <MinHook.h>
 #include <cstring>
 #include <vector>
@@ -12,6 +13,7 @@ namespace {
 using borderless::Resolution;
 void* originalWindow = nullptr;
 bool installed = false, attempted = false, pending = false;
+bool saveOnCompletion = false;
 Resolution requested{}, previous{}, actual{};
 long resetResult = E_PENDING;
 constexpr uintptr_t Width = 0x54D048, Height = 0x54D04C;
@@ -40,6 +42,8 @@ extern "C" __attribute__((force_align_arg_pointer)) unsigned __cdecl NativeResol
         At<uint32_t>(Height) = previous.height;
     }
     pending = false;
+    if (applied && saveOnCompletion) domain::scene::selection_preferences::SaveResolution(actual.width, actual.height);
+    saveOnCompletion = false;
     return applied;
 }
 __attribute__((naked)) void WindowHook() {
@@ -89,13 +93,13 @@ ScreenResolution Read() {
     if (width < 320 || height < 240 || width > 16384 || height > 16384) return {};
     return {int(width),int(height),true,pending};
 }
-bool Request(int direction) {
+bool RequestSize(Resolution next, bool save) {
     const auto state = Read();
-    if (!state.available || state.pending || !direction || *CC_GAME_MODE_ADDR != CC_GAME_MODE_CHARA_SELECT ||
+    if (!state.available || state.pending || *CC_GAME_MODE_ADDR != CC_GAME_MODE_CHARA_SELECT ||
         At<uint32_t>(ResetRequest) || !borderless::GetDisplaySettings().available) return false;
-    const auto next = Next({state.width,state.height},direction);
     if (!next.width || (next.width == state.width && next.height == state.height)) return false;
     previous = {state.width,state.height}; requested = next; actual = {};
+    saveOnCompletion = save;
     resetResult = E_PENDING; pending = true;
     // 0x4323AB..0x4323CDのCHANGE SCREENと同じ要求。Windowedは維持する。
     At<uint32_t>(Width) = next.width;
@@ -105,6 +109,19 @@ bool Request(int direction) {
     domain::session::DebugLog("[NativeResolution] REQUEST size=%dx%d fullscreen=%d",
         next.width,next.height,int(borderless::Active()));
     return true;
+}
+bool Request(int direction) {
+    const auto state = Read();
+    return direction && state.available && RequestSize(Next({state.width,state.height},direction), true);
+}
+bool Restore(int width, int height) {
+    const auto limit = borderless::ResolutionLimit();
+    if (width < 640 || height < 480 || width > limit.width || height > limit.height) {
+        // 別モニターでは収まる最大候補へ。保存済みの希望寸法は書き換えない。
+        const auto fallback = borderless::NextResolution({}, limit, -1);
+        return fallback.width && RequestSize(fallback, false);
+    }
+    return RequestSize({width,height}, false);
 }
 void ResetFinished(long result, unsigned width, unsigned height) {
     if (!pending) return;

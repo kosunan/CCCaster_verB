@@ -90,10 +90,11 @@ void LauncherModel::Command(const Json& c) {
                     throw std::runtime_error(Text("Change this before requesting a match.", "申し込み前に変更してください。"));
                 const bool allowed = Boolean(c, "value"); SaveInt("Connection", "AllowSpectators", allowed);
                 if (matching_.client) matching_.client->Command({{"type","spectators"},{"allowed",allowed}});
-            } else if (key == "ShowOpponentExtraColors") {
-                if (Occupied() || matching_.view.registered)
+            } else if (key == "ShowOpponentExtraColors" || key == "BossCharacters") {
+                if (Occupied() || matching_.view.registered || (key=="BossCharacters" &&
+                    (!matching_.view.incoming.empty() || !matching_.view.outgoing.id.empty())))
                     throw std::runtime_error(Text("Change this before starting a match or standby.", "対戦・待ち受けの開始前に変更してください。"));
-                SaveInt("Connection", "ShowOpponentExtraColors", Boolean(c, "value"));
+                SaveInt("Connection", key.c_str(), Boolean(c, "value"));
             } else if (key == "NtfyServer") {
                 if (Occupied() || matching_.view.registered) throw std::runtime_error(Text("End the session first.", "先に接続とマッチングを終了してください。"));
                 const auto server = String(c, "value", 255);
@@ -268,6 +269,7 @@ Json LauncherModel::State(bool includeLog) const {
     settings["ConnectionPreference"] = std::clamp(ConfigManager::GetInt("GUI","ConnectionPreference",0),0,2);
     settings["AllowSpectators"] = ConfigManager::GetInt("Connection","AllowSpectators",1) != 0;
     settings["ShowOpponentExtraColors"] = ConfigManager::GetInt("Connection","ShowOpponentExtraColors",1) != 0;
+    settings["BossCharacters"] = ConfigManager::GetInt("Connection","BossCharacters",0) != 0;
     settings["TrainingStandby"] = ConfigManager::GetInt("Matching","TrainingStandby",0) != 0;
     settings["SoftwareRendering"] = ConfigManager::GetInt("GUI","SoftwareRendering",0) != 0;
     settings["NtfyServer"] = ConfigManager::GetString("Connection","NtfyServer","https://ntfy.sh");

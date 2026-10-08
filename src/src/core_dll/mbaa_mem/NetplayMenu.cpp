@@ -1,4 +1,5 @@
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
+#include "core_dll/mbaa_mem/BossCharacterSelect.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include <windows.h>
@@ -245,7 +246,7 @@ bool RealGameMemory::ReadLocalSelection(bool host, core::sync::SelectionState &s
         state.selector = s[3]; state.character = s[4]; state.moon = s[5]; state.color = s[6];
         state.confirmed = 1;
         ++state.revision;
-        if (!state.Valid()) return false;
+        if (!state.Valid(boss::selection::Enabled())) return false;
         domain::session::DebugLog("[Select] LOCAL epoch=%u char=%u moon=%u color=%u selector=%u",
                                   state.epoch, state.character, state.moon, state.color, state.selector);
     }

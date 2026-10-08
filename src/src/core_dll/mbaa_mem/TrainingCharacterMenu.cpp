@@ -1,5 +1,6 @@
 #include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
+#include "core_dll/mbaa_mem/TrainingHitboxMenu.hpp"
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
@@ -25,6 +26,11 @@ __attribute__((naked)) void cc_training_describe(void* description, void* loadin
 }
 __attribute__((naked)) void cc_training_free_slot(unsigned slot) {
     __asm__ __volatile__("movl 4(%esp),%eax; movl $0x41C2E0,%ecx; jmp *%ecx");
+}
+__attribute__((naked)) void cc_training_append_information(void* vector, void* entry) {
+    // 0x4DAA30: ESI=説明のvector、スタック=文字列ペア、ret 4。文字列を深くコピーする。
+    __asm__ __volatile__("pushl %esi; movl 8(%esp),%esi; pushl 12(%esp);"
+                         "movl $0x4DAA30,%eax; call *%eax; popl %esi; ret");
 }
 __attribute__((naked)) void cc_training_load_presentation(unsigned slot, unsigned character, unsigned side, unsigned cutin) {
     // 0x426340: ECX=slot, EDX=画像用キャラ、スタック=side/CUT番号、呼出側で8バイト解放。
@@ -70,6 +76,20 @@ const char* NativeString(uint32_t* base) {
     return base[6] < 16 ? reinterpret_cast<const char*>(base + 1)
                         : reinterpret_cast<const char*>(base[1]);
 }
+void AddInformation(uint32_t* menu, const char* key, const char* text) {
+    auto* information = reinterpret_cast<uint8_t*>(menu[0xDC/4]);
+    if (!information) return;
+    // Information\\Training.iniの読込みと同じ文字列形式・アロケータを使用する。
+    // 元のINIは変更せず、メニューが所有する説明一覧へ登録する。
+    uint32_t entry[14]{};
+    entry[6] = entry[13] = 15;
+    const auto assign = reinterpret_cast<void (__thiscall*)(void*, const char*, size_t)>(0x407C10);
+    assign(entry, key, std::strlen(key));
+    assign(entry + 7, text, std::strlen(text));
+    cc_training_append_information(information + 0x8C, entry);
+    for (auto* value : {entry, entry + 7})
+        if (value[6] >= 16) reinterpret_cast<void (__cdecl*)(void*)>(0x4E02F3)(reinterpret_cast<void*>(value[1]));
+}
 bool Exists(const char* path) {
     const auto attributes = GetFileAttributesA(path);
     return (attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY)) ||
@@ -111,6 +131,7 @@ __attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t
         item, "CHARACTER", "CC_CHARACTER", 0);
     item[0] = 0x53604C; item[1] = item[3] = 1;
     cc_training_append(set + 0x48/4, item);
+    AddInformation(result, "CC_CHARACTER", "Change the character and Moon style for P1 or P2.");
     auto** begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
     auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
     std::rotate(begin, end - 1, end);
@@ -120,9 +141,21 @@ __attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t
             paletteItem, "COLOR PALETTE", "CC_PALETTE", 0);
         paletteItem[0] = 0x53604C; paletteItem[1] = paletteItem[3] = 1;
         cc_training_append(set + 0x48/4, paletteItem);
+        AddInformation(result, "CC_PALETTE", "Edit character colors and save or load palettes.");
         begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
         end = reinterpret_cast<uint32_t**>(set[0x50/4]);
         std::rotate(begin + 1, end - 1, end);
+    }
+    auto* hitboxItem = static_cast<uint32_t*>(reinterpret_cast<void* (__cdecl*)(size_t)>(0x4E0177)(0x58));
+    if (hitboxItem) {
+        reinterpret_cast<void (__stdcall*)(void*, const char*, const char*, int)>(0x429140)(
+            hitboxItem, "HITBOX", "CC_HITBOX", 0);
+        hitboxItem[0] = 0x53604C; hitboxItem[1] = hitboxItem[3] = 1;
+        cc_training_append(set + 0x48/4, hitboxItem);
+        AddInformation(result, "CC_HITBOX", "Show or hide hitboxes and other collision boxes.");
+        begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
+        end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+        std::rotate(begin + 2, end - 1, end);
     }
     set[0x40/4] = set[0x44/4] = 0;
     menuSet = set;
@@ -193,7 +226,7 @@ bool Hook(uintptr_t address, const unsigned char* bytes, size_t length, void* re
 }
 }
 const Selection& Current() { return selection; }
-bool Busy() { return selection.open || pending || training_palette::Active(); }
+bool Busy() { return selection.open || pending || training_palette::Active() || training_hitbox::Active(); }
 const char* Error() { return error; }
 int PortraitIndex(uint32_t character) {
     if (!installed || character >= 101) return -1;
@@ -239,7 +272,12 @@ void ObserveMenu(uint32_t* menu, uint32_t* command) {
         }
         return;
     }
-    if (selection.open || training_palette::Active()) { *command = 0; return; }
+    if (selection.open || training_palette::Active() || training_hitbox::Active()) { *command = 0; return; }
+    if (*command == 1 && menu[0x40/4] == FindItem(menu,"CC_HITBOX")) {
+        training_hitbox::Open();
+        *command = 0;
+        return;
+    }
     if (*command == 1 && menu[0x40/4] == FindItem(menu,"CC_PALETTE")) {
         training_palette::Open(*reinterpret_cast<uint8_t*>(0x55DF0F));
         *command = 0;
@@ -261,10 +299,14 @@ namespace cccaster::game_interface {
 bool RealGameMemory::ConfigureTrainingMenu() {
     using namespace training_character;
     if (installed) return true;
-    if (!game_build::RuntimeValidated() || !ConfigureMenuObserver() || !training_palette::Install()) return false;
+    if (!game_build::RuntimeValidated() || !ConfigureMenuObserver() || !training_palette::Install() || !training_hitbox::Install()) return false;
     const unsigned char constructor[]{0x6a,0xff,0x68,0x67,0x75,0x51,0x00};
     const unsigned char reset[]{0x83,0xec,0x10,0xa1,0x58,0xb4,0x54,0x00};
     const unsigned char presentation[]{0x81,0xec,0x14,0x01,0x00,0x00,0xa1,0x58,0xb4,0x54,0x00};
+    const unsigned char appendInformation[]{0x83,0xec,0x0c,0x53,0x8b,0x5e,0x04};
+    const unsigned char assignString[]{0x53,0x55,0x56,0x8b,0xf1,0x8b,0x4e,0x18};
+    if (std::memcmp(reinterpret_cast<void*>(0x4DAA30), appendInformation, sizeof(appendInformation)) ||
+        std::memcmp(reinterpret_cast<void*>(0x407C10), assignString, sizeof(assignString))) return false;
     if (std::memcmp(reinterpret_cast<void*>(0x426340), presentation, sizeof(presentation))) return false;
     if (!Hook(0x47D3A0, constructor, sizeof(constructor), reinterpret_cast<void*>(Construct),
               reinterpret_cast<void**>(&originalConstructor)) ||
@@ -275,6 +317,7 @@ bool RealGameMemory::ConfigureTrainingMenu() {
 }
 bool RealGameMemory::StepTrainingMenu(GameInput& p1, GameInput& p2, bool configuring) {
     using namespace training_character;
+    training_hitbox::Step(p1,p2,configuring);
     training_palette::Step(p1,p2,configuring);
     const bool didChange = changed;
     changed = false;

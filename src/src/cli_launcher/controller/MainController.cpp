@@ -159,6 +159,8 @@ void MainController::LaunchAndMonitorGame() {
     SetEnvironmentVariableA("CCCASTER_SPECTATE_OFF", _allowSpectators ? nullptr : "1");
     SetEnvironmentVariableA("CCCASTER_RECEIVE_EXTRA_COLORS",
         ConfigManager::GetInt("Connection","ShowOpponentExtraColors",1)!=0 ? "1" : "0");
+    SetEnvironmentVariableA("CCCASTER_BOSS_CHARACTERS",
+        ConfigManager::GetInt("Connection","BossCharacters",0)!=0 ? "1" : "0");
 
     if (!monitor.BootAndMonitor(absPath, [this](uint32_t pid) {
         if (!_p2p || !_p2p->socket) return true;

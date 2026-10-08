@@ -220,7 +220,14 @@ bool InputTimeline::PumpTicksImpl(int64_t nowTicks, int64_t periodCorrectionPart
                 value = game_interface::DirectInputHook::GetLocalPlayerInput(host_, true);
             }
             if (testing::IsScriptedInputEnabled() && phase_ == game_interface::GamePhase::CharaSelect) {
-                if(std::getenv("CCCASTER_TEST_EXTRA_COLOR")) {
+                if(std::getenv("CCCASTER_TEST_BOSS_SELECT")) {
+                    // 標準方向入力で最下段へ進む。確定状態や派生入力は書き換えない。
+                    const auto f=next_-base_;GameInput test{};
+                    if(f>=180 && f<=216 && (f-180)%12==0)test.direction=2;
+                    if(f>=270 && f%24==18)test.buttons=CC_BUTTON_CONFIRM;
+                    value=test.Pack();
+                }
+                else if(std::getenv("CCCASTER_TEST_EXTRA_COLOR")) {
                     // 元の一覧の7ページ目へ進み、保存済み42番(EXTRA 6)を選ぶ。
                     const auto f=next_-base_;GameInput test{};
                     if(f==180 || f==240 || (f>=360 && f%24==18))test.buttons=CC_BUTTON_CONFIRM;

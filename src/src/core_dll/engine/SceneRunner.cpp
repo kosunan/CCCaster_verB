@@ -1,6 +1,7 @@
 #include "core_dll/engine/ReplayFileName.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/ExtraColorSelection.hpp"
+#include "core_dll/mbaa_mem/BossCharacterSelect.hpp"
 #include "core_dll/timing/SpinAssistScope.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/timing/UpdateCadence.hpp"
@@ -53,6 +54,7 @@
 #include "core_dll/engine/StageRematch.hpp"
 #include "core_dll/engine/LocalInputGate.hpp"
 #include "core_dll/engine/SelectionOptions.hpp"
+#include "core_dll/engine/SelectionPreferences.hpp"
 #include "core_dll/hook/DisplaySettings.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/engine/TrainingInputDelay.hpp"
@@ -147,6 +149,8 @@ SceneRuntime runtime;
 
 bool StepSelectionOptions(GameInput input, bool available, bool editable) {
     namespace options = scene::selection_options;
+    namespace preferences = scene::selection_preferences;
+    const bool restoring = available && preferences::Restore();
     auto &mem = cccaster::game_interface::GameMem();
     const bool mapping = cccaster::domain::ui::StateUiLogic::IsMappingWindowOpen();
     options::visible = available;
@@ -157,7 +161,7 @@ bool StepSelectionOptions(GameInput input, bool available, bool editable) {
     const bool wasOpen = options::menu.open;
     namespace display = cccaster::game_interface::borderless;
     auto displayState = available ? display::GetDisplaySettings() : display::DisplaySettings{};
-    const auto result = options::menu.Step(input, options::actions.exchange(0), available, mapping,
+    const auto result = options::menu.Step(input, options::actions.exchange(0), available && !restoring, mapping,
         editable && !SettingsCommands::pending.load(), options::animationOn, displayState.fullscreen);
     options::active = options::menu.open;
     if (result.resolutionStep) {
@@ -168,6 +172,7 @@ bool StepSelectionOptions(GameInput input, bool available, bool editable) {
     if (result.fullscreen >= 0) {
         const bool applied = !resolution.pending && display::SetFullscreen(result.fullscreen == 1);
         displayState = display::GetDisplaySettings();
+        if (applied) preferences::Save(preferences::Key::Fullscreen, int(displayState.fullscreen));
         DebugLog("[SelectionOptions] DISPLAY action=fullscreen applied=%d size=%dx%d fullscreen=%d", int(applied),
             displayState.windowSize.width, displayState.windowSize.height, int(displayState.fullscreen));
     }
@@ -182,13 +187,17 @@ bool StepSelectionOptions(GameInput input, bool available, bool editable) {
         auto value = available ? mem.DisplayOption(option) : -1;
         if (result.nativeStep && options::menu.row == i + 5) {
             const int next = cccaster::game_interface::NextDisplayValue(option, value, result.nativeStep);
-            if (next >= 0 && mem.SetDisplayOption(option, next)) value = next;
+            if (next >= 0 && mem.SetDisplayOption(option, next)) {
+                value = next;
+                preferences::Save(preferences::Key(unsigned(preferences::Key::CharacterFilter) + i), value);
+            }
         }
         options::nativeValues[i] = value;
     }
     if (options::nativeValues[1] >= 0) display::SetScaleFilter(options::nativeValues[1] == 1);
     if (result.hudStep) {
         ui::HudDisplay::Cycle(result.hudStep);
+        preferences::Save(preferences::Key::Hud, int(ui::HudDisplay::Get()));
         DebugLog("[SelectionOptions] HUD mode=%s", ui::HudDisplay::Name());
     }
     if (wasOpen != options::menu.open)
@@ -206,8 +215,9 @@ bool StepSelectionOptions(GameInput input, bool available, bool editable) {
         result.animation != options::animationValue && mem.SetStageAnimation(result.animation == 1)) {
         options::animationValue = result.animation;
         options::animationOn = result.animation == 1;
+        preferences::Save(preferences::Key::Animation, result.animation);
     }
-    return result.block;
+    return result.block || restoring;
 }
 
 void PublishSpectatorConfirmed() {
@@ -500,6 +510,7 @@ void SceneRunner::Init(MatchContext &ctx) {
     runtime.stageRematch = {};
     runtime.localInputGate = {};
     scene::selection_options::Reset();
+    scene::selection_preferences::Initialize();
     runtime.secondInputGate = {};
     runtime.running = true;
     runtime.sequence = FrameSequence{};
@@ -917,6 +928,12 @@ void SceneRunner::Step() {
         cccaster::training_palette::selection::Tick();
     }
     auto &inputBuffer = MatchInputBuffer::GetInstance();
+    const auto& bossState=Session::GetState();
+    const auto localBossOption=std::getenv("CCCASTER_BOSS_CHARACTERS");
+    const bool showBosses=boss::Enabled(ctx.appMode,localBossOption && localBossOption[0]=='1',
+        bossState.peerBossCharacters.load(std::memory_order_acquire)) ||
+        (ctx.appMode==2 && (boss::IsBoss(runtime.spectator.match.p1.character) || boss::IsBoss(runtime.spectator.match.p2.character)));
+    if(!boss::selection::Configure(ctx.appMode,showBosses)){Fail(Error::SyncTimeout,"boss character hooks unavailable");return;}
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
     // 戦闘中も完成画像をモニター周期で再提示する。追加提示の可否は
     // 待機側のスピン開始までの残り時間と、MonitorPresentの提示コストで判断する。

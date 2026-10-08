@@ -87,6 +87,8 @@ int main(int argc, char *argv[]) {
         } else if (arg == "join" && i+1<argc) { connectionHash=argv[++i]; isHeadless=true;
         } else if (arg == "spectate" && i+1<argc) { connectionHash=argv[++i]; spectatorMode=true; isHeadless=true;
         } else if (arg == "--no-spectators") { cccaster::main_app::ConfigManager::SetInt("Connection","AllowSpectators",0);
+        } else if (arg == "--boss-characters") { cccaster::main_app::ConfigManager::SetInt("Connection","BossCharacters",1);
+        } else if (arg == "--no-boss-characters") { cccaster::main_app::ConfigManager::SetInt("Connection","BossCharacters",0);
         } else if (arg == "--allow-spectators") { cccaster::main_app::ConfigManager::SetInt("Connection","AllowSpectators",1);
         } else if (arg == "--no-opponent-extra-colors") { cccaster::main_app::ConfigManager::SetInt("Connection","ShowOpponentExtraColors",0);
         } else if (arg == "--show-opponent-extra-colors") { cccaster::main_app::ConfigManager::SetInt("Connection","ShowOpponentExtraColors",1);

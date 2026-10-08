@@ -413,6 +413,7 @@ def main():
     parser.add_argument('--network', default='15,25,5', help='片道遅延min,maxミリ秒,損失率（既定15,25,5）')
     parser.add_argument('--spectator', action='store_true')
     parser.add_argument('--extra-color', action='store_true', help='ホストEXTRA 6を選び、再戦後の両側適用を確認')
+    parser.add_argument('--boss-characters', action='store_true', help='双方ONでボスを通常入力から選び、再戦・観戦を確認')
     parser.add_argument('--extra-color-legacy', action='store_true', help='比較用: EXTRA 6を従来の全量形式で転送する')
     parser.add_argument('--no-opponent-extra-colors', choices=['1','2','12'], default='', help='指定側で相手のEXTRA受信をOFFにし、自分の色の適用と送信抑止を確認')
     parser.add_argument('--spin-prototype', action='store_true', help='入力公開・採取の共有スピン試作を有効化する')
@@ -447,6 +448,7 @@ def main():
     threading.Thread(target=service.serve_forever, daemon=True).start()
     env = clean_environment()
     if args.extra_color: env['CCCASTER_TEST_EXTRA_COLOR'] = '1'
+    if args.boss_characters: env['CCCASTER_TEST_BOSS_SELECT'] = '1'
     if args.extra_color_legacy: env['CCCASTER_TEST_EXTRA_COLOR_LEGACY'] = '1'
     if args.spin_prototype:
         env.update(CCCASTER_SPIN_PUBLICATION='1', CCCASTER_SPIN_CAPTURE='1',
@@ -485,6 +487,8 @@ def main():
            '-UseConnectionCode', '-CloseSide', '1', '-OutputDirectory', str(out), '-TestRoot', str(runtime)]
     if args.spectator:
         cmd.append('-StandbySpectator')
+    if args.boss_characters:
+        cmd.append('-BossCharacters')
     config = dict(scenario=args.scenario, spectator=args.spectator, full_intro=args.full_intro, input_runahead=args.input_runahead,
                   native_input_writes=False,
                   baseline=args.baseline, loading_input=args.loading_input,
@@ -518,6 +522,12 @@ def main():
                  for side in range(1, 4 if args.spectator else 3)], args.native_loop_comparison)
             result['passed'] &= result['native_loops']['passed']
         result['passed'] &= run.returncode == 0
+        if args.boss_characters:
+            result['boss_characters']={}
+            for side,character in ((1,58),(2,59)):
+                data=(out/f'game_{side}.log').read_text(encoding='utf-8',errors='replace')
+                result['boss_characters'][str(side)]=bool(re.search(r'\[Select\] LOCAL epoch=65536 char='+str(character)+r' moon=9 ',data))
+            result['passed'] &= all(result['boss_characters'].values())
     except Exception as exc:
         result.update(passed=False, error=str(exc))
     finally:

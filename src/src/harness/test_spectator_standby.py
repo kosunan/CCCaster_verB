@@ -23,6 +23,20 @@ class SpectatorStandbyTest(unittest.TestCase):
             tcp = None
             try:
                 port = free_port()
+                if action == "start":
+                    # UDPの空き番号でもTCPは予約済みの場合がある。募集開始前に
+                    # TCPも確保し、listenは対戦開始の直前まで待つ。
+                    for attempt in range(32):
+                        tcp = socket.socket()
+                        try:
+                            tcp.bind(("0.0.0.0", port))
+                            break
+                        except OSError:
+                            tcp.close()
+                            tcp = None
+                            if attempt == 31:
+                                raise
+                            port = free_port()
                 def launch(name, role, own_port, permission="allow"):
                     output = open(folder / (name + ".log"), "w", encoding="utf-8")
                     files.append(output)
@@ -64,8 +78,6 @@ class SpectatorStandbyTest(unittest.TestCase):
                         host.wait(timeout=5)
                         wait_for("viewer", "[WATCH_STATUS] closed")
                     else:
-                        tcp = socket.socket()
-                        tcp.bind(("0.0.0.0", port))
                         tcp.listen(8)
                         tcp.settimeout(5)
                         def greet():

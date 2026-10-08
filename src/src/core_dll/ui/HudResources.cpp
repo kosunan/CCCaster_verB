@@ -19,6 +19,7 @@ constexpr float Sizes[]{15, 13, 24, 10, 22, 12};
 ImFont* fonts[6][6]{};
 emblem::Texture textures[2];
 Layout layout;
+Rect nativeViewport;
 InputSpace inputSpace;
 ImVec2 bufferSize;
 unsigned FontScale(float scale) {
@@ -75,6 +76,7 @@ void Prepare(IDirect3DDevice9* device) {
         viewport.X + viewport.Width <= bufferSize.x && viewport.Y + viewport.Height <= bufferSize.y)
         bounds = DisplayViewport({float(viewport.X), float(viewport.Y), float(viewport.Width), float(viewport.Height)},
                                  bufferSize, io.DisplaySize);
+    nativeViewport = bounds;
     layout = Layout::Fit(bounds);
     static ImVec2 lastBuffer{}, lastDisplay{};
     if (lastBuffer.x != bufferSize.x || lastBuffer.y != bufferSize.y ||
@@ -111,6 +113,7 @@ void Release() {
     domain::ui::training_palette_view::Release();
 }
 Layout CurrentLayout() { return layout; }
+Rect CurrentViewport() { return nativeViewport; }
 ImFont* Font(unsigned role, float scale) {
     const unsigned s = FontScale(scale);
     return fonts[s][(std::min)(role, 5u)] ? fonts[s][(std::min)(role, 5u)] : ImGui::GetFont();

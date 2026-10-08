@@ -176,6 +176,9 @@ void NetplaySession::Start(bool isHost, const std::string &targetIp, uint16_t ta
     // 既存実験の比較時だけ明示指定で有効化する。相手入力の通常ロールバックは維持。
     _state.localPresentRollback.store(presentRollback && presentRollback[0] == '1');
     _state.peerPresentRollback.store(false);
+    const auto bosses=std::getenv("CCCASTER_BOSS_CHARACTERS");
+    _state.localBossCharacters.store(bosses && bosses[0]=='1');
+    _state.peerBossCharacters.store(false);
     _state.clockOffsetUs.store(0);
     _state.lastRttUs.store(0);
     _state.meanRttUs.store(0);

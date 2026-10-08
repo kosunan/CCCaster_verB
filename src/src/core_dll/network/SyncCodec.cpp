@@ -171,7 +171,9 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
         return;
     _framesSinceLastRecv = 0;
     auto &shared = NetplaySession::GetMutableState();
-    if (!gtp.selection.Valid()) return;
+    const bool peerBosses=(gtp.flags & FLAG_BOSS_CHARACTERS)!=0;
+    const bool allowBosses=shared.localBossCharacters.load(std::memory_order_acquire) && peerBosses;
+    if (!gtp.selection.Valid(allowBosses)) return;
     if (!gtp.epochStart.Valid()) return;
     if (!gtp.retry.Valid()) return;
     {
@@ -186,8 +188,10 @@ void SyncCodec::ProcessReceivedPacket(const std::vector<uint8_t> &data, const st
     }
     {
         std::lock_guard lock(shared.selectionMutex);
-        shared.peerSelection.Accept(gtp.selection);
+        shared.peerSelection.Accept(gtp.selection,allowBosses);
     }
+    // 対戦開始後に設定変更しない。再送の順序逆転でも一度成立した対応通知を失わない。
+    if(peerBosses)shared.peerBossCharacters.store(true,std::memory_order_release);
     if (gtp.consumedFrame > shared.peerConsumedFrame.load(std::memory_order_relaxed))
         shared.peerConsumedFrame.store(gtp.consumedFrame, std::memory_order_release);
     if (!_isHost && gtp.seedEpoch > 0 && gtp.seedEpoch == gtp.phaseBaseFrame) {
@@ -436,6 +440,7 @@ void SyncCodec::BuildPacketInto(std::vector<uint8_t> &packet, uint32_t frame, ui
 
     gtp.flags = ready ? FLAG_READY : 0;
     if (state.localPresentRollback.load(std::memory_order_acquire)) gtp.flags |= FLAG_PRESENT_ROLLBACK;
+    if (state.localBossCharacters.load(std::memory_order_acquire)) gtp.flags |= FLAG_BOSS_CHARACTERS;
     if (phaseToken != 0)
         gtp.flags |= FLAG_PHASE_READY;
     const auto skipEpoch = state.localLoadingSkipEpoch.load(std::memory_order_acquire);

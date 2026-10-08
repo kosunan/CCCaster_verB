@@ -6,6 +6,8 @@
 #include "core_dll/ui/UIManager.hpp"
 #include "core_dll/ui/TrainingCharacterView.hpp"
 #include "core_dll/ui/TrainingPaletteView.hpp"
+#include "core_dll/ui/TrainingHitboxView.hpp"
+#include "core_dll/mbaa_mem/TrainingHitboxMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/ui/TrainingStandbyView.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
@@ -43,6 +45,9 @@ void UIManager::Render(UiPhase phase) {
     if (StateUiLogic::IsMappingWindowOpen()) { ControllerUiView::Draw(); return; }
     if (training && phase == UiPhase::InGame && training_palette_view::Draw()) return;
     if (training && phase == UiPhase::InGame && training_character_view::Draw()) return;
+    if (training && phase == UiPhase::InGame && training_hitbox_view::Draw()) return;
+    // 標準Trainingメニュー中は名前・勝数・詳細情報を重ねない。HUDの選択モードは保持する。
+    if (training && phase == UiPhase::InGame && cccaster::game_interface::GameMem().IsPauseMenuOpen()) return;
     if (cccaster::domain::session::SceneRunner::AppMode() == 4 && phase != UiPhase::InGame) return;
     switch (phase) {
     case UiPhase::CharaSelect:
@@ -103,6 +108,14 @@ bool UIManager::IsMappingWindowOpen() {
 // ============================================================================
 
 int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    namespace hitbox = cccaster::training_hitbox;
+    if (uMsg == WM_KILLFOCUS) hitbox::escapeHeld = false;
+    if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_ESCAPE && hitbox::escapeHeld.exchange(false)) return 1;
+    if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE && (hitbox::Active() || hitbox::escapeHeld)) {
+        hitbox::escapeHeld = true;
+        if (!(lParam & (1u << 30))) hitbox::escapeRequested = true;
+        return 1;
+    }
     if (uMsg == WM_KILLFOCUS) cccaster::training_palette::escapeHeld = false;
     if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_ESCAPE && cccaster::training_palette::escapeHeld) {
         cccaster::training_palette::escapeHeld = false;

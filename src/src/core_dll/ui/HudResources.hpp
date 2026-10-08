@@ -9,6 +9,7 @@ void FinishInput();
 void RenderDrawData();
 void Release();
 Layout CurrentLayout();
+Rect CurrentViewport(); // 元ゲームと同じ画像座標へ重ねる表示用。
 ImFont* Font(unsigned role, float scale);
 ImTextureID Emblem(unsigned player);
 }

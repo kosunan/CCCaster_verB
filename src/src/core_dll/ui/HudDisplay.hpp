@@ -120,6 +120,7 @@ inline const char *ControllerSetupGuidance(bool settingsKept) {
 class HudDisplay {
   public:
     static HudDisplayMode Get() { return mode_.load(std::memory_order_relaxed); }
+    static void Set(HudDisplayMode mode) { mode_.store(mode, std::memory_order_relaxed); }
     static bool Visible() { return Get() != HudDisplayMode::Hidden; }
     static bool Detailed() { return Get() == HudDisplayMode::Detailed; }
     static void Cycle(int direction = 1) {

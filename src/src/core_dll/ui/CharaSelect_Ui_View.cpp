@@ -12,6 +12,7 @@
 #include "core_dll/ui/State_Ui_View.hpp"
 #include "core_dll/ui/Controller_Ui_View.hpp"
 #include "core_dll/engine/SelectionOptions.hpp"
+#include "core_dll/engine/SelectionPreferences.hpp"
 #include "core_dll/sync/SettingsCommands.hpp"
 #include "core_dll/ui/HudTheme.hpp"
 #include "core_dll/ui/HudDisplay.hpp"
@@ -69,7 +70,9 @@ void CharaSelectUiView::Draw() {
                           row == 4 ? "BORDERLESS" : "LOCAL",8,Muted,3);
         }
         c.Rule(x+8,y+footer,width-16);
-        c.Text(x+9,y+footer+8,"ARROWS / D-PAD   B: BACK",9,Muted,3,width-18);
+        const bool saveFailed = scene::selection_preferences::SaveFailed();
+        c.Text(x+9,y+footer+8,saveFailed ? "SAVE FAILED - CHECK FILE ACCESS" : "ARROWS / D-PAD   B: BACK",
+               9,saveFailed ? Gold : Muted,3,width-18);
         c.Rule(x+8,y+footer+23,width-16);
         c.Text(x+9,y+footer+28,"DELAY ADDS 0 - 8 FRAMES OF INPUT LAG",7,Muted,5,width-18);
     }

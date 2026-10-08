@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "shared_contracts/BossCharacters.hpp"
 #include "shared_contracts/NetplaySettings.hpp"
 #include "core_dll/sync/SettingsCommands.hpp"
 namespace cccaster::core::sync {
@@ -14,15 +15,18 @@ struct SelectionState {
     uint32_t delay = public_api::NetplaySettings::DefaultDelay,
              rollback = public_api::NetplaySettings::DefaultRollback;
     static int CharacterCell(uint32_t character) {
+        if(boss::IsBoss(character))return boss::Cell(character);
         constexpr int chars[] = {22,7,51,15,28,8,2,0,30,11,9,31,4,3,1,19,12,13,14,29,17,18,33,23,10,25,35,5,20,6,34};
         constexpr int cells[] = {2,3,4,5,6,10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,38,39,40,41,42};
         for (unsigned i = 0; i < sizeof(chars)/sizeof(*chars); ++i)
             if (character == uint32_t(chars[i])) return cells[i];
         return -1;
     }
-    bool Valid() const {
+    bool Valid(bool allowBoss=true) const {
+        const bool special=boss::IsBoss(character);
         return (!epoch || (epoch % 65536 == 0 && revision)) &&
-               selector < 54 && character <= 100 && moon < 3 && color < 36 &&
+               selector < (allowBoss ? boss::CellCount : 54) && character <= 100 &&
+               (special ? allowBoss && moon==boss::Moon(character) : moon<3) && color < 36 &&
                confirmed <= 1 && (!confirmed || CharacterCell(character) >= 0) &&
                stage < 100 && stageConfirmed <= 1 &&
                (!stageConfirmed || (confirmed && stage != 0)) &&
@@ -30,8 +34,8 @@ struct SelectionState {
                public_api::NetplaySettings::IsValid(delay, rollback) &&
                (!command || SettingsCommands::ValidCommand(command));
     }
-    bool Accept(const SelectionState &incoming) {
-        if (!incoming.Valid() || incoming.epoch < epoch ||
+    bool Accept(const SelectionState &incoming,bool allowBoss=true) {
+        if (!incoming.Valid(allowBoss) || incoming.epoch < epoch ||
             (incoming.epoch == epoch && incoming.revision < revision)) return false;
         const auto previousAck = incoming.epoch == epoch ? ack : 0;
         *this = incoming;

@@ -1,0 +1,181 @@
+#include "core_dll/mbaa_mem/BossCharacterSelect.hpp"
+#include "core_dll/mbaa_mem/GameBuildGuard.hpp"
+#include "core_dll/mbaa_mem/MbaaAddresses.hpp"
+#include "core_dll/common/DebugLog.hpp"
+#include "shared_contracts/BossCharacters.hpp"
+#include "core_dll/ui/HudResources.hpp"
+#include <MinHook.h>
+#include <atomic>
+#include <cstring>
+#include <string>
+#include <cstdio>
+
+extern "C" {
+void* cc_boss_preview_original=nullptr;
+void* cc_boss_palette_original=nullptr;
+void* cc_boss_scale_original=nullptr;
+void* cc_boss_scale_resume=reinterpret_cast<void*>(0x486008);
+float __cdecl cc_boss_preview_scale(unsigned*);
+unsigned __cdecl cc_boss_preview(unsigned,unsigned,unsigned*);
+unsigned __cdecl cc_boss_preview_id(unsigned);
+// 0x485EB0/0x485E00: ECX=component, EDX=character, EDI=出力先。通常fastcallにEDIを落とさない。
+__attribute__((naked)) void cc_boss_preview_hook() {
+    __asm__ __volatile__("pushl %edi; pushl %edx; pushl %ecx; call _cc_boss_preview; addl $12,%esp; ret");
+}
+__attribute__((naked)) unsigned cc_boss_preview_call(unsigned,unsigned,unsigned*) {
+    __asm__ __volatile__("pushl %edi; movl 8(%esp),%ecx; movl 12(%esp),%edx; movl 16(%esp),%edi;"
+                         "call *_cc_boss_preview_original; popl %edi; ret");
+}
+__attribute__((naked)) void cc_boss_palette_hook() {
+    __asm__ __volatile__("pushfl; pushal; pushl %edx; call _cc_boss_preview_id; addl $4,%esp;"
+                         "movl %eax,20(%esp); popal; popfl; jmp *_cc_boss_palette_original");
+}
+// 0x486002のfldを置換。元と同じx87結果1つを残し、全レジスター・フラグを保持。
+__attribute__((naked)) void cc_boss_scale_hook() {
+    __asm__ __volatile__("pushfl; pushal; pushl %edi; call _cc_boss_preview_scale; addl $4,%esp;"
+                         "popal; popfl; jmp *_cc_boss_scale_resume");
+}
+}
+
+namespace cccaster::boss::selection {
+namespace {
+bool installed=false,enabled=false;
+std::atomic<bool> presentation{false};
+using FileLoader=int (__cdecl*)(const char*,void*,unsigned,unsigned);
+FileLoader originalFile=nullptr;
+unsigned* Grid(){return *reinterpret_cast<unsigned**>(0x77181C);}
+unsigned* Cursor(unsigned side){return side ? CC_P2_SELECTOR_MODE_ADDR : CC_P1_SELECTOR_MODE_ADDR;}
+
+// 元のファイルが見つからない表示画像だけを共用する。戦闘定義の名前は変更しない。
+std::string ImageAlias(const char* path) {
+    std::string value=path ? path : "";
+    for(auto& ch:value){if(ch=='/')ch='\\';if(ch>='A' && ch<='Z')ch+=32;}
+    struct Prefix{const char* text;bool giant;};
+    constexpr Prefix prefixes[]={{".\\grp\\c_sel_aa\\chara\\csel_c",true},
+        {".\\grp\\c_sel_aa\\palette\\color_c",true},{".\\grp\\gauge_aa\\face\\face",false},
+        {".\\grp\\cut\\cut_",false},
+        {".\\grp\\vsdemo_aa\\vs_cut\\vs_cut",true},
+        {".\\grp\\vsdemo_aa\\vs_flash\\vs_fl",true},
+        {".\\grp\\vsdemo_aa\\vs_color\\vs_chcolor",true},
+        {".\\grp\\vsdemo_aa\\vs_name00\\vs_name00_",true},
+        {".\\grp\\vsdemo_aa\\vs_name01\\vs_name01_",true},
+        {".\\grp\\vsdemo_aa\\vs_command\\vs_com",true}};
+    for(const auto& prefix:prefixes) {
+        const size_t n=std::strlen(prefix.text);
+        if(value.compare(0,n,prefix.text) || value.size()<n+2 || value[n]<'0' || value[n]>'9' || value[n+1]<'0' || value[n+1]>'9')continue;
+        const unsigned id=(value[n]-'0')*10+value[n+1]-'0';
+        if(!IsBoss(id) || id==32 || (id==16 && !prefix.giant))return {};
+        auto base=Base(id);
+        // 巨大秋葉の固有技表は0のみ。ボスタッグの元キャラ35にも3の画像はない。
+        if(value.find("\\vs_command\\")!=std::string::npos && (id==16 || id==85)) {
+            if(id==16)base=16;
+            if(value.size()>n+3 && value[n+2]=='_')value[n+3]='0';
+        }
+        value[n]=char('0'+base/10);value[n+1]=char('0'+base%10);
+        return value;
+    }
+    return {};
+}
+__attribute__((force_align_arg_pointer)) int __cdecl LoadFile(const char* path,void* out,unsigned flags,unsigned wait) {
+    const auto result=originalFile(path,out,flags,wait);
+    if(result || !presentation.load(std::memory_order_relaxed))return result;
+    const auto alias=ImageAlias(path);
+    if(alias.empty())return result;
+    const auto loaded=originalFile(alias.c_str(),out,flags,wait);
+    domain::session::DebugLog("[BossSelect] IMAGE from=%s to=%s loaded=%d",path,alias.c_str(),loaded);
+    return loaded;
+}
+template<class T> bool Hook(uintptr_t address,const unsigned char* signature,size_t size,void* hook,T* original) {
+    if(std::memcmp(reinterpret_cast<void*>(address),signature,size))return false;
+    return MH_CreateHook(reinterpret_cast<void*>(address),hook,reinterpret_cast<void**>(original))==MH_OK &&
+           MH_EnableHook(reinterpret_cast<void*>(address))==MH_OK;
+}
+bool Install() {
+    if(installed)return true;
+    if(!game_build::RuntimeValidated())return false;
+    const unsigned char file[]{0x81,0xec,0x34,0x01,0,0,0xa1,0x58,0xb4,0x54,0};
+    const unsigned char preview[]{0x81,0xec,0x10,0x01,0,0,0xa1,0x58,0xb4,0x54,0};
+    const unsigned char palette[]{0x81,0xec,0x0c,0x01,0,0};
+    const unsigned char scale[]{0xd9,0x05,0x3c,0xd8,0x53,0};
+    if(!Hook(0x4C8B10,file,sizeof(file),reinterpret_cast<void*>(LoadFile),&originalFile) ||
+       !Hook(0x485EB0,preview,sizeof(preview),reinterpret_cast<void*>(cc_boss_preview_hook),&cc_boss_preview_original) ||
+       !Hook(0x485E00,palette,sizeof(palette),reinterpret_cast<void*>(cc_boss_palette_hook),&cc_boss_palette_original) ||
+       !Hook(0x486002,scale,sizeof(scale),reinterpret_cast<void*>(cc_boss_scale_hook),&cc_boss_scale_original))return false;
+    // csel_icon00 / csel_nameの元アトラス番号。固有絵のある16/32は保持。
+    for(const auto id:Characters)if(id>=50) {
+        reinterpret_cast<int*>(0x5519F8)[id]=reinterpret_cast<const int*>(0x5519F8)[Base(id)];
+        reinterpret_cast<int*>(0x551B90)[id]=reinterpret_cast<const int*>(0x551B90)[Base(id)];
+    }
+    // 巨大秋葉の名前表の既存番号は別キャラの画像を指す。秋葉の名前画像を使う。
+    reinterpret_cast<int*>(0x551B90)[16]=reinterpret_cast<const int*>(0x551B90)[3];
+    installed=true;
+    domain::session::DebugLog("[BossSelect] INSTALLED nativeGrid=63 randomCell=49 sides=4+4");
+    return true;
+}
+}
+bool Enabled(){return enabled;}
+void DrawLabels() {
+    if(!enabled || *CC_GAME_MODE_ADDR!=CC_GAME_MODE_CHARA_SELECT)return;
+    const auto* grid=Grid();
+    if(!grid)return;
+    const auto viewport=hud::CurrentViewport();
+    const float sx=viewport.width/640.f,sy=viewport.height/480.f;
+    const float size=8.5f*(std::min)(sx,sy);
+    auto* font=hud::Font(3,(std::min)(sx,sy));
+    auto* draw=ImGui::GetForegroundDrawList();
+    for(const auto cell:Cells) {
+        const auto* entry=grid+cell*6;
+        if(!IsBoss(entry[2]) || *reinterpret_cast<const float*>(entry+5)>.01f)continue;
+        const auto width=font->CalcTextSizeA(size,10000,0,"[BOSS]").x;
+        const ImVec2 at{viewport.x+(entry[3]+24)*sx-width/2,viewport.y+(entry[4]+8)*sy};
+        draw->AddRectFilled({at.x-1.5f*sx,at.y},{at.x+width+1.5f*sx,at.y+size+sy},IM_COL32(24,18,0,215));
+        draw->AddText(font,size,at,IM_COL32(255,226,35,255),"[BOSS]");
+    }
+}
+bool Configure(unsigned mode,bool allow) {
+    // 同一PCのVersusにはフック・セル・選択値を適用しない。
+    if(mode==5)return true;
+    if(mode!=0 && mode!=1 && mode!=2 && mode!=3)return true;
+    if(!Install())return false;
+    presentation.store(true,std::memory_order_relaxed);
+    if(enabled!=allow){enabled=allow;domain::session::DebugLog("[BossSelect] ENABLED mode=%u value=%u",mode,unsigned(enabled));}
+    if(*CC_GAME_MODE_ADDR!=CC_GAME_MODE_CHARA_SELECT)return true;
+    if(auto* grid=Grid())for(unsigned i=0;i<Characters.size();++i)grid[Cells[i]*6+2]=enabled ? Characters[i] : UINT32_MAX;
+    if(enabled)for(unsigned side=0;side<2;++side) {
+        auto* cursor=Cursor(side);
+        if(!IsBoss(cursor[4]))continue;
+        // 標準の再入場は静的な通常キャラ表を検索するため、ボスのセルが-1になる。
+        // 動的一覧を使う通常入力へ戻す前に、この列の対応セルを復元する。
+        if(cursor[3]>=63)cursor[3]=Cell(cursor[4]);
+        cursor[5]=Moon(cursor[4]);
+        // 各ボスは収録スタイルが1つだけ。3択の標準ムーンを回して未収録TXTへ入らない。
+        if(cursor[0]==1) {
+            cursor[0]=2;
+            domain::session::DebugLog("[BossSelect] STYLE side=%u character=%u moon=%u",side,cursor[4],cursor[5]);
+        }
+    }
+    return true;
+}
+}
+
+extern "C" __attribute__((force_align_arg_pointer)) unsigned cc_boss_preview_id(unsigned character) {
+    return cccaster::boss::Base(character);
+}
+extern "C" __attribute__((force_align_arg_pointer)) float cc_boss_preview_scale(unsigned* resource) {
+    const float scale=*reinterpret_cast<const float*>(0x53D83C);
+    const auto base=*reinterpret_cast<uintptr_t*>(0x74D808);
+    if(base)for(unsigned side=0;side<2;++side) {
+        const auto preview=base+side*0x1dc;
+        if(reinterpret_cast<uintptr_t>(resource)==preview+0x1a8 &&
+           *reinterpret_cast<const unsigned*>(preview+4)==32)return scale*.125f;
+    }
+    return scale;
+}
+extern "C" __attribute__((force_align_arg_pointer)) unsigned cc_boss_preview(unsigned part,unsigned character,unsigned* destination) {
+    if(character==32) {
+        // ヘルメスには_csel専用TXTがない。固有のCG/PATを使う通常定義からプレビューを生成。
+        reinterpret_cast<void (__thiscall*)(void*,const char*)>(0x448920)(reinterpret_cast<void*>(destination[2]),".\\data\\hermes_0.txt");
+        return 1;
+    }
+    return cc_boss_preview_call(part,cccaster::boss::Base(character),destination);
+}

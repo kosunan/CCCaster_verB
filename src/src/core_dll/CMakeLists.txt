@@ -26,6 +26,8 @@ add_library(cccaster_hook SHARED
     mbaa_mem/TrainingMetrics.cpp
     mbaa_mem/StateSweep.cpp
     mbaa_mem/TrainingCharacterMenu.cpp
+    mbaa_mem/TrainingHitboxMenu.cpp
+    mbaa_mem/BossCharacterSelect.cpp
     mbaa_mem/TrainingPaletteMenu.cpp
     mbaa_mem/ExtraColorSelection.cpp
     mbaa_mem/NativeColorMenu.cpp
@@ -49,6 +51,7 @@ add_library(cccaster_hook SHARED
 
     # === engine/ — メインロジック ===
     engine/SceneRunner.cpp
+    engine/SelectionPreferences.cpp
     engine/ExtraColorStore.cpp
     engine/GameFrameOrchestrator.cpp
     engine/SceneFastBoot.cpp
@@ -72,6 +75,7 @@ add_library(cccaster_hook SHARED
     ui/HudResources.cpp
     ui/StartupFontCache.cpp
     ui/TrainingCharacterView.cpp
+    ui/TrainingHitboxView.cpp
     ui/TrainingPaletteView.cpp
     ui/TrainingStandbyView.cpp
     ui/State_Ui_Logic.cpp
