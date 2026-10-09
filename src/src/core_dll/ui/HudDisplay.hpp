@@ -143,7 +143,17 @@ class HudDisplay {
 class FrameBarDisplay {
   public:
     static constexpr bool Available(int appMode) { return appMode == 1 || appMode == 2 || appMode == 4; }
-    static bool Visible(int appMode = 1) { return Available(appMode) && HudDisplay::Detailed(); }
+    static bool Visible(int appMode = 1) {
+        return appMode == 1 ? training_.load(std::memory_order_relaxed)
+                            : Available(appMode) && HudDisplay::Detailed();
+    }
+    static void SetTraining(bool enabled) { training_.store(enabled, std::memory_order_relaxed); }
+    static void ToggleTraining() {
+        auto current = training_.load(std::memory_order_relaxed);
+        while (!training_.compare_exchange_weak(current, !current, std::memory_order_relaxed)) {}
+    }
+  private:
+    inline static std::atomic<bool> training_{false};
 };
 
 inline void FormatDelayLabel(char* output, std::size_t size, int delay) {

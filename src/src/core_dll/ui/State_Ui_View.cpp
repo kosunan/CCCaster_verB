@@ -196,7 +196,7 @@ void DrawTrainingControls(cccaster::domain::session::TrainingStateEvent event, b
     }
     char delay[64];
     std::snprintf(delay, sizeof(delay), fallback ? "Ctrl+0-8: DELAY %d | QPC" : "Ctrl+0-8: DELAY %d", StateUiLogic::GetDelay());
-    const char* lines[]{state, "F1: HUD / FRAME BAR", delay};
+    const char* lines[]{state, "F1: FRAME BAR ON / OFF", delay};
     const auto layout = cccaster::hud::CurrentLayout();
     auto r = cccaster::hud::Layout::TrainingGuide;
     const int rows = 3;
@@ -222,8 +222,8 @@ void DrawHud(bool selection) {
     using Settings = cccaster::core::sync::SettingsCommands;
     using Runner = cccaster::domain::session::SceneRunner;
     // キャラ選択中の設定案内はHUDの表示モードにかかわらず残す。
-    if (!selection && !HudDisplay::Visible()) return;
     const auto appMode = Runner::AppMode();
+    if (!selection && appMode != 1 && !HudDisplay::Visible()) return;
     // Offline versus keeps only delay and controls during character selection.
     // HUD shortcuts must not bring names, scores or battle metrics back.
     if (appMode == 5 && !selection) return;
@@ -241,7 +241,12 @@ void DrawHud(bool selection) {
     static DelayChangeHighlight delayHighlight;
     const auto now = cccaster::platform::RealMonotonicUs();
     const bool highlighted = delayHighlight.Observe(d,now);
-    if (appMode != 5 && HudDisplay::Visible()) DrawBattleIdentity(d, false, !selection);
+    if (appMode == 0 && HudDisplay::Visible()) DrawBattleIdentity(d, false, !selection);
+    if (training && !selection) {
+        if (FrameBarDisplay::Visible(1))
+            DrawTrainingControls(Runner::TrainingStateNotice(), cccaster::core::timer::WasapiClock::GetInstance().IsFallback());
+        return;
+    }
     // キャラ選択ではHiddenでも残す。要求中の値ではなく、双方で確定したDを見る。
     if (selection) {
         cccaster::boss::selection::DrawLabels();

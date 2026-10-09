@@ -130,7 +130,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
         return 1;
     }
     namespace options = cccaster::domain::scene::selection_options;
-    // キャラ選択のF1は設定メニュー。それ以外ではHUD切替。長押し・解放は遮断する。
+    // キャラ選択は設定、Trainingはフレームバー、それ以外はHUD。長押し・解放は遮断する。
     static bool hudF1Held = false;
     if (uMsg == WM_KILLFOCUS) hudF1Held = false;
     if ((uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) && wParam == VK_F1 && hudF1Held) {
@@ -145,6 +145,7 @@ int UIManager::HandleWndProcMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
             auto &mem = cccaster::game_interface::GameMem();
             if ((mode == 0 || mode == 1 || mode == 5) && mem.IsAvailable() && mem.GameMode() == CC_GAME_MODE_CHARA_SELECT)
                 options::Queue(options::Toggle);
+            else if (mode == 1) FrameBarDisplay::ToggleTraining();
             else HudDisplay::Cycle();
         }
         return 1;

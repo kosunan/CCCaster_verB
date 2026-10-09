@@ -1,4 +1,3 @@
-﻿#include "core_dll/mbaa_mem/StartupSounds.hpp"
 #include "core_dll/timing/SpinProbe.hpp"
 #include "core_dll/common/VirtualControllerTest.hpp"
 // ============================================================================
@@ -619,7 +618,6 @@ void RealGameMemory::BeginSimulation(uint32_t f) {
     if (probe) sample->effectsEnd = Probe::Now();
 }
 bool RealGameMemory::PrepareBattleAudio() {
-    cccaster::game_memory::startup_sounds::PrepareBattle();
     using SoundClock = cccaster::sync::IntroSoundClock;
     SoundClock::until.fill(0);
     SoundClock::duration.fill(0);
@@ -699,10 +697,5 @@ bool RealGameMemory::PrepareBattleAudio() {
     DebugLog("[SoundPrewarm] prepared=%u skipped=%u ticks=%lld restored=1", prepared, skippedBuffers,
         cccaster::platform::RealMonotonicTicks() - started);
     return true;
-}
-void RealGameMemory::PrepareStartupResources() {
-    // 大分類InGameには標準REP一覧(mode26)も含まれる。実戦闘(mode1)でのみ先読みする。
-    if (GameMode() != CC_GAME_MODE_IN_GAME) return;
-    cccaster::game_memory::startup_sounds::PrepareBattle();
 }
 } // namespace cccaster::game_interface

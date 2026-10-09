@@ -77,6 +77,7 @@ bool Install() {
 }
 bool Active(){return open.load(std::memory_order_relaxed);}
 const Options& Current(){return options;}
+void ResetOptions(){options={};domain::session::DebugLog("[Hitbox] DEFAULT mask=0");}
 void Open() {
     if(!installed)return;
     open=true;suppress=true;escapeRequested=false;

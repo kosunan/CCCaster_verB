@@ -1,5 +1,4 @@
 #include "core_dll/hook/HookBatch.hpp"
-#include "core_dll/mbaa_mem/StartupSounds.hpp"
 #include "core_dll/rollback/ReplayEffects.hpp"
 #include "core_dll/rollback/IntroSoundClock.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -14,6 +13,7 @@
 #include "shared_contracts/NetplaySettings.hpp"
 #include <cstring>
 #include <cstdlib>
+#include "core_dll/rollback/SelectionSoundProbe.hpp"
 
 namespace {
 struct Sounds {
@@ -86,7 +86,6 @@ uintptr_t cccaster_sfx_skip = 0x4DE223;
 __attribute__((force_align_arg_pointer)) int __cdecl cccaster_sfx_should_play(uint32_t sound) {
     // 表示だけの先行1更新では、履歴・音声時計への記録も実際の再生も抑止する。
     if (introPreview) return 0;
-    cccaster::game_memory::startup_sounds::Ensure(sound);
     if (soundProbe) ++soundCalls;
     cccaster::diagnostics::sound_api::SetSound(sound);
     if (sound >= 1500)
@@ -186,6 +185,7 @@ void EndReplayEffects() {
 }
 void SetIntroPreviewEffects(bool active) { introPreview = active; }
 void FlushSoundProbe() {
+    cccaster::diagnostics::selection_sound::Sample();
     cccaster::diagnostics::sound_api::Flush();
     for (unsigned i = 0; i < soundSamplesUsed; ++i) {
         const auto &s = soundSamples[i];

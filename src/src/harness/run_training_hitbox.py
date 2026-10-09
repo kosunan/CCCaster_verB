@@ -83,6 +83,12 @@ def main():
     def open_hitbox():
         press('start');wait(lambda:read(0x74d7fc)!=0,'Trainingメニューなし');time.sleep(.4)
         menu,keys=menu_items();result['menu_keys']=keys
+        target=keys.index('TRAINING_DISPLAY')
+        for _ in range(len(keys)):
+            if read(menu+0x40)==target:break
+            press('down')
+        press('a');wait(lambda:read(read(0x74d7fc)+0xd0)!=0,'TRAINING DISPLAYなし');time.sleep(.5)
+        menu,keys=menu_items(read(read(0x74d7fc)+0xd0));result['display_keys']=keys
         target=keys.index('CC_HITBOX')
         for _ in range(len(keys)):
             if read(menu+0x40)==target:break
@@ -152,7 +158,7 @@ def main():
             if i<5:press('down')
         check('サブメニュー入力を本体へ渡さない',read(menu+0x40)==target and read(0x74d7fc)!=0)
         inspect('ALL_ON_MENU')
-        press('b');press('b');wait(lambda:read(0x74d7fc)==0,'練習へ戻らない')
+        press('b');press('b');time.sleep(.6);press('b');wait(lambda:read(0x74d7fc)==0,'練習へ戻らない')
         time.sleep(.6);inspect('STANDING_BOXES')
         if args.geometry:
             result['geometry']=dict(width=width,height=height,aspect=aspect,fullscreen=args.fullscreen,samples=[])
@@ -192,7 +198,7 @@ def main():
             press('left');expected&=~(1<<i);check(f'独立OFF項目{i}',latest_mask()==expected)
             if i:press('up')
         inspect('ALL_OFF_MENU')
-        press('b');press('b');wait(lambda:read(0x74d7fc)==0,'OFF後に練習へ戻らない')
+        press('b');press('b');time.sleep(.6);press('b');wait(lambda:read(0x74d7fc)==0,'OFF後に練習へ戻らない')
         mark=len(logs());time.sleep(.5);check('全OFFで収集と描画を停止','[Hitbox] FRAME' not in logs()[mark:])
         lines=re.findall(r'\[Hitbox\] FRAME f=(\d+) mask=(\d+) found=([\d,]+) drawn=(\d+) checked=(\d+) mismatch=(\d+) zoom=([\d.]+)',logs())
         check('座標比較標本あり',len(lines)>60)

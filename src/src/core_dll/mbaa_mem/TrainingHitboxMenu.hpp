@@ -5,6 +5,7 @@
 #include <vector>
 
 namespace cccaster::training_hitbox {
+void ResetOptions();
 struct Box { Rect rect; Kind kind; unsigned actor; };
 struct Frame { std::vector<Box> boxes; float zoom=1; Rect image; };
 bool Install();

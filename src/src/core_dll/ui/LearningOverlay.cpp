@@ -193,7 +193,7 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
 void LearningOverlay::Draw(int appMode, const cccaster::FrameAdvantageResult &result) {
     if ((appMode != 1 && appMode != 2) || StateUiLogic::IsMappingWindowOpen())
         return;
-    if (!HudDisplay::Detailed())
+    if (!FrameBarDisplay::Visible(appMode))
         return;
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;

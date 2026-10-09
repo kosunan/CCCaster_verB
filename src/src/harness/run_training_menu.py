@@ -1,4 +1,4 @@
-"""TrainingのInformationとメニュー開閉を仮想DS4入力・読取り専用メモリで検査する。HUDは--inspectで実画面確認。"""
+"""Trainingの表示設定とメニュー開閉を仮想DS4入力・読取り専用メモリで検査する。HUD/F1は--inspectで実画面確認。"""
 import argparse
 import ctypes as C
 from ctypes import wintypes as W
@@ -28,7 +28,7 @@ def main():
             return target
     runtime=ROOT/'test/runtime/training_character'
     caster=runtime/'MBAACC_1/cccaster_B'
-    out=ROOT/'test/logs'/time.strftime('training_menu_hud_%Y%m%d_%H%M%S')
+    out=ROOT/'test/logs'/time.strftime('training_display_%Y%m%d_%H%M%S')
     out.mkdir(parents=True)
     result=dict(errors=[],checks={})
     def preserved():
@@ -69,8 +69,8 @@ def main():
             if part in buttons:pad.press_button(buttons[part])
             else:pad.directional_pad(directions[part])
         pad.update();time.sleep(hold);pad.reset();pad.update();time.sleep(release)
-    def menu_items():
-        menu=read(read(read(0x74d7fc)+0x10));begin,end=read(menu+0x4c),read(menu+0x50)
+    def menu_items(window=None):
+        menu=read(read((window or read(0x74d7fc))+0x10));begin,end=read(menu+0x4c),read(menu+0x50)
         keys=[]
         for p in range(begin,end,4):
             s=read(p)+0x3c;address=s+4 if read(s+0x18)<16 else read(s+4)
@@ -83,6 +83,19 @@ def main():
         if args.inspect and (not args.inspect_at or label in args.inspect_at):
             print('INSPECT '+label+'; continueで再開',flush=True)
             input()
+            return True
+        return False
+    def select(menu,keys,key):
+        for _ in range(len(keys)):
+            if keys[read(menu+0x40)]==key:return
+            press('down')
+        raise RuntimeError(key+'を選べない')
+    def open_display():
+        menu,keys=menu_items();select(menu,keys,'TRAINING_DISPLAY');press('a')
+        wait(lambda:read(read(0x74d7fc)+0xd0)!=0,'TRAINING DISPLAYなし');time.sleep(.5)
+        return menu_items(read(read(0x74d7fc)+0xd0))
+    def bar_value(menu,keys):
+        return read(read(read(menu+0x4c)+keys.index('CC_FRAME_BAR')*4)+0x58)
     try:
         with (out/'deploy.log').open('w') as stream:
             subprocess.run(['pwsh','-NoProfile','-File',str(ROOT/'deploy.ps1'),'-TestRoot',str(runtime)],check=True,stdout=stream,stderr=subprocess.STDOUT)
@@ -114,47 +127,74 @@ def main():
         expected={
             'CC_CHARACTER':'Change the character and Moon style for P1 or P2.',
             'CC_PALETTE':'Edit character colors and save or load palettes.',
-            'CC_HITBOX':'Show or hide hitboxes and other collision boxes.',
+            'TD_CC_FRAME_BAR':'Show or hide the frame bar. F1 also toggles this setting.',
+            'TD_CC_HITBOX':'Show or hide hitboxes and other collision boxes.',
         }
         inspect('COMPACT_BATTLE')
         press('start');wait(lambda:read(0x74d7fc)!=0,'Trainingメニューなし');time.sleep(.4)
         menu,keys=menu_items();result['menu_keys']=keys
         entries=descriptions();result['information']=dict(entries)
-        check('3項目の説明を標準Informationへ登録',all(entries.count((key,value))==1 for key,value in expected.items()))
+        check('4項目の説明を標準Informationへ登録',all(entries.count((key,value))==1 for key,value in expected.items()))
+        check('HITBOXをメインメニューから移設','CC_HITBOX' not in keys)
         check('標準項目の説明を維持',bool(dict(entries).get('PLAYER_SETTING')))
         count=len(entries)
-        for index,key in enumerate(expected):
+        for index,key in enumerate(('CC_CHARACTER','CC_PALETTE')):
             check(key+'選択',keys[read(menu+0x40)]==key)
             inspect(key+'_INFORMATION')
             press('a');time.sleep(.5)
             # 各カスタム画面と戻りを実画面でも確認する。
             inspect(key+'_DIALOG')
             check(key+'の開閉中は本体選択を保持',read(menu+0x40)==index and read(0x74d7fc)!=0)
-            if key=='CC_HITBOX':
-                press('down');press('right');check('喰らい判定ON',latest_mask()==2)
             press('b');time.sleep(.3)
-            if index<2:press('down')
+            if index<1:press('down')
         press('down');check('標準BATTLE SETTINGSへ移動',keys[read(menu+0x40)]=='PLAYER_SETTING')
         inspect('STANDARD_INFORMATION')
         press('a');time.sleep(.5);inspect('STANDARD_SUBMENU');press('b');time.sleep(.6)
+        display,keys=open_display();result['display_keys']=keys
+        check('標準2項目と追加2項目の並び',keys[:4]==['ATTACK_DISPLAY','INPUT_DISPLAY','CC_FRAME_BAR','CC_HITBOX'])
+        check('FRAME BARの初期値OFF',bar_value(display,keys)==0)
+        inspect('DISPLAY_OFF')
+        select(display,keys,'CC_FRAME_BAR')
+        press('right');check('右でFRAME BAR ON',bar_value(display,keys)==1)
+        press('left');check('左でFRAME BAR OFF',bar_value(display,keys)==0)
+        press('a',.8);check('A長押しで1回だけON',bar_value(display,keys)==1)
+        press('a');check('AでOFFに戻る',bar_value(display,keys)==0)
+        if inspect('F1_ON_IN_DISPLAY'):
+            check('F1のONがメニューに反映',bar_value(display,keys)==1)
+            if inspect('F1_OFF_IN_DISPLAY'):
+                check('F1のOFFがメニューに反映',bar_value(display,keys)==0)
+        press('right');select(display,keys,'CC_HITBOX');press('a')
+        wait(lambda:latest_mask()==0,'HITBOXなし')
+        inspect('HITBOX_DIALOG')
+        press('down');press('right');check('喰らい判定ON',latest_mask()==2)
+        check('HITBOX中も親メニューの選択を保持',keys[read(display+0x40)]=='CC_HITBOX')
+        press('b');time.sleep(.3);inspect('DISPLAY_RESTORED')
+        check('HITBOXから表示設定へ戻る',read(read(0x74d7fc)+0xd0)!=0)
+        press('b');time.sleep(.6)
         press('b');wait(lambda:read(0x74d7fc)==0,'練習へ戻らない');time.sleep(.5)
-        inspect('COMPACT_RESTORED_WITH_BOXES')
+        inspect('BAR_ON_WITH_BOXES_NO_NAMES')
         # 既存説明の保全、二重追加、ネイティブ文字列の所有権を開き直しで確認。
         for cycle in range(10):
             press('start');wait(lambda:read(0x74d7fc)!=0,'再開メニューなし');time.sleep(.6)
             entries=descriptions()
             check(f'再開{cycle+1}で説明数と本文を保持',len(entries)==count and all(entries.count((key,value))==1 for key,value in expected.items()))
+            display,keys=open_display()
+            check(f'再開{cycle+1}で項目数とFRAME BAR保持',len(keys)==8 and bar_value(display,keys)==1)
+            select(display,keys,'CC_HITBOX');press('a');check(f'再開{cycle+1}でHITBOX保持',latest_mask()==2)
+            press('b');time.sleep(.3);press('b');time.sleep(.6)
             press('b');wait(lambda:read(0x74d7fc)==0,'再開後に練習へ戻らない')
-        inspect('F1_DETAIL_BATTLE')
-        press('start');wait(lambda:read(0x74d7fc)!=0,'詳細表示メニューなし');time.sleep(.3)
-        inspect('DETAIL_MENU_WITH_BOXES_HIDDEN')
-        press('b');wait(lambda:read(0x74d7fc)==0,'詳細表示復帰なし')
-        inspect('DETAIL_RESTORED')
-        inspect('F1_HIDDEN_BATTLE')
-        press('start');wait(lambda:read(0x74d7fc)!=0,'HUD非表示メニューなし');time.sleep(.3)
-        inspect('HIDDEN_MODE_MENU')
-        press('b');wait(lambda:read(0x74d7fc)==0,'HUD非表示復帰なし')
-        inspect('HIDDEN_MODE_RESTORED')
+        f1_off=inspect('F1_OFF_BATTLE')
+        press('start');wait(lambda:read(0x74d7fc)!=0,'Trainingメニューなし');time.sleep(.4)
+        display,keys=open_display()
+        if f1_off:check('戦闘中F1のOFFを次のメニューで保持',bar_value(display,keys)==0)
+        select(display,keys,'CC_FRAME_BAR');press('right')
+        select(display,keys,'DEFAULT');press('a');time.sleep(.5)
+        check('DEFAULTでFRAME BARをOFFへ戻す',bar_value(display,keys)==0)
+        select(display,keys,'CC_HITBOX');press('a');check('DEFAULTでHITBOXを全OFFへ戻す',latest_mask()==0)
+        press('b');time.sleep(.3)
+        select(display,keys,'CC_FRAME_BAR');press('right');inspect('DEFAULT_THEN_ON')
+        press('b');time.sleep(.6);press('b');wait(lambda:read(0x74d7fc)==0,'練習へ戻らない')
+        inspect('FINAL_BAR_ON_NO_NAMES')
         check('例外なし','[Exception]' not in logs() and '[InputGate] FAILED' not in logs())
     except Exception as exc:result['errors'].append(str(exc))
     finally:

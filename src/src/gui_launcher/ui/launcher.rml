@@ -123,7 +123,7 @@
         <p><kbd>F4</kbd><span data-en="Controller settings. Changes save immediately; press again to close.">コントローラ設定。変更はその都度保存し、もう一度押すと閉じます。</span></p>
         <p><kbd>A / B</kbd><span data-en="Confirm / back with your assigned buttons. B is disabled before selecting a character.">割り当てたボタンで決定／戻る。キャラ未選択時のBは無効です。</span></p>
         <p><kbd>Ctrl + 0–8</kbd><span data-en="Change input delay at character select or during offline practice.">キャラ選択中・オフライン練習中の入力ディレイを変更。</span></p>
-        <p><kbd>F1</kbd><span data-en="Cycle normal / detailed / hidden display. Training, spectating and replay include a frame bar in detailed mode.">情報表示を通常／詳細／非表示に切替。練習・観戦・リプレイの詳細表示にはフレームバーがあります。</span></p>
+        <p><kbd>F1</kbd><span data-en="Toggle the frame bar in Training (also in TRAINING DISPLAY). Other modes cycle normal / detailed / hidden HUD; spectating and replay include a frame bar in detailed mode.">練習ではフレームバーをON／OFF（TRAINING DISPLAYからも変更可能）。他モードは通常／詳細／非表示を切替。観戦・リプレイの詳細表示にはフレームバーがあります。</span></p>
         <p><kbd>FN1 / FN2</kbd><span data-en="Training: save / load a practice state.">練習状態の保存／読込み。</span></p>
         <p><kbd data-en="Left / Right + FN2">左 / 右 + FN2</kbd><span data-en="Normal training: put the opponent at that corner. Keep the saved state.">通常の練習：相手を指定した側の壁際へ配置。保存状態は保持します。</span></p>
         <p><kbd>Alt + Enter</kbd><span data-en="Toggle fullscreen.">全画面表示の切替。</span></p>

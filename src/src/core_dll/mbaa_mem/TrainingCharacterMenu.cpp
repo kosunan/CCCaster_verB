@@ -2,6 +2,7 @@
 #include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingHitboxMenu.hpp"
+#include "core_dll/ui/HudDisplay.hpp"
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
@@ -65,6 +66,9 @@ const char* error = "";
 using Constructor = uint32_t* (__thiscall*)(uint32_t*);
 using Reset = void (__stdcall*)(void*);
 Constructor originalConstructor = nullptr;
+using DisplayConstructor = uint32_t* (__stdcall*)(uint32_t*);
+DisplayConstructor originalDisplayConstructor = nullptr;
+bool lastFrameBarValue = false;
 Reset originalReset = nullptr;
 
 uint32_t* Descriptor(uint32_t character) {
@@ -147,18 +151,10 @@ __attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t
         end = reinterpret_cast<uint32_t**>(set[0x50/4]);
         std::rotate(begin + 1, end - 1, end);
     }
-    auto* hitboxItem = static_cast<uint32_t*>(reinterpret_cast<void* (__cdecl*)(size_t)>(0x4E0177)(0x58));
-    if (hitboxItem) {
-        reinterpret_cast<void (__stdcall*)(void*, const char*, const char*, int)>(0x429140)(
-            hitboxItem, "HITBOX", "CC_HITBOX", 0);
-        hitboxItem[0] = 0x53604C; hitboxItem[1] = hitboxItem[3] = 1;
-        cc_training_append(set + 0x48/4, hitboxItem);
-        AddInformation(result, "CC_HITBOX", "Show or hide hitboxes and other collision boxes.");
-        begin = reinterpret_cast<uint32_t**>(set[0x4c/4]);
-        end = reinterpret_cast<uint32_t**>(set[0x50/4]);
-        std::rotate(begin + 2, end - 1, end);
-    }
     set[0x40/4] = set[0x44/4] = 0;
+    // サブメニューの説明も主メニューのInformationがTD_接頭辞で引く。
+    AddInformation(result, "TD_CC_FRAME_BAR", "Show or hide the frame bar. F1 also toggles this setting.");
+    AddInformation(result, "TD_CC_HITBOX", "Show or hide hitboxes and other collision boxes.");
     menuSet = set;
     error = "";
     // 起動済みのアーカイブ索引で確認。描画中や毎フレームの探索は行わない。
@@ -175,6 +171,81 @@ __attribute__((force_align_arg_pointer)) uint32_t* __fastcall Construct(uint32_t
     }
     DebugLog("[TrainingCharacter] MENU added count=%u", unsigned(end-begin));
     return result;
+}
+__attribute__((force_align_arg_pointer)) uint32_t* __stdcall ConstructDisplay(uint32_t* self) {
+    auto* result = originalDisplayConstructor(self);
+    if (!result || !result[4] || result[5] <= result[4]) return result;
+    auto* set = *reinterpret_cast<uint32_t**>(result[4]);
+    if (!set || set[0] != 0x5388F0) return result;
+    const auto allocate = reinterpret_cast<void* (__cdecl*)(size_t)>(0x4E0177);
+    auto* bar = static_cast<uint32_t*>(allocate(0x70));
+    auto* off = allocate(0x3C);
+    auto* on = allocate(0x3C);
+    if (bar && off && on) {
+        // 0x480810と同じSelectElement。0x42F8F0はECX=表示名、スタック=item/key/幅、ret 12。
+        reinterpret_cast<void* (__thiscall*)(const char*, void*, const char*, int)>(0x42F8F0)(
+            "FRAME BAR", bar, "CC_FRAME_BAR", 0xA0);
+        bar[0] = 0x536654;
+        const auto choice = reinterpret_cast<void* (__stdcall*)(void*, const char*, const char*, int)>(0x42F600);
+        const auto append = reinterpret_cast<void (__thiscall*)(void*, void*)>(reinterpret_cast<uint32_t*>(bar[0])[0x44/4]);
+        append(bar, choice(off, "OFF", "OFF", 0));
+        append(bar, choice(on, "ON", "ON", 1));
+        lastFrameBarValue = domain::ui::FrameBarDisplay::Visible(1);
+        bar[0x58/4] = unsigned(lastFrameBarValue);
+        cc_training_append(set + 0x48/4, bar);
+        auto** begin = reinterpret_cast<uint32_t**>(set[0x4C/4]);
+        auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+        std::rotate(begin + 2, end - 1, end);
+    } else {
+        const auto release = reinterpret_cast<void (__cdecl*)(void*)>(0x4E02F3);
+        release(bar); release(off); release(on);
+    }
+    auto* hitbox = static_cast<uint32_t*>(allocate(0x58));
+    if (hitbox) {
+        reinterpret_cast<void (__stdcall*)(void*, const char*, const char*, int)>(0x429140)(
+            hitbox, "HITBOX", "CC_HITBOX", 0);
+        hitbox[0] = 0x53604C; hitbox[1] = hitbox[3] = 1;
+        cc_training_append(set + 0x48/4, hitbox);
+        auto** begin = reinterpret_cast<uint32_t**>(set[0x4C/4]);
+        auto** end = reinterpret_cast<uint32_t**>(set[0x50/4]);
+        std::rotate(begin + (FindItem(set, "CC_FRAME_BAR") != UINT32_MAX ? 3 : 2), end - 1, end);
+    }
+    DebugLog("[TrainingDisplay] MENU frameBar=%u", unsigned(domain::ui::FrameBarDisplay::Visible(1)));
+    return result;
+}
+bool ObserveDisplay(uint32_t* menu, uint32_t* command) {
+    auto* parent = *reinterpret_cast<uint32_t**>(0x74D7FC);
+    // 0x47E8C6のTraining Display所有欄。Battle Settingsは別の+0xC8。
+    auto* child = parent ? reinterpret_cast<uint32_t*>(parent[0xD0/4]) : nullptr;
+    if (!child || child[0] != 0x5388C0 || !child[4] ||
+        *reinterpret_cast<uint32_t**>(child[4]) != menu) return false;
+    if (training_hitbox::Active()) { *command = 0; return true; }
+    using domain::ui::FrameBarDisplay;
+    const auto index = FindItem(menu, "CC_FRAME_BAR");
+    if (index != UINT32_MAX) {
+        auto* bar = reinterpret_cast<uint32_t**>(menu[0x4C/4])[index];
+        // 左右は標準項目がこのobserverの後で処理する。次の通常更新で取り込み、
+        // F1だけが変わった場合は逆向きに反映。解放済みメニューのポインタは保持しない。
+        if (bool(bar[0x58/4]) != lastFrameBarValue)
+            FrameBarDisplay::SetTraining(bar[0x58/4] != 0);
+        if (*command == 1 && menu[0x40/4] == index) {
+            FrameBarDisplay::ToggleTraining();
+            *command = 0;
+        }
+        if (*command == 1 && menu[0x40/4] == FindItem(menu, "DEFAULT")) {
+            FrameBarDisplay::SetTraining(false);
+            training_hitbox::ResetOptions();
+        }
+        const bool enabled = FrameBarDisplay::Visible(1);
+        bar[0x58/4] = unsigned(enabled);
+        if (lastFrameBarValue != enabled) DebugLog("[TrainingDisplay] FRAME_BAR enabled=%u", unsigned(enabled));
+        lastFrameBarValue = enabled;
+    }
+    if (*command == 1 && menu[0x40/4] == FindItem(menu, "CC_HITBOX")) {
+        training_hitbox::Open();
+        *command = 0;
+    }
+    return true;
 }
 __attribute__((force_align_arg_pointer)) void __stdcall RoundReset(void* battle) {
     if (pending && *CC_GAME_MODE_ADDR == CC_GAME_MODE_IN_GAME &&
@@ -263,7 +334,9 @@ bool ReadImage(const char* path, std::vector<uint8_t>& bytes) {
     return valid;
 }
 void ObserveMenu(uint32_t* menu, uint32_t* command) {
-    if (!installed || *CC_GAME_MODE_ADDR != CC_GAME_MODE_IN_GAME || menu != menuSet ||
+    if (!installed || *CC_GAME_MODE_ADDR != CC_GAME_MODE_IN_GAME) return;
+    if (ObserveDisplay(menu, command)) return;
+    if (menu != menuSet ||
         mainMenu != *reinterpret_cast<uint32_t**>(0x74D7FC)) return;
     if (pending) {
         if (restartDispatched) { *command = 0; return; }
@@ -274,11 +347,6 @@ void ObserveMenu(uint32_t* menu, uint32_t* command) {
         return;
     }
     if (selection.open || training_palette::Active() || training_hitbox::Active()) { *command = 0; return; }
-    if (*command == 1 && menu[0x40/4] == FindItem(menu,"CC_HITBOX")) {
-        training_hitbox::Open();
-        *command = 0;
-        return;
-    }
     if (*command == 1 && menu[0x40/4] == FindItem(menu,"CC_PALETTE")) {
         training_palette::Open(*reinterpret_cast<uint8_t*>(0x55DF0F));
         *command = 0;
@@ -302,6 +370,9 @@ bool RealGameMemory::ConfigureTrainingMenu() {
     if (installed) return true;
     if (!game_build::RuntimeValidated() || !ConfigureMenuObserver() || !training_palette::Install() || !training_hitbox::Install()) return false;
     const unsigned char constructor[]{0x6a,0xff,0x68,0x67,0x75,0x51,0x00};
+    const unsigned char displayConstructor[]{0x6a,0xff,0x68,0x01,0x72,0x51,0x00};
+    const unsigned char selectConstructor[]{0x6a,0xff,0x68,0xf8,0x63,0x51,0x00};
+    const unsigned char choiceConstructor[]{0x6a,0xff,0x68,0xf3,0x53,0x51,0x00};
     const unsigned char reset[]{0x83,0xec,0x10,0xa1,0x58,0xb4,0x54,0x00};
     const unsigned char presentation[]{0x81,0xec,0x14,0x01,0x00,0x00,0xa1,0x58,0xb4,0x54,0x00};
     const unsigned char appendInformation[]{0x83,0xec,0x0c,0x53,0x8b,0x5e,0x04};
@@ -309,8 +380,12 @@ bool RealGameMemory::ConfigureTrainingMenu() {
     if (std::memcmp(reinterpret_cast<void*>(0x4DAA30), appendInformation, sizeof(appendInformation)) ||
         std::memcmp(reinterpret_cast<void*>(0x407C10), assignString, sizeof(assignString))) return false;
     if (std::memcmp(reinterpret_cast<void*>(0x426340), presentation, sizeof(presentation))) return false;
+    if (std::memcmp(reinterpret_cast<void*>(0x42F8F0), selectConstructor, sizeof(selectConstructor)) ||
+        std::memcmp(reinterpret_cast<void*>(0x42F600), choiceConstructor, sizeof(choiceConstructor))) return false;
     if (!Hook(0x47D3A0, constructor, sizeof(constructor), reinterpret_cast<void*>(Construct),
               reinterpret_cast<void**>(&originalConstructor)) ||
+        !Hook(0x480810, displayConstructor, sizeof(displayConstructor), reinterpret_cast<void*>(ConstructDisplay),
+              reinterpret_cast<void**>(&originalDisplayConstructor)) ||
         !Hook(0x423380, reset, sizeof(reset), reinterpret_cast<void*>(RoundReset),
               reinterpret_cast<void**>(&originalReset))) return false;
     installed = true;
