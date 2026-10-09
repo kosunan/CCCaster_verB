@@ -13,6 +13,7 @@ namespace cccaster::game_interface {
 class RealGameMemory final : public IGameMemory {
   public:
     bool IsAvailable() const override;
+    void PrepareStartupResources() override;
     uint32_t GameMode() const override;
     uint8_t IntroState() const override;
     uint32_t WorldTimer() const override;

@@ -63,7 +63,7 @@ def main():
             if gui.call()['state']['language'] != language:
                 gui.click('language')
                 gui.wait(lambda s: s['state']['language'] == language)
-            for page in ('matching', 'spectate', 'offline', 'controller', 'settings', 'guide'):
+            for page in ('matching', 'spectate', 'controller', 'settings', 'guide'):
                 if page == 'settings':
                     gui.settings()
                 else:
@@ -76,7 +76,7 @@ def main():
             direct = gui.click('direct-tab')
             assert not direct['overflow']
             save(f'{language}_direct.json', direct)
-            result['checks'].append(f'{language}: 6ページと直接接続の表示・横はみ出しなし')
+            result['checks'].append(f'{language}: 5ページと直接接続の表示・横はみ出しなし')
         gui.settings()
         gui.type('player-name', 'RELEASE_TEST')
         gui.click('settings-back')

@@ -1,3 +1,4 @@
+#include "core_dll/hook/HookBatch.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -231,10 +232,10 @@ bool Install() {
     if (!game_build::RuntimeValidated() || std::memcmp(Ptr<void>(0x4020E0),signature,sizeof(signature)) ||
         std::memcmp(Ptr<void>(0x4063D0),cache,sizeof(cache)) || std::memcmp(Ptr<void>(0x4489E0),loader,sizeof(loader))) return false;
     if(MH_CreateHook(Ptr<void>(0x4489E0),reinterpret_cast<void*>(LoadCharacters),reinterpret_cast<void**>(&originalLoader))!=MH_OK ||
-       MH_EnableHook(Ptr<void>(0x4489E0))!=MH_OK)return false;
+       cccaster::hook_batch::Enable(Ptr<void>(0x4489E0))!=MH_OK)return false;
     if (MH_CreateHook(Ptr<void>(0x4020E0),reinterpret_cast<void*>(cc_palette_upload_hook),&cc_palette_original) != MH_OK)
         return false;
-    installed = MH_EnableHook(Ptr<void>(0x4020E0)) == MH_OK && selection::Install();
+    installed = cccaster::hook_batch::Enable(Ptr<void>(0x4020E0)) == MH_OK && selection::Install();
     return installed;
 }
 unsigned Session() { return session; }

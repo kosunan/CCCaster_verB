@@ -19,13 +19,22 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
     const float scale = layout.scale;
     const float ox = layout.X(0);
     auto *draw = ImGui::GetForegroundDrawList();
-    auto *font = ImGui::GetFont();
+    auto *font = cccaster::hud::Font(5, scale);
     const float top = layout.Y(112);
     constexpr ImU32 white = IM_COL32(232, 239, 247, 255);
     constexpr ImU32 colors[] = {
-        IM_COL32(37, 49, 63, 104), IM_COL32(105, 220, 125, 164),
-        IM_COL32(247, 102, 119, 164), IM_COL32(94, 184, 245, 164), IM_COL32(192, 144, 242, 164)
+        IM_COL32(37, 49, 63, 104), IM_COL32(105, 220, 125, 164), // READY / BUSY
+        IM_COL32(170, 180, 194, 184), IM_COL32(241, 224, 132, 164), // STUN / JUMP
+        IM_COL32(145, 194, 255, 164), IM_COL32(225, 184, 0, 184), // SHIELD / CLASH
+        IM_COL32(255, 255, 255, 220), IM_COL32(36, 125, 67, 200) // INVULN / START
     };
+    constexpr ImU32 attackColor = IM_COL32(247, 102, 119, 184);
+    constexpr ImU32 stopColor = IM_COL32(77, 94, 172, 210);
+    constexpr ImU32 airColor = IM_COL32(112, 219, 235, 255);
+    constexpr ImU32 timerColor = IM_COL32(112, 219, 235, 255);
+    constexpr ImU32 strikeColor = IM_COL32(255, 255, 255, 220);
+    constexpr ImU32 darkNumber = IM_COL32(19, 29, 40, 255);
+    constexpr ImU32 throwColor = IM_COL32(255, 203, 126, 255);
 
     // 標準の体力・ガード・キャラ円を避け、その下へ45Fをまとめる。
     // 毎Fの目盛りは残し、定規の数値は1と5F刻みに絞る。
@@ -44,7 +53,8 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
             extent = font->CalcTextSizeA(fontSize, 100000.0f, 0.0f, text);
         }
         const ImVec2 at(x + (width - extent.x) * 0.5f, y + (height - extent.y) * 0.5f);
-        draw->AddText(font, fontSize, ImVec2(at.x + scale, at.y + scale), IM_COL32(0, 0, 0, 190), text);
+        if (color != darkNumber)
+            draw->AddText(font, fontSize, ImVec2(at.x + scale, at.y + scale), IM_COL32(0, 0, 0, 190), text);
         draw->AddText(font, fontSize, at, color, text);
     };
     draw->AddRectFilled(ImVec2(ox, top), ImVec2(layout.X(640), top + 45 * scale), IM_COL32(8, 13, 30, 165));
@@ -53,13 +63,17 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
     cccaster::hud::Canvas c;
     // ADVは先に描かれるため、左の専用欄へ凡例の背景を重ねない。
     c.Fill({112,157,528,21},IM_COL32(8,13,30,185));
-    c.Text(8,113,"45F",8,cccaster::hud::Muted);
-    const char* legend[]{"READY", "BUSY", "ACTIVE", "GUARD", "HIT"};
-    for (unsigned i=0;i<5;++i) {
-        const float x=140+i*93.f;
-        c.Fill({x,164,5,5},colors[i] | IM_COL32(0,0,0,255));
-        c.Text(x+10,161,legend[i],9,cccaster::hud::Muted);
+    c.Text(5,113,"F1",8,white);
+    c.Text(22,113,"45F",7,cccaster::hud::Muted);
+    const FrameBarState legend[]{FrameBarState::Busy, FrameBarState::Stun, FrameBarState::Jump,
+        FrameBarState::Shield, FrameBarState::Clash, FrameBarState::Invulnerable, FrameBarState::StartWait};
+    for (unsigned i=0;i<9;++i) {
+        const float x=118+i*58.f;
+        const ImU32 color = i < 7 ? colors[unsigned(legend[i])] : i == 7 ? attackColor : stopColor;
+        c.Fill({x,160,4,4},color | IM_COL32_A_MASK);
+        c.Text(x+7,157,i < 7 ? FrameBarStateName(legend[i]) : i == 7 ? "ATK" : "STOP",8,white);
     }
+    c.Text(118,168,"RED TOP: HITBOX   CYAN BASE: AIR   BASE: STATE   HOVER: BOTH COUNTERS",8,cccaster::hud::Muted);
     for (size_t i = 0; i < FrameBarHistory::Capacity; ++i) {
         const float x = startX + i * cellWidth;
         const bool major = (i + 1) % 5 == 0;
@@ -70,6 +84,9 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
                       ImVec2(x + cellWidth - scale, top + 11 * scale),
                       major ? IM_COL32(121, 149, 179, 255) : IM_COL32(55, 72, 91, 255), scale);
     }
+    int hoveredSide = -1;
+    size_t hoveredFrame = 0;
+    const auto mouse = ImGui::GetIO().MousePos;
     for (unsigned side = 0; side < 2; ++side) {
         const float y = top + (12 + side * 17.0f) * scale;
         const ImU32 sideColor = side ? cccaster::hud::Blue : cccaster::hud::Red;
@@ -81,25 +98,95 @@ void LearningOverlay::DrawFrameBar(int appMode, const cccaster::FrameBarHistory 
             const bool recorded = i < history.Size();
             const auto cell = recorded ? history.At(i).players[side] : FrameBarCell{};
             const float endX = x + cellWidth - scale;
-            const auto fill = recorded ? colors[static_cast<unsigned>(cell.state)] : IM_COL32(20, 30, 42, 72);
+            const auto stateColor = colors[static_cast<unsigned>(cell.state)];
+            const auto signalColor = cell.signal == FrameBarSignal::Hitstop ? stopColor : attackColor;
+            const bool whiteCell = cell.strikeInvulnerable || cell.state == FrameBarState::Invulnerable;
+            const auto fill = recorded ? (whiteCell ? strikeColor :
+                cell.signal != FrameBarSignal::None ? signalColor : stateColor) : IM_COL32(20, 30, 42, 72);
             draw->AddRectFilled(ImVec2(x, y), ImVec2(endX, y + 14 * scale), fill, scale);
-            // 上面の控えめな光沢。データ色の面積と数字のコントラストを優先する。
-            if (recorded && cell.state != FrameBarState::Ready)
-                draw->AddLine(ImVec2(x + scale, y + scale), ImVec2(endX - scale, y + scale), IM_COL32(255, 255, 255, 48), scale);
-            if (recorded && cell.busy)
-                draw->AddRectFilled(ImVec2(x, y + 12 * scale), ImVec2(endX, y + 14 * scale), IM_COL32(105, 220, 125, 230));
+            // 参照の2つの色を1セルへ重ねる。白い面でも攻撃/停止と主状態を残す。
+            if (recorded && (whiteCell || cell.signal != FrameBarSignal::None))
+                draw->AddRectFilled(ImVec2(x, y + 11 * scale), ImVec2(endX, y + 14 * scale),
+                    stateColor | IM_COL32_A_MASK);
+            if (recorded && whiteCell && cell.signal != FrameBarSignal::None)
+                draw->AddRectFilled(ImVec2(x, y), ImVec2(endX, y + 2 * scale), signalColor | IM_COL32_A_MASK);
+            // ATKは参照と同じ攻撃属性。実矩形があるFだけ鮮紅色の上線を付ける。
+            if (recorded && cell.activeBoxes)
+                draw->AddRectFilled(ImVec2(x, y + 2 * scale), ImVec2(endX, y + 3 * scale), IM_COL32(255, 38, 58, 255));
+            if (recorded && cell.detail.airborne)
+                draw->AddRectFilled(ImVec2(x, y + 13 * scale), ImVec2(endX, y + 14 * scale), airColor);
             if (recorded && cell.stopped)
                 draw->AddRectFilled(ImVec2(x, y), ImVec2(endX, y + scale), white);
+            if (recorded && cell.timerSuppressed)
+                draw->AddRectFilled(ImVec2(x, y + scale), ImVec2(endX, y + 2 * scale), timerColor);
+            if (recorded && cell.detail.throwProtected)
+                draw->AddLine(ImVec2(endX - scale, y + 2 * scale), ImVec2(endX - scale, y + 11 * scale), throwColor, scale);
+            if (recorded && cell.slow)
+                draw->AddCircleFilled(ImVec2(x + cellWidth * 0.5f, y + 2 * scale), scale, white);
             if (recorded)
-                number(x, y, cellWidth - scale, 12 * scale, cell.runFrame,
-                       cell.state == FrameBarState::Ready ? IM_COL32(168, 188, 207, 255) : white, 11);
-            if (recorded && i && cell.state != history.At(i - 1).players[side].state)
+                number(x, y, cellWidth - scale, 12 * scale,
+                       !whiteCell && cell.signal != FrameBarSignal::None ? cell.signalFrame : cell.runFrame,
+                       whiteCell ? darkNumber :
+                       cell.state == FrameBarState::Ready && cell.signal == FrameBarSignal::None
+                           ? IM_COL32(168, 188, 207, 255) : white, 11);
+            if (recorded && i && cell.boundary)
                 draw->AddLine(ImVec2(x - scale, y), ImVec2(x - scale, y + 14 * scale), IM_COL32(6, 11, 18, 160), 2 * scale);
+            if (recorded && mouse.x >= x && mouse.x < x + cellWidth && mouse.y >= y && mouse.y < y + 14 * scale) {
+                hoveredSide = static_cast<int>(side);
+                hoveredFrame = i;
+                draw->AddRect(ImVec2(x, y), ImVec2(endX, y + 14 * scale), white, scale);
+            }
         }
         if (history.Size()) {
             const float edge = startX + history.Size() * cellWidth - scale;
             draw->AddLine(ImVec2(edge, y), ImVec2(edge, y + 14 * scale), IM_COL32(223, 236, 247, 210), scale);
         }
+    }
+    if (hoveredSide >= 0) {
+        const auto &column = history.At(hoveredFrame);
+        const auto &cell = column.players[static_cast<unsigned>(hoveredSide)];
+        const auto &detail = cell.detail;
+        char lines[8][180]{};
+        std::snprintf(lines[0], sizeof(lines[0]), "P%d  %s %uF  |  %s %uF  |  sample %u",
+            hoveredSide + 1, FrameBarStateName(cell.state), cell.runFrame,
+            FrameBarSignalName(cell.signal), cell.signalFrame, column.trueFrame);
+        std::snprintf(lines[1], sizeof(lines[1]), "Action %u  |  move clock %u  |  busy %d  |  stun %d (raw)",
+            cell.pattern, detail.patternFrame, cell.busyCounter, detail.stunRemaining);
+        char boxes[12] = "UNKNOWN";
+        if (detail.attackBoxesKnown) std::snprintf(boxes, sizeof(boxes), "%u", unsigned(detail.attackBoxCount));
+        std::snprintf(lines[2], sizeof(lines[2]), "Attack boxes %s  |  contact budget %u  |  stop %u / received %u",
+            boxes, unsigned(detail.remainingHits), unsigned(detail.hitstop), unsigned(detail.receivedHitstop));
+        std::snprintf(lines[3], sizeof(lines[3]), "Air marker %s / stance %s  |  recovery %d / %d (raw)  |  captured %s",
+            detail.airborne ? "ON" : "OFF", !detail.stanceKnown ? "?" : detail.stance == 1 ? "AIR" : "GROUND/OTHER",
+            int(detail.untechElapsed), int(detail.untechTotal), detail.thrown ? "YES" : "NO");
+        std::snprintf(lines[4], sizeof(lines[4]), "Protection flags: strike %s / throw %s  |  timer hold %s / slow tick %s",
+            detail.strikeProtected ? "ON" : "OFF", detail.throwProtected ? "ON" : "OFF",
+            cell.timerSuppressed ? "ON" : "OFF", cell.slow ? "YES" : "NO");
+        char hurt[12] = "UNKNOWN";
+        if (detail.hurtBoxesKnown) std::snprintf(hurt, sizeof(hurt), "%u", unsigned(detail.hurtBoxCount));
+        std::snprintf(lines[5], sizeof(lines[5]), "HURT boxes %s  |  white: %s  |  guard eligible %s  |  queued action %d",
+            hurt, cell.strikeInvulnerable ? "YES" : "NO", detail.guardEligible ? "YES" : "NO", int(detail.reservedPattern));
+        std::snprintf(lines[6], sizeof(lines[6]), "%s", cell.state == FrameBarState::StartWait
+            ? (detail.reservedPattern >= 0
+                ? "START: recovery edge; next motion queued. Guard eligibility is separate."
+                : "START: recovery edge; input ready, no motion queued yet. Not an extra input lock.")
+            : "ATK = attack data; bright red top = box present. STOP wins over ATK, state remains at base.");
+        std::snprintf(lines[7], sizeof(lines[7]), "Defense slots %s%u  |  guard stun %s  |  one cell includes stop; counts are not frames remaining",
+            detail.animationKnown ? "" : "UNKNOWN / ", unsigned(detail.defenseSlotCount),
+            cell.pattern >= 17 && cell.pattern <= 19 ? "YES (pattern)" : "NO (pattern)");
+        const float textSize = 10 * scale;
+        float width = 0;
+        for (const auto &line : lines)
+            width = std::max(width, font->CalcTextSizeA(textSize, 100000.0f, 0, line).x);
+        width = std::min(width + 16 * scale, 640 * scale);
+        const float x = std::clamp(mouse.x - width * 0.5f, ox, layout.X(640) - width);
+        const float y = layout.Y(181);
+        draw->AddRectFilled(ImVec2(x, y), ImVec2(x + width, y + 104 * scale), IM_COL32(8, 13, 30, 242), 3 * scale);
+        draw->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + 104 * scale), true);
+        for (unsigned row = 0; row < 8; ++row)
+            draw->AddText(font, textSize, ImVec2(x + 8 * scale, y + (5 + 12 * row) * scale),
+                row == 0 ? white : IM_COL32(184, 203, 218, 255), lines[row]);
+        draw->PopClipRect();
     }
 }
 

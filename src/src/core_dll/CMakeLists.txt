@@ -36,6 +36,7 @@ add_library(cccaster_hook SHARED
     mbaa_mem/ReplaySave.cpp
     mbaa_mem/StartupAssets.cpp
     mbaa_mem/StartupFileRead.cpp
+    mbaa_mem/StartupSounds.cpp
     mbaa_mem/StartupDirectEntry.cpp
 
     # === hook/ — 外部 API フック ===

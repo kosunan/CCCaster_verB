@@ -1,3 +1,6 @@
+#include "core_dll/mbaa_mem/StartupSounds.hpp"
+#include "core_dll/mbaa_mem/StartupNativeInput.hpp"
+#include "core_dll/hook/DirectInputHook.hpp"
 #include "shared_contracts/ConfigPath.hpp"
 #include "ProductVersion.hpp"
 #include "BuildIdentity.hpp"
@@ -340,12 +343,17 @@ static DWORD InitializeCore(boot::Status &report) {
     // 観戦もキャラ選択まではVersusと同じ起動経路。アプリの観戦mode=2をそのまま
     // 渡すと既存最適化の対象外になり、システム情報収集・素材変換を毎回待ってしまう。
     // 観戦・標準REPも同じ起動資産を使う。一覧到達時に元の読込み経路へ復元する。
-    const uint8_t startupMode = ctx.appMode == 2 || ctx.appMode == 5 ||
+    const uint8_t startupMode = ctx.appMode == 2 || ctx.appMode == 3 || ctx.appMode == 5 ||
         (ctx.appMode == 4 && cccaster::game_memory::startup_direct_entry::ReplayEnabled())
         ? uint8_t(0) : ctx.appMode;
     cccaster::game_memory::startup_system_info::Initialize(startupMode);
     cccaster::game_memory::startup_assets::Initialize(startupMode);
     cccaster::game_memory::startup_file_read::Initialize(startupMode);
+    cccaster::game_memory::startup_direct_entry::Initialize(ctx.appMode, ctx.isHost);
+    cccaster::game_memory::startup_sounds::Initialize(startupMode);
+    cccaster::game_memory::startup_native_input::Initialize();
+    if (!std::getenv("CCCASTER_STARTUP_MINIMAL_BASELINE") && !cccaster::diagnostics::startup::Baseline())
+        cccaster::game_interface::DirectInputHook::BeginInitialize();
     cccaster::game_memory::startup_profile::Initialize();
     if (!cccaster::public_api::IpcManager::UpdateOrReadState(
             [](cccaster::public_api::SharedState &s) { s.dllInitialized = true; }))

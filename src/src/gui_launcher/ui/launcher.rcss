@@ -21,14 +21,14 @@ button:disabled, input:disabled, select:disabled { opacity:0.45; cursor:unavaila
 button.primary { background-color:#991529; border-color:#d7394c; font-weight:bold; padding:12dp 22dp; margin-top:16dp; }
 button.primary:hover { background-color:#bd2035; }
 button.quiet { background-color:#0c1222; }
-.masthead { height:94dp; padding:18dp 26dp; display:flex; align-items:center; justify-content:space-between; background-color:#03050b; border-bottom:1dp #6550c6; }
+.masthead { height:94dp; padding:14dp 22dp; display:flex; align-items:center; justify-content:space-between; gap:20dp; background-color:#03050b; border-bottom:1dp #6550c6; }
 .masthead { position:relative; overflow:hidden; }
-.brand { display:flex; align-items:center; position:relative; }
+.brand { display:flex; align-items:center; position:relative; flex-shrink:0; }
 .brand-mark { display:none; }
 .brand h1 { font-size:29dp; line-height:1.3; margin:0; font-weight:bold; letter-spacing:2dp; transform:skewX(-10deg); }
 .brand h1 span { color:#afbfef; font-size:17dp; margin-left:4dp; }
 .brand p { font-size:10dp; color:#8d9bbf; margin:6dp 0 0; }
-.version { font-size:11dp; color:#acb9de; background-color:#0a1020; padding:5dp 10dp; border-radius:0; }
+.version { flex-shrink:0; font-size:11dp; color:#acb9de; background-color:#0a1020; padding:5dp 10dp; border-radius:0; }
 .shell { position:absolute; top:94dp; bottom:0; left:0; right:0; display:flex; }
 nav { width:202dp; flex-shrink:0; height:100%; padding:22dp 10dp 16dp; background-color:#050812; border-right:1dp #293555; overflow-y:auto; }
 #nav-guide { margin-top:20dp; }
@@ -51,49 +51,51 @@ p { line-height:1.8; margin:10dp 0; }
 .tabs button { border:0; border-bottom:2dp transparent; border-radius:0; background-color:#04060d; color:#9facce; padding:10dp 12dp; }
 .tabs button.active { border-bottom-color:#e9384c; color:#ffffff; }
 .card { background-color:#090f1eee; border:1dp #293555; border-radius:0; padding:18dp 20dp; margin-bottom:16dp; }
-/* オフラインは図形で区別できる3つの起動ボタンだけを表示する。 */
-.offline-actions { display:flex; flex-direction:column; gap:18dp; width:100%; max-width:760dp; padding:22dp 0; }
-body.offline-page #log-details, body.offline-page.session-idle #session-card { display:none; }
-body.offline-page.session-failed #log-details { display:block; }
-.offline-launch { display:flex; position:relative; width:100%; min-width:0; height:116dp; padding:18dp 28dp; align-items:center; gap:30dp; border:0; border-bottom:1dp #28355b; border-left:3dp transparent; border-radius:0; background-color:#080e1cb8; }
-.offline-launch:hover { background-color:#110c19; }
-.offline-launch:focus { border-left-color:#ffffff; background-color:#0d0c18; }
-.menu-selection { display:block; position:absolute; left:0; right:0; top:25dp; height:39dp; background-color:transparent; }
-.offline-launch:hover .menu-selection { background-color:#5c1123; }
-.offline-launch:focus .menu-selection { background-color:#a8172b; }
-.offline-launch:active .menu-selection { background-color:#cd243e; }
+/* 起動ボタンはページの外に置き、全画面共通のヘッダーへ横並びで常設する。 */
+.header-actions { display:flex; flex:1; min-width:0; max-width:660dp; gap:10dp; }
+.mode-launch { display:flex; position:relative; flex:1; min-width:0; height:64dp; padding:10dp 12dp; align-items:center; gap:10dp; border:1dp #28355b; border-bottom:2dp #6550c6; border-radius:0; background-color:#080e1c; }
+.mode-launch:hover { background-color:#110c19; }
+.mode-launch:focus { border-color:#ffffff; background-color:#0d0c18; }
+.menu-selection { display:block; position:absolute; left:0; right:0; top:10dp; height:24dp; background-color:transparent; }
+.mode-launch:hover .menu-selection { background-color:#5c1123; }
+.mode-launch:focus .menu-selection { background-color:#a8172b; }
+.mode-launch:active .menu-selection { background-color:#cd243e; }
 .mode-copy { display:block; position:relative; flex:1; min-width:0; text-align:left; }
-.mode-title { display:block; font-size:29dp; line-height:1.25; font-weight:bold; letter-spacing:4dp; color:#ffffff; transform:skewX(-10deg); }
-.mode-label { display:block; font-size:12dp; color:#ccd4e8; margin-top:6dp; letter-spacing:1dp; }
-.mode-icon { display:block; position:relative; width:72dp; height:72dp; flex-shrink:0; }
+.mode-title { display:block; font-size:18dp; line-height:1.25; font-weight:bold; letter-spacing:1dp; color:#ffffff; transform:skewX(-10deg); }
+.mode-label { display:block; font-size:10dp; color:#ccd4e8; margin-top:4dp; }
+.mode-icon { display:block; position:relative; width:36dp; height:36dp; flex-shrink:0; }
 .mode-icon span { display:block; position:absolute; }
-.target-icon { width:64dp; height:64dp; margin:4dp; border:4dp #dce5ff; border-radius:32dp; }
-.target-ring { left:10dp; top:10dp; width:36dp; height:36dp; border:3dp #dce5ff; border-radius:18dp; }
-.target-center { left:9dp; top:9dp; width:12dp; height:12dp; border-radius:6dp; background-color:#dce5ff; }
-.pad { width:48dp; height:32dp; border:3dp #dce5ff; border-radius:10dp; background-color:#10182e; }
-.pad-one { left:0; top:7dp; }
-.pad-two { right:0; bottom:7dp; }
-.pad-cross-h { left:5dp; top:10dp; width:12dp; height:3dp; background-color:#dce5ff; }
-.pad-cross-v { left:10dp; top:5dp; width:3dp; height:13dp; background-color:#dce5ff; }
-.pad-dot { width:4dp; height:4dp; border-radius:2dp; background-color:#dce5ff; }
-.dot-one { right:5dp; top:5dp; }
-.dot-two { right:11dp; top:13dp; }
-.replay-screen { left:1dp; top:10dp; width:70dp; height:52dp; border:3dp #dce5ff; border-radius:5dp; }
-.replay-play { left:25dp; top:8dp; width:0; height:0; border-top:9dp transparent; border-bottom:9dp transparent; border-left:14dp #dce5ff; }
-.replay-progress { left:8dp; right:8dp; bottom:7dp; height:3dp; background-color:#dce5ff; }
-.start-symbol { display:block; position:relative; flex-shrink:0; width:0; height:0; border-top:7dp transparent; border-bottom:7dp transparent; border-left:11dp #ffffff; }
-@media (max-width:820dp) {
-    .offline-actions { gap:12dp; padding:8dp 0; }
-    .offline-launch { height:104dp; padding:12dp 18dp; gap:20dp; }
-    .mode-title { font-size:23dp; letter-spacing:2dp; }
-    .menu-selection { top:24dp; height:32dp; }
+.target-icon { border:2dp #dce5ff; border-radius:18dp; }
+.target-ring { left:6dp; top:6dp; width:20dp; height:20dp; border:2dp #dce5ff; border-radius:10dp; }
+.target-center { left:5dp; top:5dp; width:6dp; height:6dp; border-radius:3dp; background-color:#dce5ff; }
+.pad { width:25dp; height:18dp; border:2dp #dce5ff; border-radius:5dp; background-color:#10182e; }
+.pad-one { left:0; top:2dp; }
+.pad-two { right:0; bottom:2dp; }
+.pad-cross-h { left:2dp; top:6dp; width:7dp; height:2dp; background-color:#dce5ff; }
+.pad-cross-v { left:5dp; top:3dp; width:2dp; height:8dp; background-color:#dce5ff; }
+.pad-dot { width:2dp; height:2dp; border-radius:1dp; background-color:#dce5ff; }
+.dot-one { right:2dp; top:3dp; }
+.dot-two { right:5dp; top:7dp; }
+.replay-screen { left:0; top:4dp; width:36dp; height:28dp; border:2dp #dce5ff; border-radius:3dp; }
+.replay-play { left:12dp; top:4dp; width:0; height:0; border-top:5dp transparent; border-bottom:5dp transparent; border-left:8dp #dce5ff; }
+.replay-progress { left:4dp; right:4dp; bottom:3dp; height:2dp; background-color:#dce5ff; }
+@media (max-width:960dp) {
+    .masthead { padding:14dp; gap:14dp; }
+    .brand h1 { font-size:22dp; letter-spacing:1dp; }
+    .brand h1 span { font-size:13dp; }
+    .brand p, .version { display:none; }
+    .header-actions { gap:8dp; }
+    .mode-launch { padding:10dp 8dp; gap:8dp; }
+    .mode-title { font-size:15dp; }
 }
 @media (max-width:620dp) {
-    .offline-launch { height:98dp; padding:12dp 10dp; gap:12dp; }
-    .mode-title { font-size:17dp; letter-spacing:1dp; }
-    .mode-label { font-size:10dp; letter-spacing:0; }
-    .menu-selection { top:23dp; height:27dp; }
-    .start-symbol { display:none; }
+    .masthead { height:126dp; flex-direction:column; align-items:stretch; padding:10dp; gap:10dp; }
+    .brand h1 { font-size:20dp; }
+    .header-actions { width:100%; gap:6dp; }
+    .mode-launch { padding:10dp 6dp; gap:6dp; }
+    .mode-title { font-size:13dp; letter-spacing:0; }
+    .mode-label { font-size:9dp; }
+    .shell { top:126dp; }
 }
 .registration { border-top:2dp #6550c6; }
 .card-title, .list-heading { display:flex; align-items:center; justify-content:space-between; }

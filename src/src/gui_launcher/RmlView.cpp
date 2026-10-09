@@ -90,11 +90,10 @@ void RmlView::Translate(const std::string& language) {
     Text("language",language_=="ja"?"English":"日本語"); peopleSignature_.clear();requestSignature_.clear();
 }
 void RmlView::Navigate(const std::string& page) {
-    if(page!="matching"&&page!="spectate"&&page!="offline"&&page!="settings"&&page!="guide"&&page!="controller")return;
+    if(page!="matching"&&page!="spectate"&&page!="settings"&&page!="guide"&&page!="controller")return;
     if(page_=="controller"&&page!="controller")send_({{"type","controller"},{"action","close"}});
     page_=page;
-    document_->SetClass("offline-page",page_=="offline");
-    for(const char* name:{"matching","spectate","offline","settings","guide","controller"}) {
+    for(const char* name:{"matching","spectate","settings","guide","controller"}) {
         Show((std::string("page-")+name).c_str(),page_==name);
         if(auto* e=Find(std::string("nav-")+name))e->SetClass("active",page_==name);
     }

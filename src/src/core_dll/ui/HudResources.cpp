@@ -114,6 +114,7 @@ void Release() {
 }
 Layout CurrentLayout() { return layout; }
 Rect CurrentViewport() { return nativeViewport; }
+Rect BackbufferToDisplay(Rect bounds) { return DisplayViewport(bounds,bufferSize,ImGui::GetIO().DisplaySize); }
 ImFont* Font(unsigned role, float scale) {
     const unsigned s = FontScale(scale);
     return fonts[s][(std::min)(role, 5u)] ? fonts[s][(std::min)(role, 5u)] : ImGui::GetFont();

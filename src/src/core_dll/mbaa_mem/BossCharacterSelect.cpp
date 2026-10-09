@@ -1,3 +1,4 @@
+#include "core_dll/hook/HookBatch.hpp"
 #include "core_dll/mbaa_mem/BossCharacterSelect.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -88,7 +89,7 @@ __attribute__((force_align_arg_pointer)) int __cdecl LoadFile(const char* path,v
 template<class T> bool Hook(uintptr_t address,const unsigned char* signature,size_t size,void* hook,T* original) {
     if(std::memcmp(reinterpret_cast<void*>(address),signature,size))return false;
     return MH_CreateHook(reinterpret_cast<void*>(address),hook,reinterpret_cast<void**>(original))==MH_OK &&
-           MH_EnableHook(reinterpret_cast<void*>(address))==MH_OK;
+           cccaster::hook_batch::Enable(reinterpret_cast<void*>(address))==MH_OK;
 }
 bool Install() {
     if(installed)return true;

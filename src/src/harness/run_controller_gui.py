@@ -155,7 +155,7 @@ def main():
         write('visual-ready.json',gui.call())
         print(f'VISUAL READY: {folder}',flush=True)
         wait_file('continue')
-        gui.click('nav-offline');gui.click('training')
+        gui.click('training')
         gui.wait(lambda d:d['state']['session']['game'],seconds=45)
         gui.click('nav-controller')
         gui.wait(lambda d:d['state']['controller']['locked'])

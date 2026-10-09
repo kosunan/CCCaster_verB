@@ -1,3 +1,4 @@
+#include "core_dll/hook/HookBatch.hpp"
 #include "core_dll/mbaa_mem/TrainingCharacterMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/TrainingHitboxMenu.hpp"
@@ -222,7 +223,7 @@ __attribute__((force_align_arg_pointer)) void __stdcall RoundReset(void* battle)
 bool Hook(uintptr_t address, const unsigned char* bytes, size_t length, void* replacement, void** original) {
     if (std::memcmp(reinterpret_cast<void*>(address), bytes, length)) return false;
     return MH_CreateHook(reinterpret_cast<void*>(address), replacement, original) == MH_OK &&
-           MH_EnableHook(reinterpret_cast<void*>(address)) == MH_OK;
+           cccaster::hook_batch::Enable(reinterpret_cast<void*>(address)) == MH_OK;
 }
 }
 const Selection& Current() { return selection; }

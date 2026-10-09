@@ -1,3 +1,4 @@
+#include "core_dll/hook/HookBatch.hpp"
 #include "core_dll/mbaa_mem/ExtraColorSelection.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
@@ -213,8 +214,8 @@ bool Install() {
     if(MH_CreateHook(reinterpret_cast<void*>(0x48AB00),reinterpret_cast<void*>(cc_color_input_hook),&cc_color_input_original)!=MH_OK ||
        MH_CreateHook(reinterpret_cast<void*>(0x48ADD0),reinterpret_cast<void*>(Draw),reinterpret_cast<void**>(&originalDraw))!=MH_OK ||
        MH_CreateHook(reinterpret_cast<void*>(0x48A4E0),reinterpret_cast<void*>(Update),reinterpret_cast<void**>(&originalUpdate))!=MH_OK)return false;
-    const bool ok=MH_EnableHook(reinterpret_cast<void*>(0x48AB00))==MH_OK && MH_EnableHook(reinterpret_cast<void*>(0x48ADD0))==MH_OK &&
-        MH_EnableHook(reinterpret_cast<void*>(0x48A4E0))==MH_OK;
+    const bool ok=cccaster::hook_batch::Enable(reinterpret_cast<void*>(0x48AB00))==MH_OK && cccaster::hook_batch::Enable(reinterpret_cast<void*>(0x48ADD0))==MH_OK &&
+        cccaster::hook_batch::Enable(reinterpret_cast<void*>(0x48A4E0))==MH_OK;
     domain::session::DebugLog("[ExtraColor] NATIVE_PAGES installed=%u pages=7 rows=6",unsigned(ok));return ok;
 }
 }

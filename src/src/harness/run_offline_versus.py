@@ -215,10 +215,9 @@ def main():
         procs.append(proc)
         gui = Gui(ui)
         gui.wait(lambda d: (d.get('state') or {}).get('protocol') == 1)
-        gui.click('nav-offline')
         for scale in (1., 1.5):
             data = gui.call('dpi', value=scale)
-            assert data['page'] == 'offline' and data['elements']['offline']['visible']
+            assert data['page'] == 'matching' and data['elements']['offline']['visible']
             content = data['elements']['content']
             assert content['scrollWidth'] <= content['clientWidth'] + 1
         gui.call('dpi', value=1.)

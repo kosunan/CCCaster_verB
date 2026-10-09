@@ -23,7 +23,7 @@ def diagnostic_environment(args):
     env['CCCASTER_STARTUP_TRACE'] = '1'
     comparisons = {'system-info': ['SECONDS'], 'assets': ['ASSETS'], 'first': ['FIRST'],
                    'io': ['IO'], 'fonts': ['FONTS'], 'remaining': ['IO', 'FONTS'],
-                   'restore': ['RESTORE'], 'entry': ['ENTRY'], 'replay': ['REPLAY'], 'all': ['']}
+                   'restore': ['RESTORE'], 'entry': ['ENTRY'], 'replay': ['REPLAY'], 'minimal': ['MINIMAL'], 'all': ['']}
     if args.variant == 'baseline':
         for key in comparisons[args.comparison]:
             env['CCCASTER_STARTUP_' + (key + '_' if key else '') + 'BASELINE'] = '1'
@@ -99,9 +99,9 @@ def measure_idle_cpu(pid, seconds, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=['training', 'versus', 'replay'], required=True)
+    parser.add_argument('--mode', choices=['training', 'versus', 'replay', 'offline'], required=True)
     parser.add_argument('--variant', choices=['baseline', 'fast'], required=True)
-    parser.add_argument('--comparison', choices=['all', 'system-info', 'assets', 'first', 'io', 'fonts', 'remaining', 'restore', 'entry', 'replay'], default='all',
+    parser.add_argument('--comparison', choices=['all', 'system-info', 'assets', 'first', 'io', 'fonts', 'remaining', 'restore', 'entry', 'replay', 'minimal'], default='all',
                         help='他の高速化を維持し、system-info は情報収集省略、assets は素材キャッシュだけを比較する')
     parser.add_argument('--empty-cache', action='store_true',
                         help='試行出力内の未作成・各側独立キャッシュを指定する。既存キャッシュは変更しない')
@@ -191,7 +191,7 @@ def main():
     root, out = args.root.resolve(), args.out.resolve()
     sides = [root / f'MBAACC_{side}' for side in range(1, args.instances + 1)]
     exe_name = 'CCCaster_B.exe'
-    if args.mode in ('training', 'replay'):
+    if args.mode in ('training', 'replay', 'offline'):
         exe_name = 'CCCaster_B_GUI.exe'
     game_paths = {(side / 'MBAA.exe').resolve() for side in sides}
     if len(game_paths) != args.instances:
@@ -256,7 +256,7 @@ def main():
         deadline = time.monotonic() + 30 + args.ready_hold_seconds
         for index, side in enumerate(sides, 1):
             launcher_log = out / f'launcher_{index}.log'
-            if args.mode in ('training', 'replay'):
+            if args.mode in ('training', 'replay', 'offline'):
                 name = f'Local\\CCCasterStartup_{os.getpid()}_{index}'
                 cancel = event(None, True, False, name)
                 if not cancel:

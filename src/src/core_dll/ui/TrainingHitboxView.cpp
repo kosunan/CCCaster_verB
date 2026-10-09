@@ -10,7 +10,8 @@ bool Draw() {
         IM_COL32(69,209,255,255),IM_COL32(222,103,255,255),IM_COL32(255,155,55,255)};
     if (!cccaster::game_interface::GameMem().IsPauseMenuOpen()) {
         const auto& frame=ReadFrame();
-        const auto viewport=hud::CurrentViewport();
+        const auto viewport=hud::BackbufferToDisplay({float(frame.image.x0),float(frame.image.y0),
+            float(frame.image.x1-frame.image.x0),float(frame.image.y1-frame.image.y0)});
         auto* draw=ImGui::GetForegroundDrawList();
         const float sx=viewport.width/640.f,sy=viewport.height/480.f;
         auto point=[&](int32_t x,int32_t y){return ImVec2{viewport.x+(320+(x-320.f)*frame.zoom)*sx,

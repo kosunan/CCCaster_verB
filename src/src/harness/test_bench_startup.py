@@ -9,6 +9,13 @@ from bench_startup import diagnostic_environment, protected_files, readiness
 
 
 class StartupBenchmarkTests(unittest.TestCase):
+    def test_minimal_comparison_keeps_previous_optimizations(self):
+        args = argparse.Namespace(variant='baseline', comparison='minimal', profile=False,
+                                  verify_io=False, verify_assets=False)
+        with patch.dict(os.environ, {'CCCASTER_STARTUP_BASELINE': '1'}, clear=True):
+            self.assertEqual(diagnostic_environment(args), {
+                'CCCASTER_STARTUP_TRACE': '1', 'CCCASTER_STARTUP_MINIMAL_BASELINE': '1'})
+
     def test_comparison_is_isolated_from_parent_diagnostics(self):
         args = argparse.Namespace(variant='baseline', comparison='remaining', profile=False,
                                   verify_io=False, verify_assets=False)

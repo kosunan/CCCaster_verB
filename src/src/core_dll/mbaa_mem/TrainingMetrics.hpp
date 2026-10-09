@@ -14,6 +14,23 @@ struct FrameAdvantageResult {
     int p1Frames = 0;
 };
 
+// ゲーム更新後の観測値。残量をそのまま実戦の残りFとは扱わない。
+struct TrainingActorDetail {
+    bool valid = false;
+    bool stanceKnown = false, attackBoxesKnown = false, hurtBoxesKnown = false;
+    bool animationKnown = false, airborne = false;
+    bool guardEligible = false;
+    bool thrown = false, strikeProtected = false, throwProtected = false;
+    uint8_t stance = 0, attackBoxCount = 0, hurtBoxCount = 0, canMove = 0;
+    uint8_t defenseSlotCount = 0; // 参照実装のattack_data。実体は防御配列の排他的上限。
+    uint32_t stateFlags2 = 0;
+    int16_t reservedPattern = -1;
+    uint8_t hitstop = 0, receivedHitstop = 0, remainingHits = 0;
+    int32_t stunRemaining = 0;
+    int16_t untechTotal = 0, untechElapsed = 0;
+    uint32_t patternFrame = 0;
+};
+
 struct TrainingFrameSample {
     bool valid = false;
     uint32_t trueFrame = 0;
@@ -28,6 +45,9 @@ struct TrainingFrameSample {
     bool attacking[2] = {};
     bool blockstun[2] = {};
     uint32_t pattern[2] = {};
+    // 0x55DF00は補助停止も含むタイマー抑止。個別actor停止とは区別する。
+    bool timerSuppressed = false;
+    TrainingActorDetail detail[2]{};
 };
 
 // ゲーム更新後の連続サンプル専用。描画回数・予定周期からF数を推定しない。

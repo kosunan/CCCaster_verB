@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import time
+import traceback
 from run_training_character import ROOT, device_guid
 from run_training_corner import protected, digest
 
@@ -18,6 +19,8 @@ def main():
     parser.add_argument('--inspect',action='store_true')
     parser.add_argument('--inspect-at',action='append',default=[])
     parser.add_argument('--afterimages',action='store_true',help='標準メニューのImmediately MAXで残像除外と飛び道具を確認')
+    parser.add_argument('--geometry',type=int,nargs=3,metavar=('WIDTH','HEIGHT','ASPECT'),help='保存済み表示設定から起動し中央・左右端を確認')
+    parser.add_argument('--fullscreen',action='store_true',help='--geometryの解像度をボーダーレス表示')
     args=parser.parse_args()
     import vgamepad as vg
     from vgamepad.win import vigem_client as vc
@@ -33,7 +36,8 @@ def main():
     out.mkdir(parents=True)
     result=dict(errors=[],checks={})
     before=protected(runtime)
-    backups={p:p.read_bytes() if p.exists() else None for p in (caster/'cccaster.ini',caster/'Wireless Controller.ini')}
+    backups={p:p.read_bytes() if p.exists() else None for p in (caster/name for name in
+        ('cccaster.ini','Wireless Controller.ini','display.ini','display.ini.bak','display.ini.tmp'))}
     proc=handle=pad=None
     log=caster/'cccaster_hook_log.txt'
     k=C.WinDLL('kernel32',use_last_error=True)
@@ -42,7 +46,8 @@ def main():
     k.CloseHandle.argtypes=[W.HANDLE]
     def raw(addr,size):
         data=C.create_string_buffer(size)
-        if not k.ReadProcessMemory(handle,addr,data,size,None):raise C.WinError(C.get_last_error())
+        if not k.ReadProcessMemory(handle,addr,data,size,None):
+            raise RuntimeError(f'メモリ読取り失敗: address=0x{addr:08x} size={size}: {C.WinError(C.get_last_error())}')
         return data.raw
     def read(addr,size=4):return int.from_bytes(raw(addr,size),'little')
     def logs():return log.read_text(encoding='utf-8',errors='replace') if log.exists() else ''
@@ -117,6 +122,9 @@ def main():
         wait(lambda:bool(found.append(device_guid((product<<16)|0x054c)) or found[-1]),'仮想パッドなし')
         (caster/'cccaster.ini').write_text(f'[Settings]\nP1Device=Wireless Controller\nP1DeviceGuid={found[-1]}\nDelay=2\n',encoding='utf-8')
         (caster/'Wireless Controller.ini').write_text('[Mapping]\nUp=H0_8\nDown=H0_2\nLeft=H0_4\nRight=H0_6\nA=B0\nB=B1\nC=B2\nD=B3\nE=B4\nStart=B7\nFN1=B8\nFN2=B9\n',encoding='utf-8')
+        if args.geometry:
+            width,height,aspect=args.geometry
+            (caster/'display.ini').write_text(f'[Display]\nRenderWidth={width}\nRenderHeight={height}\nAspectRatio={aspect}\nFullscreen={int(args.fullscreen)}\n',encoding='utf-8')
         result['binaries']={name:digest(caster/name) for name in ('CCCaster_B.exe','CCCaster_B_GUI.exe','libcccaster_hook.dll')}
         check('最新3バイナリ',all(digest(ROOT/'build/bin'/name)==sha for name,sha in result['binaries'].items()))
         if log.exists():shutil.copy2(log,out/'previous_game.log');log.unlink()
@@ -127,6 +135,10 @@ def main():
         wait(lambda:'[FastBoot] ★ CharaSelect reached!' in logs(),'キャラ選択未到達',40)
         pid=subprocess.check_output(['pwsh','-NoProfile','-Command',f"Get-CimInstance Win32_Process -Filter \"Name='MBAA.exe'\" | Where-Object ParentProcessId -eq {proc.pid} | Select-Object -ExpandProperty ProcessId"],text=True).strip()
         handle=k.OpenProcess(0x10,False,int(pid));time.sleep(3.5)
+        if args.geometry:
+            width,height,aspect=args.geometry
+            check('指定解像度で起動',read(0x54d048)==width and read(0x54d04c)==height)
+            check('指定アスペクト比で起動',read(read(0x554140)+0x178)==aspect)
         deadline=time.monotonic()+35
         while read(0x54eee8)!=1 or read(0x55d20b,1) or read(0x55d203,1):
             if time.monotonic()>deadline:raise RuntimeError('戦闘未到達')
@@ -142,6 +154,17 @@ def main():
         inspect('ALL_ON_MENU')
         press('b');press('b');wait(lambda:read(0x74d7fc)==0,'練習へ戻らない')
         time.sleep(.6);inspect('STANDING_BOXES')
+        if args.geometry:
+            result['geometry']=dict(width=width,height=height,aspect=aspect,fullscreen=args.fullscreen,samples=[])
+            for label,direction in [('CENTER',None),('LEFT_EDGE','left'),('RIGHT_EDGE','right')]:
+                if direction:press(direction+'+reset',.12,.7)
+                positions=[int.from_bytes(raw(addr,4),'little',signed=True) for addr in (0x555238,0x555d34)]
+                result['geometry']['samples'].append(dict(label=label,positions=positions,frame=read(0x55d1cc)))
+                if direction:
+                    sign=-1 if direction=='left' else 1
+                    check(label+'の壁際に到達',positions==[sign*45056,sign*61440])
+                inspect(label)
+            press('reset',.12,.7)
         if args.afterimages:
             set_circuit(2)
             # Immediately MAXは299.9%へ補充する。標準の攻撃でMAXへ移行させる。
@@ -178,6 +201,16 @@ def main():
         result['max_found']=[max(int(x[2].split(',')[i]) for x in lines) for i in range(6)]
         check('攻撃・喰らい・押し合いの実矩形あり',all(n>0 for n in result['max_found'][:3]))
         check('ONの種類だけ描画',all(int(x[3])==sum(int(n) for i,n in enumerate(x[2].split(',')) if int(x[1])&(1<<i)) for x in lines))
+        if args.geometry:
+            from fractions import Fraction
+            ratio={0:Fraction(4,3),1:Fraction(width,height),2:Fraction(4,3),3:Fraction(16,9),4:Fraction(16,10),5:Fraction(5,4),6:Fraction(15,9)}[aspect]
+            w=width if ratio<=Fraction(4,3) else int(width*Fraction(4,3)/ratio)
+            h=height if ratio>=Fraction(4,3) else int(height*ratio/Fraction(4,3))
+            x,y=(width-w)//2,(height-h)//2
+            expected=f'{x},{y},{x+w},{y+h}'
+            actual=re.findall(r'surface=(\d+)x(\d+) aspect=(\d+) image=([\d,]+)',logs())
+            result['geometry']['expected_image']=expected
+            check('全標本で黒帯を除いた合成先と一致',len(actual)>60 and all(item==(str(width),str(height),str(aspect),expected) for item in actual))
         if args.afterimages:
             effects=re.findall(r'afterimages=(\d+) effect_boxes=(\d+) afterimage_boxes=(\d+)',logs())
             result['afterimage_samples']=sum(int(x[0])>0 for x in effects)
@@ -188,7 +221,9 @@ def main():
             check('飛び道具等の実オブジェクト矩形を維持',result['max_effect_boxes']>0)
             check('MAX残像中も本体の矩形あり',any(int(x[1])==63 and int(x[3])>0 and int(x[4])>0 for x in lines))
         check('例外なし','[Exception]' not in logs() and '[InputGate] FAILED' not in logs())
-    except Exception as exc:result['errors'].append(str(exc))
+    except Exception as exc:
+        result['errors'].append(str(exc))
+        result['traceback']=traceback.format_exc()
     finally:
         if pad:pad.reset();pad.update()
         if handle:k.CloseHandle(handle)

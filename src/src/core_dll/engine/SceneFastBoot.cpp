@@ -1,3 +1,4 @@
+#include "core_dll/mbaa_mem/StartupNativeInput.hpp"
 // ============================================================================
 // SceneFastBoot.cpp — ゲームスレッド上の高速起動の実装
 //
@@ -95,6 +96,7 @@ bool SceneFastBoot::IsComplete() {
 // ================================================================
 bool SceneFastBoot::ProcessFrame(bool isHost) {
     cccaster::game_memory::startup_system_info::Restore();
+    cccaster::game_memory::startup_native_input::Restore();
     cccaster::game_memory::startup_assets::Restore();
     if (s_complete)
         return true;

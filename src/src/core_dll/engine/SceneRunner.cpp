@@ -1,3 +1,4 @@
+#include "core_dll/hook/HookBatch.hpp"
 #include "core_dll/engine/ReplayFileName.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
 #include "core_dll/mbaa_mem/ExtraColorSelection.hpp"
@@ -914,27 +915,32 @@ void SceneRunner::Step() {
         Fail(Error::SyncTimeout, "game memory unavailable");
         return;
     }
-    if ((ctx.appMode == 0 || ctx.appMode == 2) && !mem.ConfigureNetplayMenu()) {
-        Fail(Error::SyncTimeout, "netplay menu hook unavailable");
-        return;
-    }
-    if (ctx.appMode == 1 && !mem.ConfigureTrainingMenu()) {
-        Fail(Error::SyncTimeout, "training character menu hook unavailable");
-        return;
-    }
-    if(ctx.appMode==0 || ctx.appMode==1 || ctx.appMode==5) {
-        if(!cccaster::training_palette::Install()){Fail(Error::SyncTimeout,"extra color hook unavailable");return;}
-        cccaster::training_palette::selection::Configure(ctx.appMode,ctx.isHost);
-        cccaster::training_palette::selection::Tick();
-    }
+    {
+        cccaster::hook_batch::Scope startupHooks(!scene::SceneFastBoot::IsComplete() &&
+            !cccaster::diagnostics::startup::Baseline() && !std::getenv("CCCASTER_STARTUP_MINIMAL_BASELINE"));
+        if ((ctx.appMode == 0 || ctx.appMode == 2) && !mem.ConfigureNetplayMenu()) {
+            Fail(Error::SyncTimeout, "netplay menu hook unavailable");
+            return;
+        }
+        if (ctx.appMode == 1 && !mem.ConfigureTrainingMenu()) {
+            Fail(Error::SyncTimeout, "training character menu hook unavailable");
+            return;
+        }
+        if(ctx.appMode==0 || ctx.appMode==1 || ctx.appMode==5) {
+            if(!cccaster::training_palette::Install()){Fail(Error::SyncTimeout,"extra color hook unavailable");return;}
+            cccaster::training_palette::selection::Configure(ctx.appMode,ctx.isHost);
+            cccaster::training_palette::selection::Tick();
+        }
+        const auto& bossState=Session::GetState();
+        const auto localBossOption=std::getenv("CCCASTER_BOSS_CHARACTERS");
+        const bool showBosses=boss::Enabled(ctx.appMode,localBossOption && localBossOption[0]=='1',
+            bossState.peerBossCharacters.load(std::memory_order_acquire)) ||
+            (ctx.appMode==2 && (boss::IsBoss(runtime.spectator.match.p1.character) || boss::IsBoss(runtime.spectator.match.p2.character)));
+        if(!boss::selection::Configure(ctx.appMode,showBosses)){Fail(Error::SyncTimeout,"boss character hooks unavailable");return;}
+    } // 初回のメニュー・パレット・ボス選択フックを一括有効化してからゲームへ戻す。
     auto &inputBuffer = MatchInputBuffer::GetInstance();
-    const auto& bossState=Session::GetState();
-    const auto localBossOption=std::getenv("CCCASTER_BOSS_CHARACTERS");
-    const bool showBosses=boss::Enabled(ctx.appMode,localBossOption && localBossOption[0]=='1',
-        bossState.peerBossCharacters.load(std::memory_order_acquire)) ||
-        (ctx.appMode==2 && (boss::IsBoss(runtime.spectator.match.p1.character) || boss::IsBoss(runtime.spectator.match.p2.character)));
-    if(!boss::selection::Configure(ctx.appMode,showBosses)){Fail(Error::SyncTimeout,"boss character hooks unavailable");return;}
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
+    if (earlyPhase == GamePhase::InGame) mem.PrepareStartupResources();
     // 戦闘中も完成画像をモニター周期で再提示する。追加提示の可否は
     // 待機側のスピン開始までの残り時間と、MonitorPresentの提示コストで判断する。
     if (runtime.loadingStarted && earlyPhase != GamePhase::Loading) {
@@ -1034,6 +1040,28 @@ void SceneRunner::Step() {
                     unsigned(sample.valid), sample.trueFrame, sample.simulationFrame, sample.round,
                     sample.activeCharacter[0], sample.activeCharacter[1], sample.inactionable[0],
                     sample.inactionable[1], unsigned(sample.stopped), unsigned(result.state), result.p1Frames);
+                if (sample.valid) for (unsigned side = 0; side < 2; ++side) {
+                    const auto &bar = runtime.frameBar;
+                    const bool recorded = bar.Size() && bar.At(bar.Size() - 1).trueFrame == sample.trueFrame;
+                    const auto cell = recorded ? bar.At(bar.Size() - 1).players[side] : ClassifyFrameBar(sample, side);
+                    const auto &detail = sample.detail[side];
+                    // DebugLogは256byte。生値を3行へ分け、後半の判定根拠を欠落させない。
+                    DebugLog("[FrameBarDetail] true=%u side=%u state=%s pattern=%u moveFrame=%u boxesKnown=%u boxes=%u stun=%d untech=%d/%d",
+                        sample.trueFrame, side, FrameBarStateName(cell.state), sample.pattern[side], detail.patternFrame,
+                        unsigned(detail.attackBoxesKnown), unsigned(detail.attackBoxCount), detail.stunRemaining,
+                        int(detail.untechElapsed), int(detail.untechTotal));
+                    DebugLog("[FrameBarFlags] true=%u side=%u stanceKnown=%u stance=%u thrown=%u protection=%u/%u stop=%u/%u timer=%u hurtKnown=%u hurt=%u white=%u canMove=%u guardEligible=%u reserved=%d recorded=%u",
+                        sample.trueFrame, side, unsigned(detail.stanceKnown), unsigned(detail.stance),
+                        unsigned(detail.thrown), unsigned(detail.strikeProtected), unsigned(detail.throwProtected),
+                        unsigned(detail.hitstop), unsigned(detail.receivedHitstop), unsigned(sample.timerSuppressed),
+                        unsigned(detail.hurtBoxesKnown), unsigned(detail.hurtBoxCount), unsigned(cell.strikeInvulnerable),
+                        unsigned(detail.canMove), unsigned(detail.guardEligible), int(detail.reservedPattern), unsigned(recorded));
+                    DebugLog("[FrameBarReference] true=%u side=%u signal=%s signalFrame=%u stateFrame=%u attackData=%u activeBoxes=%u animationKnown=%u defenseSlots=%u air=%u busy=%d base=%s",
+                        sample.trueFrame, side, FrameBarSignalName(cell.signal), cell.signalFrame, cell.runFrame,
+                        unsigned(sample.attacking[side]), unsigned(cell.activeBoxes), unsigned(detail.animationKnown),
+                        unsigned(detail.defenseSlotCount), unsigned(detail.airborne), sample.inactionable[side],
+                        FrameBarStateName(ReferenceFrameBarState(sample.inactionable[side], sample.pattern[side], detail)));
+                }
             }
         } else { runtime.advantage.Reset(); runtime.frameBar.Reset(); }
     }

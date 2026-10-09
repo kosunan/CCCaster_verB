@@ -256,7 +256,7 @@ def before_game(guis, ports, report):
         gui.checked('allow-spectators', True);gui.click('nav-matching')
     for scale in [1.0, 1.5]:
         a.call('dpi', value=scale)
-        for page in ['matching', 'settings', 'guide', 'spectate', 'offline', 'controller']:
+        for page in ['matching', 'settings', 'guide', 'spectate', 'controller']:
             a.settings() if page == 'settings' else a.click('nav-'+page)
             data = a.call();main = data['elements']['content']['rect']
             # 主要操作の幅とページ表示を、実際にレイアウトした座標で確認する。

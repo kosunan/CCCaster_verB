@@ -4,6 +4,23 @@
 <div class="menu-backdrop" aria-hidden="true"><div class="backdrop-orbit"><div class="backdrop-orbit-inner"></div></div><div class="backdrop-pillar pillar-one"></div><div class="backdrop-pillar pillar-two"></div><div class="backdrop-pillar pillar-three"></div><div class="backdrop-pillar pillar-four"></div><div class="backdrop-pillar pillar-five"></div><div class="backdrop-floor"></div></div>
 <header class="masthead">
   <div class="brand"><span class="brand-mark">C</span><div><h1>CCCaster <span>verB</span></h1><p>MELTY BLOOD Actress Again Current Code</p></div></div>
+  <div id="header-actions" class="header-actions">
+    <button id="training" class="mode-launch">
+      <span class="menu-selection" aria-hidden="true"></span>
+      <span id="training-icon" class="mode-icon target-icon" aria-hidden="true"><span class="target-ring"><span class="target-center"></span></span></span>
+      <span class="mode-copy"><span class="mode-title">TRAINING</span><span class="mode-label" data-en="Training">トレーニング</span></span>
+    </button>
+    <button id="offline" class="mode-launch">
+      <span class="menu-selection" aria-hidden="true"></span>
+      <span id="offline-icon" class="mode-icon pads-icon" aria-hidden="true"><span class="pad pad-one"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span><span class="pad pad-two"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span></span>
+      <span class="mode-copy"><span class="mode-title">VERSUS</span><span class="mode-label" data-en="Local versus">オフライン対戦</span></span>
+    </button>
+    <button id="replay" class="mode-launch">
+      <span class="menu-selection" aria-hidden="true"></span>
+      <span id="replay-icon" class="mode-icon replay-icon" aria-hidden="true"><span class="replay-screen"><span class="replay-play"></span><span class="replay-progress"></span></span></span>
+      <span class="mode-copy"><span class="mode-title">REPLAY</span><span class="mode-label" data-en="Replays">リプレイ鑑賞</span></span>
+    </button>
+  </div>
   <span id="version" class="version"></span>
 </header>
 <div class="shell">
@@ -11,9 +28,8 @@
     <div class="menu-title">MAIN MENU</div>
     <button class="nav-item active" data-page="matching" aria-current="page" id="nav-matching"><span class="nav-number">01</span><span class="nav-label" data-en="MATCHING">マッチング</span></button>
     <button class="nav-item" data-page="spectate" id="nav-spectate"><span class="nav-number">02</span><span class="nav-label" data-en="SPECTATE">観戦</span></button>
-    <button class="nav-item" data-page="offline" id="nav-offline"><span class="nav-number">03</span><span class="nav-label" data-en="OFFLINE">オフライン</span></button>
-    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">04</span><span class="nav-label" data-en="CONTROLLERS">コントローラ設定</span></button>
-    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">05</span><span class="nav-label" data-en="HOW TO PLAY">操作ガイド</span></button>
+    <button class="nav-item" data-page="controller" id="nav-controller"><span class="nav-number">03</span><span class="nav-label" data-en="CONTROLLERS">コントローラ設定</span></button>
+    <button class="nav-item" data-page="guide" id="nav-guide"><span class="nav-number">04</span><span class="nav-label" data-en="HOW TO PLAY">操作ガイド</span></button>
     <div class="nav-bottom"><button id="language" class="quiet">English</button></div>
   </nav>
   <main id="content">
@@ -68,26 +84,6 @@
         <p class="subtle" data-en="Both players must allow spectators. Up to 8 viewers.">観戦には対戦者双方の許可が必要です（最大8人）。</p>
       </div>
     </section>
-    <section class="page hidden" id="page-offline">
-      <div class="offline-actions">
-        <button id="training" class="offline-launch practice-launch">
-          <span class="menu-selection" aria-hidden="true"></span>
-          <span id="training-icon" class="mode-icon target-icon" aria-hidden="true"><span class="target-ring"><span class="target-center"></span></span></span>
-          <span class="mode-copy"><span class="mode-title">TRAINING</span><span class="mode-label" data-en="Training">トレーニング</span></span><span class="start-symbol" aria-hidden="true"></span>
-        </button>
-        <button id="offline" class="offline-launch versus-launch">
-          <span class="menu-selection" aria-hidden="true"></span>
-          <span id="offline-icon" class="mode-icon pads-icon" aria-hidden="true"><span class="pad pad-one"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span><span class="pad pad-two"><span class="pad-cross-h"></span><span class="pad-cross-v"></span><span class="pad-dot dot-one"></span><span class="pad-dot dot-two"></span></span></span>
-          <span class="mode-copy"><span class="mode-title">VERSUS</span><span class="mode-label" data-en="Local versus">オフライン対戦</span></span><span class="start-symbol" aria-hidden="true"></span>
-        </button>
-        <button id="replay" class="offline-launch replay-launch">
-          <span class="menu-selection" aria-hidden="true"></span>
-          <span id="replay-icon" class="mode-icon replay-icon" aria-hidden="true"><span class="replay-screen"><span class="replay-play"></span><span class="replay-progress"></span></span></span>
-          <span class="mode-copy"><span class="mode-title">REPLAY</span><span class="mode-label" data-en="Replays">リプレイ鑑賞</span></span><span class="start-symbol" aria-hidden="true"></span>
-        </button>
-      </div>
-    </section>
-
     <section class="page hidden" id="page-controller">
       <div class="page-heading"><h2 data-en="Controller settings">コントローラ設定</h2></div>
       <p id="controller-game-hint" class="subtle" data-en="You can also configure controls in-game with F4.">ゲーム内でも F4 でコントローラを設定できます。</p>

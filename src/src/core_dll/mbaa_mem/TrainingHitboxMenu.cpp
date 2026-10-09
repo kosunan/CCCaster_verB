@@ -4,6 +4,7 @@
 #include "core_dll/mbaa_mem/MbaaInputDefs.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "core_dll/common/Platform.hpp"
+#include "core_dll/hook/BorderlessDisplay.hpp"
 #include <windows.h>
 #include <cmath>
 #include <cstring>
@@ -108,6 +109,20 @@ void Step(game_interface::GameInput& p1,game_interface::GameInput& p2,bool confi
 const Frame& ReadFrame() {
     frame.boxes.clear();readable.clear();
     if(!installed || *CC_GAME_MODE_ADDR!=CC_GAME_MODE_IN_GAME || !options.Any())return frame;
+    // 0x432E30はviewportを狭めず、黒帯を含むバックバッファへ画像を合成する。
+    const auto engine=Read<uint32_t>(0x767448),settings=Read<uint32_t>(0x554140);
+    if(!Readable(engine,0x30) || !Readable(settings,0x17c) || Read<uint8_t>(0x76e652))return frame;
+    const int width=Read<int>(engine+0x28),height=Read<int>(engine+0x2c);
+    const auto aspect=Read<unsigned>(settings+0x178);
+    int ratioWidth=Read<int>(0x54d048),ratioHeight=Read<int>(0x54d04c);
+    if(aspect==1 && Read<int>(0x54d040)==1) {
+        RECT client{};
+        const auto window=Read<HWND>(0x74dfac);
+        if(!game_interface::borderless::RenderingClientRect(window,client) && !GetClientRect(window,&client))return frame;
+        ratioWidth=client.right-client.left;ratioHeight=client.bottom-client.top;
+    }
+    frame.image=CompositeRect(width,height,aspect,ratioWidth,ratioHeight);
+    if(frame.image.x1<=frame.image.x0 || frame.image.y1<=frame.image.y0)return frame;
     frame.zoom=Read<float>(0x54eb70);
     if(!std::isfinite(frame.zoom) || frame.zoom<=0 || frame.zoom>16)return frame;
     std::array<unsigned,Count> found{};unsigned checked=0,mismatch=0,afterimages=0;
@@ -129,8 +144,9 @@ const Frame& ReadFrame() {
                 ++effectBoxes;
                 if(Read<uint8_t>(0x67bdec+(box.actor-4)*0x33c+5)==0x1f)++afterimageBoxes;
             }
-            domain::session::DebugLog("[Hitbox] FRAME f=%u mask=%u found=%u,%u,%u,%u,%u,%u drawn=%u checked=%u mismatch=%u zoom=%.5f afterimages=%u effect_boxes=%u afterimage_boxes=%u",
-                now,lastMask,found[0],found[1],found[2],found[3],found[4],found[5],unsigned(frame.boxes.size()),checked,mismatch,frame.zoom,afterimages,effectBoxes,afterimageBoxes);
+            domain::session::DebugLog("[Hitbox] FRAME f=%u mask=%u found=%u,%u,%u,%u,%u,%u drawn=%u checked=%u mismatch=%u zoom=%.5f afterimages=%u effect_boxes=%u afterimage_boxes=%u surface=%dx%d aspect=%u image=%d,%d,%d,%d",
+                now,lastMask,found[0],found[1],found[2],found[3],found[4],found[5],unsigned(frame.boxes.size()),checked,mismatch,frame.zoom,afterimages,effectBoxes,afterimageBoxes,
+                width,height,aspect,frame.image.x0,frame.image.y0,frame.image.x1,frame.image.y1);
         }
     }
     return frame;

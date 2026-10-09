@@ -1,3 +1,5 @@
+#include "core_dll/hook/HookBatch.hpp"
+#include "core_dll/mbaa_mem/StartupSounds.hpp"
 #include "core_dll/rollback/ReplayEffects.hpp"
 #include "core_dll/rollback/IntroSoundClock.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
@@ -84,6 +86,7 @@ uintptr_t cccaster_sfx_skip = 0x4DE223;
 __attribute__((force_align_arg_pointer)) int __cdecl cccaster_sfx_should_play(uint32_t sound) {
     // 表示だけの先行1更新では、履歴・音声時計への記録も実際の再生も抑止する。
     if (introPreview) return 0;
+    cccaster::game_memory::startup_sounds::Ensure(sound);
     if (soundProbe) ++soundCalls;
     cccaster::diagnostics::sound_api::SetSound(sound);
     if (sound >= 1500)
@@ -130,13 +133,13 @@ bool InstallReplayEffects() {
         return false;
     if (MH_CreateHook(address, reinterpret_cast<void *>(cccaster_sfx_hook), &cccaster_sfx_original) != MH_OK)
         return false;
-    if (MH_EnableHook(address) != MH_OK)
+    if (cccaster::hook_batch::Enable(address) != MH_OK)
         return false;
     constexpr unsigned char expectedStatus[] = {0x57,0x8b,0x3c,0x85,0xf8,0xc6,0x76,0x00};
     auto status = reinterpret_cast<void *>(0x4de1e0);
     if (std::memcmp(status, expectedStatus, sizeof(expectedStatus)) ||
         MH_CreateHook(status, reinterpret_cast<void *>(cccaster_sound_status_hook),
-                      &cccaster_sound_status_original) != MH_OK || MH_EnableHook(status) != MH_OK)
+                      &cccaster_sound_status_original) != MH_OK || cccaster::hook_batch::Enable(status) != MH_OK)
         return false;
     cccaster::testing::combat_stress::Install();
     if (std::getenv("CCCASTER_SOUND_PROBE") || cccaster::diagnostics::sound_api::Enabled()) {
@@ -145,14 +148,14 @@ bool InstallReplayEffects() {
         if (!std::memcmp(update, expectedUpdate, sizeof(expectedUpdate)) &&
             MH_CreateHook(update, reinterpret_cast<void *>(ProbeSoundUpdate),
                           reinterpret_cast<void **>(&soundUpdate)) == MH_OK &&
-            MH_EnableHook(update) == MH_OK) soundProbe = true;
+            cccaster::hook_batch::Enable(update) == MH_OK) soundProbe = true;
         cccaster::domain::session::DebugLog("[SoundProbeInstall] active=%d", soundProbe);
     }
     if (std::getenv("CCCASTER_TRACE_RNG")) {
         void *rng = reinterpret_cast<void *>(0x421A80);
         if (MH_CreateHook(rng, reinterpret_cast<void *>(cccaster_rng_hook), &cccaster_rng_original) !=
                 MH_OK ||
-            MH_EnableHook(rng) != MH_OK)
+            cccaster::hook_batch::Enable(rng) != MH_OK)
             return false;
     }
     installed = true;

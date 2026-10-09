@@ -1,3 +1,4 @@
+#include "core_dll/mbaa_mem/StartupSounds.hpp"
 #pragma once
 #include <windows.h>
 #include <cstdint>
@@ -77,6 +78,7 @@ inline void Initialize() {
         {0x4C8BF6,0x4DB9B0},{0x4C8C20,0x413CE0},{0x4C8C7B,0x413FB0}
     };
     for (unsigned i=0; i<sizeof(sites)/sizeof(sites[0]); ++i) {
+        if (sites[i][0] == 0x41E0E2 && startup_sounds::Active()) continue;
         if (sites[i][0] == 0x4A1F3F && startup_system_info::active) continue;
         if (sites[i][0] == 0x4BD3F2 && startup_assets::Active()) continue;
         if (!InstallCall(sites[i][0],sites[i][1],i)) ExitProcess(ERROR_BAD_EXE_FORMAT);

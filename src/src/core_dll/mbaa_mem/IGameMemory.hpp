@@ -43,6 +43,8 @@ class IGameMemory {
     /// ゲームのメモリがまだマップされておらず読めない状態を区別する。
     /// 起動直後やプロセス終了間際に false になりうる。
     virtual bool IsAvailable() const = 0;
+    // ゲームスレッドの戦闘到達時。オフライン・標準REPも起動時に延期した資源を準備する。
+    virtual void PrepareStartupResources() {}
 
     // ── 読み取り ──
     virtual uint32_t GameMode() const = 0;         ///< CC_GAME_MODE_*

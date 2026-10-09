@@ -1,6 +1,7 @@
 #include "core_dll/mbaa_mem/RealGameMemory.hpp"
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/mbaa_mem/GameBuildGuard.hpp"
+#include "core_dll/mbaa_mem/TrainingAnimation.hpp"
 #include <windows.h>
 #include <cstring>
 
@@ -73,7 +74,7 @@ bool RealGameMemory::IsTrainingRecording() const {
 }
 
 TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {
-    // ゲームスレッドの通常更新後だけ。モード1/2の選別は呼出元で行う。
+    // ゲームスレッドの通常更新後だけ。学習表示モードの選別は呼出元で行う。
     TrainingFrameSample sample;
     static const bool supported = SupportedImage();
     if (!supported || !ReadableImageRange(0x54EEE8, 4) ||
@@ -86,8 +87,9 @@ TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {
     sample.trueFrame = Read<uint32_t>(0x562A40);       // adTrueFrameCount / CC_REAL_TIMER
     sample.simulationFrame = Read<uint32_t>(0x55D1CC); // adFrameCount（CC_WORLD_TIMERと別）
     sample.round = Read<uint32_t>(0x5550E0);           // CC_ROUND_COUNT
-    // FrameBarのGlobalFreezeはchar読取。共通pauseはuint8_t、training pauseはuint32_t。
-    sample.globalFreeze = Read<uint8_t>(0x562A48) != 0;
+    // 0x46192DはDWORDの非zero比較。下位BYTEだけでは256等を取り落とす。
+    sample.globalFreeze = Read<int32_t>(0x562A48) != 0;
+    sample.timerSuppressed = Read<uint32_t>(0x55DF00) != 0;
     sample.paused = Read<uint8_t>(0x55D203) != 0 || Read<uint32_t>(0x562A64) != 0;
     sample.stopped = sample.globalFreeze || sample.paused;
     for (unsigned side = 0; side < 2; ++side) {
@@ -101,13 +103,41 @@ TrainingFrameSample RealGameMemory::ReadTrainingFrame() const {
         if (Read<uint32_t>(player) == 0) return {};
         const uintptr_t actor = player + kActorOffset;
         // kosunan attack_status=0x555454、ETM ActorData::attackDataPtr=+0x320。
-        // ポインタの有無だけを読み、動的データは参照しない。
+        // 攻撃属性の存在と、現在の状態データの攻撃矩形を別々に読む。
         sample.attacking[side] = Read<uint32_t>(actor + 0x320) != 0;
         sample.pattern[side] = Read<uint32_t>(actor + 0xC);
         sample.blockstun[side] = Read<uint8_t>(actor + 0x177) != 0;
+        auto &detail = sample.detail[side];
+        detail.valid = true;
+        detail.thrown = Read<uint8_t>(actor + 0x172) != 0;
+        detail.strikeProtected = Read<uint8_t>(actor + 0x181) != 0;
+        detail.throwProtected = Read<uint8_t>(actor + 0x182) != 0;
+        detail.stunRemaining = Read<int32_t>(actor + 0x1A8);
+        // 0x4637C1..0x4637CFはsigned16比較。負値を巨大な残量に変換しない。
+        detail.untechTotal = Read<int16_t>(actor + 0x18A);
+        detail.untechElapsed = Read<int16_t>(actor + 0x18C);
+        detail.patternFrame = Read<uint32_t>(actor + 0x330);
+        detail.hitstop = Read<uint8_t>(actor + kActorHitstopOffset);
+        detail.receivedHitstop = Read<uint8_t>(actor + kActorReceivedHitstopOffset);
+        detail.remainingHits = Read<uint8_t>(actor + 0x176);
+        detail.reservedPattern = Read<int16_t>(actor + 0x308);
+        // kosunanの浮遊下線と同じ条件。stanceだけでは着地境界を取り落とす。
+        detail.airborne = Read<int16_t>(actor + 0x122) != 0 ||
+            Read<int32_t>(actor + 0x108) != 0 || Read<int32_t>(actor + 0x114) != 0;
+        ReadTrainingAnimation(Read<uint32_t>(actor + 0x31C), sample.attacking[side], detail,
+            [](uint32_t address, void *destination, size_t length) {
+                if (address < 0x10000 || length > UINT32_MAX - address) return false;
+                SIZE_T copied = 0;
+                return ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<const void *>(address),
+                                         destination, length, &copied) && copied == length;
+            });
+        // owner側の補助値を参照する。交代キャラでも本体側と同じ資格条件。
+        const unsigned owner = Read<uint8_t>(actor + 0x2F0);
+        detail.guardEligible = owner < 2 && TrainingRecoveryGuardEligible(detail,
+            Read<int16_t>(actor + 0x1EA), Read<uint32_t>(kAux + owner * kAuxStride + 0x10),
+            Read<uint8_t>(actor + 0x1B2));
         sample.playerStopped[side] = Read<int32_t>(kFreeze + side * kFreezeStride) != 0 ||
-            Read<uint8_t>(actor + kActorHitstopOffset) != 0 ||
-            Read<uint8_t>(actor + kActorReceivedHitstopOffset) != 0;
+            detail.hitstop != 0 || detail.receivedHitstop != 0;
         sample.stopped = sample.stopped || sample.playerStopped[side];
     }
     sample.valid = true;
