@@ -10,6 +10,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include "core_dll/hook/WndProcHook.hpp"
 #include <avrt.h>
 #else
 #include <ctime>
@@ -311,7 +312,8 @@ bool IsAbortRequested() {
 #ifdef _WIN32
     MSG message{};
     using namespace cccaster::public_api;
-    if (PeekMessageA(&message, nullptr, WM_CLOSE, WM_CLOSE, PM_NOREMOVE))
+    if (PeekMessageA(&message, nullptr, WM_CLOSE, WM_CLOSE, PM_NOREMOVE) &&
+        !cccaster::game_interface::WndProcHook::BlocksCloseExit())
         return !RequestLocalGameExit(SessionExitReason::CloseButton);
     if (PeekMessageA(&message, nullptr, WM_QUIT, WM_QUIT, PM_NOREMOVE))
         return !RequestLocalGameExit(SessionExitReason::Unknown);

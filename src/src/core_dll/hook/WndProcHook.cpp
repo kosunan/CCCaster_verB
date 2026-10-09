@@ -1,5 +1,8 @@
 #include "core_dll/hook/WndProcHook.hpp"
 #include "core_dll/mbaa_mem/TrainingPaletteMenu.hpp"
+#include "core_dll/mbaa_mem/TrainingHitboxMenu.hpp"
+#include "core_dll/mbaa_mem/GamePhaseDetector.hpp"
+#include "core_dll/engine/SceneRunner.hpp"
 #include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/hook/BorderlessDisplay.hpp"
 #include "core_dll/hook/MonitorPresent.hpp"
@@ -27,6 +30,7 @@ struct CaptionDrag {
     POINT cursor{}, origin{};
     unsigned moves = 0;
 } drag;
+bool battleEscapeHeld = false;
 
 void TraceDrag(const char *event) {
     static const bool trace = std::getenv("CCCASTER_CLOCK_FOLLOW_TRACE") != nullptr;
@@ -106,9 +110,16 @@ bool WndProcHook::Initialize(HWND hwnd) {
     return original_WndProc != nullptr;
 }
 
+bool WndProcHook::BlocksCloseExit() {
+    const auto mode = cccaster::domain::session::SceneRunner::AppMode();
+    return (mode == 0 || mode == 5) && PhaseMonitor::GetCurrentPhase() == GamePhase::InGame;
+}
+
 bool WndProcHook::BlocksEscapeExit() {
     namespace options = cccaster::domain::scene::selection_options;
-    return drag.active || drag.escapeHeld || options::active.load() || cccaster::training_palette::Active() ||
+    return BlocksCloseExit() || battleEscapeHeld || drag.active || drag.escapeHeld ||
+        options::active.load() || cccaster::training_hitbox::Active() || cccaster::training_hitbox::escapeHeld ||
+        cccaster::training_palette::Active() ||
         cccaster::training_palette::escapeHeld ||
         (options::heldKeys.load() & options::KeyMask(VK_ESCAPE));
 }
@@ -138,6 +149,7 @@ void WndProcHook::Shutdown() {
     if (original_WndProc && hooked_hwnd) {
         FinishDrag(hooked_hwnd, "shutdown");
         drag.escapeHeld = false;
+        battleEscapeHeld = false;
         borderless::Detach();
         SetWindowLongPtr(hooked_hwnd, GWLP_WNDPROC, (LONG_PTR)original_WndProc);
         original_WndProc = nullptr;
@@ -153,7 +165,7 @@ LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wPar
         return 0;
     }
     // 標準メニューもゲームスレッドを占有する。ユーザー承認により入口を無効化する。
-    // アイコン押下自体の追跡も避け、右上の閉じるボタン/SC_CLOSEは後段で従来どおり扱う。
+    // アイコン押下自体の追跡も避ける。右上の閉じる操作は戦闘中だけ抑止する。
     if (((uMsg == WM_NCLBUTTONDOWN || uMsg == WM_NCLBUTTONUP || uMsg == WM_NCLBUTTONDBLCLK) &&
          wParam == HTSYSMENU) ||
         ((uMsg == WM_NCRBUTTONDOWN || uMsg == WM_NCRBUTTONUP) &&
@@ -167,7 +179,19 @@ LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wPar
     if (uMsg == WM_ENTERMENULOOP || uMsg == WM_EXITMENULOOP)
         TraceMenu(uMsg == WM_ENTERMENULOOP ? "begin" : "end");
     // 別窓へ移った後のキーアップを受け取れなくても、終了抑止を残さない。
-    if (uMsg == WM_KILLFOCUS) drag.escapeHeld = false;
+    if (uMsg == WM_KILLFOCUS) { drag.escapeHeld = false; battleEscapeHeld = false; }
+    const bool battle = BlocksCloseExit();
+    // ボタン追跡のモーダル処理へ入る前に止め、保持中も対戦を進める。
+    if (battle && (((uMsg == WM_NCLBUTTONDOWN || uMsg == WM_NCLBUTTONUP || uMsg == WM_NCLBUTTONDBLCLK) &&
+                    wParam == HTCLOSE) || uMsg == WM_CLOSE ||
+                   (uMsg == WM_SYSCOMMAND && (wParam & 0xfff0) == SC_CLOSE))) return 0;
+    if (((battle && !drag.active) || battleEscapeHeld) && wParam == VK_ESCAPE &&
+        (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP ||
+         uMsg == WM_CHAR || uMsg == WM_SYSCHAR)) {
+        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) battleEscapeHeld = true;
+        if (uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP) battleEscapeHeld = false;
+        return 0;
+    }
     // Esc取消のリピート/キーアップをゲーム終了やF4設定へ漏らさない。
     if (drag.escapeHeld && wParam == VK_ESCAPE &&
         (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN || uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP)) {
@@ -210,8 +234,11 @@ LRESULT CALLBACK WndProcHook::HookedWindowProc(HWND hWnd, UINT uMsg, WPARAM wPar
         RequestLocalGameExit(SessionExitReason::CloseButton)) return 0;
     if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE &&
         !cccaster::domain::ui::UIManager::IsMappingWindowOpen() &&
-        !BlocksEscapeExit() &&
-        RequestLocalGameExit(SessionExitReason::Escape)) return 0;
+        !BlocksEscapeExit()) {
+        // ローカルモードでも標準WndProcのEsc処理やImGuiの捕捉に依存せず終了する。
+        if (!RequestLocalGameExit(SessionExitReason::Escape)) PostMessage(hWnd, WM_CLOSE, 0, 0);
+        return 0;
+    }
     // UI 側に処理を委譲
     int result = cccaster::domain::ui::UIManager::HandleWndProcMessage(hWnd, uMsg, wParam, lParam);
     if (result > 0)

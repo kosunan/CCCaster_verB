@@ -222,6 +222,7 @@ void MbaaMemTrace::Sample(uint32_t) {}
 namespace cccaster::game_interface {
 // harnessは実ウィンドウを持たない。移動中の契約はtest_window_dragで検査する。
 bool WndProcHook::BlocksEscapeExit() { return false; }
+bool WndProcHook::BlocksCloseExit() { return false; }
 void WndProcHook::PumpMessages() {} // harnessにはゲーム窓がない。
 }
 #endif // _WIN32
