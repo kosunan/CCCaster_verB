@@ -7,6 +7,8 @@
 #include "core_dll/hook/BorderlessDisplay.hpp"
 #include "shared_contracts/EmblemTexture.hpp"
 #include "core_dll/engine/SceneRunner.hpp"
+#include "core_dll/mbaa_mem/IGameMemory.hpp"
+#include "core_dll/mbaa_mem/NativeHud.hpp"
 #include "core_dll/common/StartupTrace.hpp"
 #include <imgui_impl_dx9.h>
 #include <cstdlib>
@@ -15,8 +17,9 @@
 namespace cccaster::hud {
 namespace {
 constexpr float Scales[]{1, 1.5f, 2, 3, 4, 6};
-constexpr float Sizes[]{15, 13, 24, 10, 22, 12};
-ImFont* fonts[6][6]{};
+constexpr float Sizes[]{15, 13, 24, 10, 22, 12, 22};
+constexpr unsigned FontRoles = sizeof(Sizes)/sizeof(Sizes[0]);
+ImFont* fonts[6][FontRoles]{};
 emblem::Texture textures[2];
 Layout layout;
 Rect nativeViewport;
@@ -32,9 +35,9 @@ bool AddFontScale(unsigned s) {
     char directory[MAX_PATH]{};
     GetWindowsDirectoryA(directory, MAX_PATH);
     auto* atlas = ImGui::GetIO().Fonts;
-    for (unsigned role = 0; role < 6; ++role) {
+    for (unsigned role = 0; role < FontRoles; ++role) {
         const std::string path = std::string(directory) + "\\Fonts\\" +
-            (role == 4 ? "arialbi.ttf" : role == 5 ? "tahoma.ttf" : "tahomabd.ttf");
+            (role == 4 ? "arialbd.ttf" : role == 5 ? "tahoma.ttf" : role == PlayerNameFont ? "arial.ttf" : "tahomabd.ttf");
         ImFontConfig config; config.OversampleH = config.OversampleV = 2;
         if (GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES)
             fonts[s][role] = atlas->AddFontFromFileTTF(path.c_str(), Sizes[role] * Scales[s], &config);
@@ -45,11 +48,12 @@ bool AddFontScale(unsigned s) {
 }
 void AddFonts() {
     startup_fonts::Install(ImGui::GetIO().Fonts);
-    // 比較用の旧経路。通常は最初の表示サイズに必要な6書体だけをPrepareで登録する。
+    // 比較用の旧経路。通常は最初の表示サイズに必要な書体だけをPrepareで登録する。
     if (std::getenv("CCCASTER_STARTUP_FONTS_BASELINE"))
         for (unsigned s = 0; s < 6; ++s) AddFontScale(s);
 }
 void Prepare(IDirect3DDevice9* device) {
+    game_interface::native_hud::Prepare(device);
     auto& io = ImGui::GetIO();
     const auto client = io.DisplaySize;
     bufferSize = client;
@@ -78,6 +82,14 @@ void Prepare(IDirect3DDevice9* device) {
                                  bufferSize, io.DisplaySize);
     nativeViewport = bounds;
     layout = Layout::Fit(bounds);
+    const int aspect = game_interface::GameMem().DisplayOption(game_interface::NativeDisplayOption::AspectRatio);
+    if (aspect >= 0) {
+        const auto area = game_interface::CompositeImageRect(int(bufferSize.x),int(bufferSize.y),unsigned(aspect),
+                                                            int(io.DisplaySize.x),int(io.DisplaySize.y));
+        if (area.x1 > area.x0 && area.y1 > area.y0)
+            nativeViewport = DisplayViewport({float(area.x0),float(area.y0),float(area.x1-area.x0),float(area.y1-area.y0)},
+                                             bufferSize,io.DisplaySize);
+    }
     static ImVec2 lastBuffer{}, lastDisplay{};
     if (lastBuffer.x != bufferSize.x || lastBuffer.y != bufferSize.y ||
         lastDisplay.x != io.DisplaySize.x || lastDisplay.y != io.DisplaySize.y) {
@@ -85,7 +97,9 @@ void Prepare(IDirect3DDevice9* device) {
             bufferSize.x, bufferSize.y, io.DisplaySize.x, io.DisplaySize.y, layout.scale);
         lastBuffer = bufferSize; lastDisplay = io.DisplaySize;
     }
-    if (AddFontScale(FontScale(layout.scale))) {
+    const bool addedLayoutFonts = AddFontScale(FontScale(layout.scale));
+    const bool addedIdentityFonts = AddFontScale(FontScale(Layout::Fit(nativeViewport).scale));
+    if (addedLayoutFonts || addedIdentityFonts) {
         // NewFrame前にだけatlasを変更する。リサイズで必要になった倍率も一度だけ追加し、
         // 同じTTF・サイズ・oversamplingを維持する。既存ImFontポインターは保持される。
         ImGui_ImplDX9_InvalidateDeviceObjects();
@@ -108,6 +122,7 @@ void RenderDrawData() {
     ImGui_ImplDX9_RenderDrawData(data);
 }
 void Release() {
+    game_interface::native_hud::Release();
     for (auto& texture : textures) texture.Release();
     domain::ui::training_character_view::Release();
     domain::ui::training_palette_view::Release();
@@ -117,7 +132,7 @@ Rect CurrentViewport() { return nativeViewport; }
 Rect BackbufferToDisplay(Rect bounds) { return DisplayViewport(bounds,bufferSize,ImGui::GetIO().DisplaySize); }
 ImFont* Font(unsigned role, float scale) {
     const unsigned s = FontScale(scale);
-    return fonts[s][(std::min)(role, 5u)] ? fonts[s][(std::min)(role, 5u)] : ImGui::GetFont();
+    return fonts[s][(std::min)(role, FontRoles-1)] ? fonts[s][(std::min)(role, FontRoles-1)] : ImGui::GetFont();
 }
 ImTextureID Emblem(unsigned player) { return reinterpret_cast<ImTextureID>(textures[player % 2].Get()); }
 }

@@ -28,6 +28,7 @@ add_library(cccaster_hook SHARED
     mbaa_mem/TrainingCharacterMenu.cpp
     mbaa_mem/TrainingHitboxMenu.cpp
     mbaa_mem/BossCharacterSelect.cpp
+    mbaa_mem/NativeHud.cpp
     mbaa_mem/TrainingPaletteMenu.cpp
     mbaa_mem/ExtraColorSelection.cpp
     mbaa_mem/NativeColorMenu.cpp

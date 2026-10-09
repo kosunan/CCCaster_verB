@@ -80,6 +80,33 @@ void* originalDepth[4]{};
 unsigned* Grid(){return *reinterpret_cast<unsigned**>(0x77181C);}
 unsigned* Cursor(unsigned side){return side ? CC_P2_SELECTOR_MODE_ADDR : CC_P1_SELECTOR_MODE_ADDR;}
 
+void DrawBossLabel(int x,int y) {
+    // 7x9の字形を原寸の矩形で描く。フォント画像の縮小サンプリングで線を欠かさない。
+    // 2pxの縦線・字間を確保し、4文字34pxを元の顔幅内へ収める。
+    constexpr uint8_t glyphs[][9]{
+        {0b1111110,0b1100011,0b1100011,0b1100011,0b1111110,0b1100011,0b1100011,0b1100011,0b1111110}, // B
+        {0b0111110,0b1100011,0b1100011,0b1100011,0b1100011,0b1100011,0b1100011,0b1100011,0b0111110}, // O
+        {0b0111111,0b1100000,0b1100000,0b1100000,0b0111110,0b0000011,0b0000011,0b0000011,0b1111110}, // S
+    };
+    constexpr unsigned letters[]{0,1,2,2};
+    for(unsigned i=0;i<4;++i) {
+        const auto& glyph=glyphs[letters[i]];
+        for(unsigned row=0;row<9;) {
+            unsigned end=row+1;
+            while(end<9 && glyph[end]==glyph[row])++end;
+            for(unsigned column=0;column<7;) {
+                if(!(glyph[row]&(0x40u>>column))){++column;continue;}
+                const auto begin=column++;
+                while(column<7 && (glyph[row]&(0x40u>>column)))++column;
+                cc_boss_label_sprite(0,0,x+int(i*9+begin),y+int(row),int(end-row),0,0,0,0,
+                    0xFFFFE223,0,345,int(column-begin));
+            }
+            row=end;
+        }
+    }
+    cc_boss_label_sprite(0,0,x-2,y-1,11,0,0,0,0,0xD7181200,0,344,38);
+}
+
 // 元のファイルが見つからない表示画像だけを共用する。戦闘定義の名前は変更しない。
 std::string ImageAlias(const char* path) {
     std::string value=path ? path : "";
@@ -169,23 +196,13 @@ void DrawLabels() {
     const auto* grid=Grid();
     if(!grid)return;
     // HUD最前面ではなく、顔・カーソルの直後かつ標準/EXTRAカラー一覧の下へ合成する。
-    // フォントはNativeColorMenuと同じゲーム内英数字アトラス。元の画像座標・拡大に追従する。
-    const auto* font=reinterpret_cast<const unsigned*>(0x55D680);
-    const unsigned width=font[0x408/4],height=font[0x40C/4],columns=font[0x410/4],texture=font[0x41C/4];
-    if(!texture || !width || !height || !columns)return;
+    // ラベルも元の画像座標・拡大に追従させる。
     auto& mode=*reinterpret_cast<uint8_t*>(0x56447F);
     const auto previousMode=mode;mode=2;
     for(const auto cell:Cells) {
         const auto* entry=grid+cell*6;
         if(!IsBoss(entry[2]) || *reinterpret_cast<const float*>(entry+5)>.01f)continue;
-        const int x=int(entry[3])+6,y=int(entry[4])+7;
-        constexpr char label[]="[BOSS]";
-        for(unsigned i=0;i<6;++i) {
-            const unsigned glyph=unsigned(label[i]-' ');
-            cc_boss_label_sprite(0,texture,x+int(i)*6,y,12,int(glyph%columns*width),int(glyph/columns*height),
-                int(width),int(height),0xFFFFE223,0,345,6);
-        }
-        cc_boss_label_sprite(0,0,x-1,y,13,0,0,0,0,0xD7181200,0,344,38);
+        DrawBossLabel(int(entry[3])+7,int(entry[4])+9);
     }
     mode=previousMode;
 }

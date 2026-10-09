@@ -3,6 +3,27 @@
 #include <cstdint>
 
 namespace cccaster::game_interface {
+struct NativeImageRect { int32_t x0=0,y0=0,x1=0,y1=0; bool operator==(const NativeImageRect&) const = default; };
+// 0x432E30の640x480画像の最終合成先。D3D viewport全体とは異なる。
+// AUTOの比率は通常窓／ボーダーレス側で解決して渡す。
+inline NativeImageRect CompositeImageRect(int width,int height,unsigned aspect,int autoWidth,int autoHeight) {
+    if(width<=0 || height<=0 || width>16384 || height>16384)return {};
+    if(!aspect)return {0,0,width,height};
+    long double rw=4,rh=3;
+    switch(aspect) {
+    case 1:rw=autoWidth;rh=autoHeight;break;
+    case 3:rw=16;rh=9;break;
+    case 4:rw=16;rh=10;break;
+    case 5:rw=5;rh=4;break;
+    case 6:rw=15;rh=9;break;
+    }
+    if(rw<=0 || rh<=0)return {};
+    int w=width,h=height;
+    if(rw/rh>double(4.0/3.0))w=int(double((rh*4)/(rw*3)*width));
+    else h=int(double((rw*3)/(rh*4)*height));
+    const int x=(width-w)/2,y=(height-h)/2;
+    return {x,y,x+w,y+h};
+}
 struct ScreenResolution {
     int width = 0, height = 0;
     bool available = false, pending = false;

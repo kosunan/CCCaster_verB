@@ -24,6 +24,7 @@
 #include "core_dll/hook/MonitorPresent.hpp"
 #include "core_dll/mbaa_mem/NativeLoopOptimization.hpp"
 #include "core_dll/mbaa_mem/NativeFpsCounter.hpp"
+#include "core_dll/mbaa_mem/NativeHud.hpp"
 #include "core_dll/hook/WndProcHook.hpp"
 #include "core_dll/hook/DirectInputHook.hpp"
 #include "core_dll/ui/UIManager.hpp"
@@ -424,6 +425,7 @@ void GameFrameOrchestrator::RenderOverlay(LPDIRECT3DDEVICE9 pDevice) {
         try {
             cccaster::domain::ui::UIManager::Render(uiPhase);
             if (uiPhase == cccaster::domain::ui::UiPhase::InGame &&
+                cccaster::game_interface::native_hud::BattleHudReady() &&
                 !cccaster::game_interface::GameMem().IsPauseMenuOpen()) {
                 cccaster::domain::ui::LearningOverlay::Draw(SceneRunner::AppMode(), SceneRunner::FrameAdvantage());
                 cccaster::domain::ui::LearningOverlay::DrawFrameBar(SceneRunner::AppMode(), SceneRunner::FrameBar());

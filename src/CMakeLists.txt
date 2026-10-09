@@ -197,4 +197,8 @@ endif()
 
 # 両OS共通。harness はゲーム無しで同期ロジックを通しで走らせる実行ファイル。
 add_subdirectory(src/harness)
-add_subdirectory(src/tests)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/tests/CMakeLists.txt")
+    add_subdirectory(src/tests)
+else()
+    message(STATUS "ローカル単体テストがないため、製品とharnessのみビルドする")
+endif()

@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include "core_dll/ui/HudLayout.hpp"
 namespace cccaster::hud {
+inline constexpr unsigned PlayerNameFont=6;
 void AddFonts();
 void Prepare(IDirect3DDevice9* device);
 void FinishInput();

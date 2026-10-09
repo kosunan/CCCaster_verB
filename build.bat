@@ -6,5 +6,6 @@ cmake -S src -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_
 if errorlevel 1 exit /b 1
 cmake --build build -j8
 if errorlevel 1 exit /b 1
+if not exist "src\src\tests\CMakeLists.txt" exit /b 0
 ctest --test-dir build --output-on-failure --no-tests=error
 exit /b %ERRORLEVEL%

@@ -9,6 +9,7 @@
 #include "core_dll/ui/HudTheme.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/DebugLog.hpp"
+#include "core_dll/mbaa_mem/NativeHud.hpp"
 #include <string>
 #include <imgui.h>
 #include <algorithm>
@@ -31,59 +32,51 @@ LatencyWarningSnapshot ReadLatencyWarning(int delay, int rollback) {
     return cached;
 }
 
-void DrawDelay(int delay, bool highlight = false) {
+// 一つ前の名前表示と同じArial通常体・黒縁。配置は元ゲームの最終合成先へ合わせる。
+void DrawIdentity(bool selection, bool namesOnly = false) {
     using namespace cccaster::hud;
-    const Canvas c;
-    char settings[16]; FormatDelayLabel(settings,sizeof(settings),delay);
-    const auto r = Layout::Settings;
-    c.Plate(r,highlight ? Gold : Blue,true);
-    if (highlight) {
-        c.Fill({r.x+1,r.y+1,r.width-2,r.height-3},Gold);
-        c.Plate({r.x+1,r.y+r.height+2,r.width-2,13},Gold);
-        c.Text(r.x+6,r.y+r.height+4,"CHANGED",8,Gold,3,r.width-12);
-    }
-    auto* font = Font(1,c.layout.scale);
-    const float width = font->CalcTextSizeA(c.S(Layout::SettingsSize),10000,0,settings).x;
-    c.draw->AddText(font,c.S(Layout::SettingsSize),
-        {c.At(320,r.y+2).x-width/2,c.At(0,r.y+2).y},highlight ? Ink : White,settings);
-}
-
-void DrawBattleIdentity(int delay, bool namesOnly = false, bool showDelay = true) {
-    using namespace cccaster::hud;
-    const auto names = cccaster::domain::session::SceneRunner::PlayerNames();
-    const auto score = cccaster::domain::session::SceneRunner::Score();
-    const Canvas c;
-    const auto scale = c.layout.scale;
-    c.draw->PushClipRect(c.At(0,0),c.At(640,480),true);
-    for (unsigned player = 0; player < 2; ++player) {
-        const bool right = player == 1;
-        const auto color = right ? Blue : Red;
-        const auto r = Layout::Player(player);
-        c.Plate(r,color,true);
-        const float emblemX = right ? r.x+r.width-28 : r.x+2;
-        c.Fill({emblemX,17,26,13},Ink);
-        if (const auto texture = Emblem(player))
-            c.draw->AddImage(texture,c.At(emblemX+1,17),c.At(emblemX+25,29));
-        else c.Text(emblemX+6,17,right ? "P2" : "P1",9,color);
-        const auto wins = Layout::Wins(player);
-        const float nameLeft = right ? (namesOnly ? r.x+8 : wins.x+wins.width+8) : r.x+34;
-        const float nameRight = right ? emblemX-6 : (namesOnly ? r.x+r.width-8 : wins.x-8);
-        const char* name = right ? names.p2.data() : names.p1.data();
-        if (!*name) name = right ? "PLAYER 2" : "PLAYER 1";
-        c.Text(right ? nameRight : nameLeft,16,name,Layout::NameSize,White,0,nameRight-nameLeft,right);
-        if (!namesOnly) {
-            char value[4];
-            std::snprintf(value,sizeof(value),"%u",(std::min)(right ? score.p2Wins : score.p1Wins,999u));
-            c.Fill(wins,right ? IM_COL32(13,62,95,255) : IM_COL32(78,25,48,255));
-            const float edgeX = right ? wins.x+wins.width+2 : wins.x-2;
-            c.draw->AddLine(c.At(edgeX,r.y+4),c.At(edgeX,r.y+r.height-4),color,(std::max)(1.f,scale));
-            auto* font = Font(2,scale);
-            const float width = font->CalcTextSizeA(c.S(18),10000,0,value).x;
-            c.draw->AddText(font,c.S(18),{c.At(wins.x+wins.width/2,wins.y-1).x-width/2,c.At(0,wins.y-1).y},White,value);
+    using Runner = cccaster::domain::session::SceneRunner;
+    if (!HudDisplay::Visible() || StateUiLogic::IsMappingWindowOpen()) return;
+    const auto viewport=CurrentViewport();
+    const float scale=Layout::Fit(viewport).scale;
+    const auto at=[&](float x,float y) {return ImVec2(viewport.x+x*viewport.width/640,viewport.y+y*viewport.height/480);};
+    auto* draw=ImGui::GetForegroundDrawList();
+    draw->PushClipRect(at(0,0),at(640,480),true);
+    const auto text=[&](float x,float y,float area,const char* input,float size,unsigned role,int align) {
+        auto* font=Font(role,scale);
+        std::string value=input;
+        const float available=area*viewport.width/640;
+        const auto width=[&](const std::string& s) {return font->CalcTextSizeA(size*scale,100000,0,s.c_str()).x;};
+        if(width(value)>available) {
+            while(!value.empty() && width(value+"...")>available)value.pop_back();
+            value+="..."; // 名前は共有契約でASCIIへ正規化済み。
+        }
+        auto pos=at(x,y);pos.x+=(available-width(value))*align/2;
+        const float edge=(std::max)(1.f,scale);
+        for(const auto offset:{ImVec2(-edge,0),ImVec2(edge,0),ImVec2(0,-edge),ImVec2(0,edge)})
+            draw->AddText(font,size*scale,{pos.x+offset.x,pos.y+offset.y},IM_COL32(0,0,0,255),value.c_str());
+        draw->AddText(font,size*scale,pos,IM_COL32(255,255,255,255),value.c_str());
+    };
+    const auto names=Runner::PlayerNames();
+    for(unsigned side=0;side<2;++side) {
+        const char* name=side ? names.p2.data() : names.p1.data();
+        if(selection) {
+            text(side ? 396 : 28,0,216,name,20,PlayerNameFont,side ? 0 : 2);
+        } else text(side ? 394 : 30,0,216,name,22,PlayerNameFont,1);
+        if(!namesOnly)if(const auto image=Emblem(side)) {
+            const auto center=at(side ? 378 : 262,11);
+            const ImVec2 a{center.x-12*scale,center.y-6*scale},b{center.x+12*scale,center.y+6*scale};
+            draw->AddRectFilled({a.x-scale,a.y-scale},{b.x+scale,b.y+scale},IM_COL32(0,0,0,220));
+            draw->AddImage(image,a,b); // 未設定時は何も表示しない。P1/P2の代替文字は不要。
         }
     }
-    if (!namesOnly && showDelay) DrawDelay(delay);
-    c.draw->PopClipRect();
+    if(!namesOnly) {
+        const auto score=Runner::Score();
+        char value[12];
+        std::snprintf(value,sizeof(value),"%u - %u",(std::min)(score.p1Wins,999u),(std::min)(score.p2Wins,999u));
+        text(281,1,78,value,18,PlayerNameFont,1);
+    }
+    draw->PopClipRect();
 }
 
 void DrawBattleMetrics(const HudFixedValues &value, bool qpcFallback) {
@@ -149,15 +142,42 @@ void DrawBattleLatencyWarning(const LatencyWarningSnapshot &latency) {
 
 
 // 英語の短い案内。上部と同じ実ビューポート・フォント倍率を使う。
-void DrawSelectionGuidance(int delay, const char* notice = nullptr, bool showDetails = true) {
+void DrawSelectionGuidance(int delay, const char* notice = nullptr, bool showDetails = true, bool controls = true) {
     using namespace cccaster::hud;
     const Canvas c;
     const auto r = Layout::SelectionGuide;
     c.Plate(r,Blue,true);
-    c.Key(18,r.y+6,24,"F4");
-    c.Text(50,r.y+7,"CONTROLLER SETUP",10,White);
-    c.Key(350,r.y+6,84,"START / F1");
-    c.Text(446,r.y+7,cccaster::domain::scene::selection_options::menu.open ? "CLOSE MENU" : "OPEN MENU",10,White);
+    if(controls) {
+        c.Key(18,r.y+6,24,"F4");
+        c.Text(50,r.y+7,"CONTROLLER SETUP",10,White);
+        c.Key(380,r.y+6,84,"START / F1");
+        c.Text(476,r.y+7,cccaster::domain::scene::selection_options::menu.open ? "CLOSE MENU" : "OPEN MENU",10,White);
+    }
+    // 同じ濃紺の帯・白枠・直立した太字で、独立した青い箱にしない。
+    const float center=controls ? 253.f : 320.f;
+    if(controls)for(const float x:{214.f,292.f})c.draw->AddLine(c.At(x,r.y+1),c.At(x,r.y+r.height-1),Line,c.S(1));
+    static DelayChangeHighlight highlight;
+    const auto now=cccaster::platform::RealMonotonicUs();
+    const bool changed=highlight.Observe(delay,now);
+    char label[16];FormatDelayLabel(label,sizeof(label),delay);
+    auto* font=Font(1,c.layout.scale);
+    const float size=changed ? 12.f : 13.f;
+    const float length=font->CalcTextSizeA(c.S(size),10000,0,label).x;
+    auto pos=c.At(center,r.y+(changed ? 2 : 5));pos.x-=length/2;
+    c.draw->AddText(font,c.S(size),pos,changed ? Gold : White,label);
+    if(changed) {
+        c.Rule(center-36,r.y+r.height-2,72,Gold);
+        auto* small=Font(3,c.layout.scale);
+        auto changedAt=c.At(center,r.y+17);
+        changedAt.x-=small->CalcTextSizeA(c.S(7),10000,0,"CHANGED").x/2;
+        c.draw->AddText(small,c.S(7),changedAt,Gold,"CHANGED");
+    }
+    static const bool trace=std::getenv("CCCASTER_TEST_SELECTION_OPTIONS")!=nullptr;
+    static int previous=-1,previousHighlight=-1;
+    if(trace && (previous!=delay || previousHighlight!=int(changed))) {
+        cccaster::domain::session::DebugLog("[DelayHud] d=%d highlight=%u qpcUs=%lld hud=%s",delay,unsigned(changed),now,HudDisplay::Name());
+        previous=delay;previousHighlight=int(changed);
+    }
     // 常設の補助文を除き、保存直後や通信上の通知だけ一時表示する。
     const char* message = notice ? notice :
         HudDisplay::Detailed() && StateUiLogic::IsControllerConfirmationActive() ? "CONTROLLER READY" : nullptr;
@@ -222,41 +242,24 @@ void DrawHud(bool selection) {
     using Runner = cccaster::domain::session::SceneRunner;
     // キャラ選択中の設定案内はHUDの表示モードにかかわらず残す。
     const auto appMode = Runner::AppMode();
+    if (!selection && !cccaster::game_interface::native_hud::BattleHudReady()) return;
     if (!selection && appMode != 1 && !HudDisplay::Visible()) return;
     // Offline versus keeps only delay and controls during character selection.
     // HUD shortcuts must not bring names, scores or battle metrics back.
     if (appMode == 5 && !selection) return;
-    if (appMode == 4) {
-        if (HudDisplay::Visible()) DrawBattleIdentity(0, true);
-        return;
-    }
+    if (appMode == 0 || appMode == 2 || appMode == 4) DrawIdentity(selection,appMode==4);
+    if (appMode == 4) return;
     if (appMode == 2) {
-        if (HudDisplay::Visible()) DrawBattleIdentity(Runner::SpectatorStatus().delay);
+        if(selection && HudDisplay::Visible())DrawSelectionGuidance(int(Runner::SpectatorStatus().delay),nullptr,false,false);
         return;
     }
     if (appMode != 0 && appMode != 1 && appMode != 5) return;
     const bool training = appMode == 1;
     const int d = selection ? Settings::delay.load() : StateUiLogic::GetDelay();
-    static DelayChangeHighlight delayHighlight;
-    const auto now = cccaster::platform::RealMonotonicUs();
-    const bool highlighted = delayHighlight.Observe(d,now);
-    if (appMode == 0 && HudDisplay::Visible()) DrawBattleIdentity(d, false, !selection);
     if (training && !selection) {
         if (FrameBarDisplay::Visible(1))
             DrawTrainingControls(Runner::TrainingStateNotice(), cccaster::core::timer::WasapiClock::GetInstance().IsFallback());
         return;
-    }
-    // キャラ選択ではHiddenでも残す。要求中の値ではなく、双方で確定したDを見る。
-    if (selection) {
-        DrawDelay(d,highlighted);
-        static const bool trace = std::getenv("CCCASTER_TEST_SELECTION_OPTIONS") != nullptr;
-        static int previousDelay = -1, previousHighlight = -1;
-        if (trace && (previousDelay != d || previousHighlight != int(highlighted))) {
-            cccaster::domain::session::DebugLog("[DelayHud] d=%d highlight=%u qpcUs=%lld hud=%s",
-                d,unsigned(highlighted),now,HudDisplay::Name());
-            previousDelay = d;
-            previousHighlight = int(highlighted);
-        }
     }
     if (selection && (appMode == 5 || !HudDisplay::Detailed())) {
         DrawSelectionGuidance(d, nullptr, appMode != 5);
