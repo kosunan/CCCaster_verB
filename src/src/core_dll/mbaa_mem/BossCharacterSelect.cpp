@@ -4,7 +4,6 @@
 #include "core_dll/mbaa_mem/MbaaAddresses.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include "shared_contracts/BossCharacters.hpp"
-#include "core_dll/ui/HudResources.hpp"
 #include <MinHook.h>
 #include <atomic>
 #include <cstring>
@@ -19,6 +18,37 @@ void* cc_boss_scale_resume=reinterpret_cast<void*>(0x486008);
 float __cdecl cc_boss_preview_scale(unsigned*);
 unsigned __cdecl cc_boss_preview(unsigned,unsigned,unsigned*);
 unsigned __cdecl cc_boss_preview_id(unsigned);
+unsigned __cdecl cc_boss_grid_depth(unsigned);
+unsigned __cdecl cc_boss_cursor_depth(const unsigned*,unsigned);
+void* cc_boss_grid_depth_resume=reinterpret_cast<void*>(0x48BC80);
+void* cc_boss_face_depth_resume=reinterpret_cast<void*>(0x48BDC1);
+void* cc_boss_cursor_depth_resume=reinterpret_cast<void*>(0x48BE6B);
+void* cc_boss_cursor_front_resume=reinterpret_cast<void*>(0x48BEAF);
+// 4か所のpush depthだけを置換。元の条件分岐用FLAGS・全レジスタとx87スタックを保持する。
+__attribute__((naked)) void cc_boss_grid_depth_hook() {
+    __asm__ __volatile__("pushl $360; pushfl; pushal; pushl %ebx; call _cc_boss_grid_depth; addl $4,%esp;"
+                         "movl %eax,36(%esp); popal; popfl; jmp *_cc_boss_grid_depth_resume");
+}
+__attribute__((naked)) void cc_boss_face_depth_hook() {
+    __asm__ __volatile__("pushl $361; pushfl; pushal; pushl $361; pushl %ebx; call _cc_boss_cursor_depth; addl $8,%esp;"
+                         "movl %eax,36(%esp); popal; popfl; jmp *_cc_boss_face_depth_resume");
+}
+__attribute__((naked)) void cc_boss_cursor_depth_hook() {
+    // 元ESP+0x10は現在の側のキャラ番号ポインタ。保存分40バイトを加算する。
+    __asm__ __volatile__("pushl $362; pushfl; pushal; movl 56(%esp),%eax; pushl $362; pushl %eax;"
+                         "call _cc_boss_cursor_depth; addl $8,%esp; movl %eax,36(%esp); popal; popfl;"
+                         "jmp *_cc_boss_cursor_depth_resume");
+}
+__attribute__((naked)) void cc_boss_cursor_front_hook() {
+    // 直前のcdecl描画の引数48バイトが残るため、同じポインタは元ESP+0x40。
+    __asm__ __volatile__("pushl $363; pushfl; pushal; movl 104(%esp),%eax; pushl $363; pushl %eax;"
+                         "call _cc_boss_cursor_depth; addl $8,%esp; movl %eax,36(%esp); popal; popfl;"
+                         "jmp *_cc_boss_cursor_front_resume");
+}
+// ネイティブの描画キューへラベルを登録。幅だけEDX、残りはcdeclスタック。
+__attribute__((naked)) void __cdecl cc_boss_label_sprite(unsigned,unsigned,int,int,int,int,int,int,int,unsigned,unsigned,int,int) {
+    __asm__ __volatile__("movl 52(%esp),%edx; movl $0x415580,%eax; jmp *%eax");
+}
 // 0x485EB0/0x485E00: ECX=component, EDX=character, EDI=出力先。通常fastcallにEDIを落とさない。
 __attribute__((naked)) void cc_boss_preview_hook() {
     __asm__ __volatile__("pushl %edi; pushl %edx; pushl %ecx; call _cc_boss_preview; addl $12,%esp; ret");
@@ -44,6 +74,9 @@ bool installed=false,enabled=false;
 std::atomic<bool> presentation{false};
 using FileLoader=int (__cdecl*)(const char*,void*,unsigned,unsigned);
 FileLoader originalFile=nullptr;
+using GridDraw=unsigned (__stdcall*)(unsigned);
+GridDraw originalGridDraw=nullptr;
+void* originalDepth[4]{};
 unsigned* Grid(){return *reinterpret_cast<unsigned**>(0x77181C);}
 unsigned* Cursor(unsigned side){return side ? CC_P2_SELECTOR_MODE_ADDR : CC_P1_SELECTOR_MODE_ADDR;}
 
@@ -91,6 +124,11 @@ template<class T> bool Hook(uintptr_t address,const unsigned char* signature,siz
     return MH_CreateHook(reinterpret_cast<void*>(address),hook,reinterpret_cast<void**>(original))==MH_OK &&
            cccaster::hook_batch::Enable(reinterpret_cast<void*>(address))==MH_OK;
 }
+__attribute__((force_align_arg_pointer)) unsigned __stdcall DrawGrid(unsigned texture) {
+    const auto result=originalGridDraw(texture);
+    DrawLabels();
+    return result;
+}
 bool Install() {
     if(installed)return true;
     if(!game_build::RuntimeValidated())return false;
@@ -98,10 +136,21 @@ bool Install() {
     const unsigned char preview[]{0x81,0xec,0x10,0x01,0,0,0xa1,0x58,0xb4,0x54,0};
     const unsigned char palette[]{0x81,0xec,0x0c,0x01,0,0};
     const unsigned char scale[]{0xd9,0x05,0x3c,0xd8,0x53,0};
+    const unsigned char gridDraw[]{0x55,0x8b,0xec,0x83,0xe4,0xf8};
+    const unsigned char sprite[]{0x55,0x8b,0xec,0x83,0xe4,0xf8,0x81,0xec,0x80,0,0,0};
+    if(std::memcmp(reinterpret_cast<void*>(0x415580),sprite,sizeof(sprite)))return false;
     if(!Hook(0x4C8B10,file,sizeof(file),reinterpret_cast<void*>(LoadFile),&originalFile) ||
        !Hook(0x485EB0,preview,sizeof(preview),reinterpret_cast<void*>(cc_boss_preview_hook),&cc_boss_preview_original) ||
        !Hook(0x485E00,palette,sizeof(palette),reinterpret_cast<void*>(cc_boss_palette_hook),&cc_boss_palette_original) ||
-       !Hook(0x486002,scale,sizeof(scale),reinterpret_cast<void*>(cc_boss_scale_hook),&cc_boss_scale_original))return false;
+       !Hook(0x486002,scale,sizeof(scale),reinterpret_cast<void*>(cc_boss_scale_hook),&cc_boss_scale_original) ||
+       !Hook(0x48BB80,gridDraw,sizeof(gridDraw),reinterpret_cast<void*>(DrawGrid),&originalGridDraw))return false;
+    const uintptr_t depthAddresses[]{0x48BC7B,0x48BDBC,0x48BE66,0x48BEAA};
+    void* depthHooks[]{reinterpret_cast<void*>(cc_boss_grid_depth_hook),reinterpret_cast<void*>(cc_boss_face_depth_hook),
+        reinterpret_cast<void*>(cc_boss_cursor_depth_hook),reinterpret_cast<void*>(cc_boss_cursor_front_hook)};
+    for(unsigned i=0;i<4;++i) {
+        const unsigned char pushDepth[]{0x68,static_cast<unsigned char>(0x64+i),0x01,0,0};
+        if(!Hook(depthAddresses[i],pushDepth,sizeof(pushDepth),depthHooks[i],&originalDepth[i]))return false;
+    }
     // csel_icon00 / csel_nameの元アトラス番号。固有絵のある16/32は保持。
     for(const auto id:Characters)if(id>=50) {
         reinterpret_cast<int*>(0x5519F8)[id]=reinterpret_cast<const int*>(0x5519F8)[Base(id)];
@@ -119,19 +168,26 @@ void DrawLabels() {
     if(!enabled || *CC_GAME_MODE_ADDR!=CC_GAME_MODE_CHARA_SELECT)return;
     const auto* grid=Grid();
     if(!grid)return;
-    const auto viewport=hud::CurrentViewport();
-    const float sx=viewport.width/640.f,sy=viewport.height/480.f;
-    const float size=8.5f*(std::min)(sx,sy);
-    auto* font=hud::Font(3,(std::min)(sx,sy));
-    auto* draw=ImGui::GetForegroundDrawList();
+    // HUD最前面ではなく、顔・カーソルの直後かつ標準/EXTRAカラー一覧の下へ合成する。
+    // フォントはNativeColorMenuと同じゲーム内英数字アトラス。元の画像座標・拡大に追従する。
+    const auto* font=reinterpret_cast<const unsigned*>(0x55D680);
+    const unsigned width=font[0x408/4],height=font[0x40C/4],columns=font[0x410/4],texture=font[0x41C/4];
+    if(!texture || !width || !height || !columns)return;
+    auto& mode=*reinterpret_cast<uint8_t*>(0x56447F);
+    const auto previousMode=mode;mode=2;
     for(const auto cell:Cells) {
         const auto* entry=grid+cell*6;
         if(!IsBoss(entry[2]) || *reinterpret_cast<const float*>(entry+5)>.01f)continue;
-        const auto width=font->CalcTextSizeA(size,10000,0,"[BOSS]").x;
-        const ImVec2 at{viewport.x+(entry[3]+24)*sx-width/2,viewport.y+(entry[4]+8)*sy};
-        draw->AddRectFilled({at.x-1.5f*sx,at.y},{at.x+width+1.5f*sx,at.y+size+sy},IM_COL32(24,18,0,215));
-        draw->AddText(font,size,at,IM_COL32(255,226,35,255),"[BOSS]");
+        const int x=int(entry[3])+6,y=int(entry[4])+7;
+        constexpr char label[]="[BOSS]";
+        for(unsigned i=0;i<6;++i) {
+            const unsigned glyph=unsigned(label[i]-' ');
+            cc_boss_label_sprite(0,texture,x+int(i)*6,y,12,int(glyph%columns*width),int(glyph/columns*height),
+                int(width),int(height),0xFFFFE223,0,345,6);
+        }
+        cc_boss_label_sprite(0,0,x-1,y,13,0,0,0,0,0xD7181200,0,344,38);
     }
+    mode=previousMode;
 }
 bool Configure(unsigned mode,bool allow) {
     // 同一PCのVersusにはフック・セル・選択値を適用しない。
@@ -159,6 +215,14 @@ bool Configure(unsigned mode,bool allow) {
 }
 }
 
+extern "C" __attribute__((force_align_arg_pointer)) unsigned cc_boss_grid_depth(unsigned offset) {
+    const auto* grid=*reinterpret_cast<unsigned**>(0x77181C);
+    return cccaster::boss::selection::Enabled() && grid && offset<63*24 &&
+        cccaster::boss::IsBoss(grid[offset/4+2]) ? 340u : 360u;
+}
+extern "C" __attribute__((force_align_arg_pointer)) unsigned cc_boss_cursor_depth(const unsigned* character,unsigned depth) {
+    return cccaster::boss::selection::Enabled() && character && cccaster::boss::IsBoss(*character) ? depth-20 : depth;
+}
 extern "C" __attribute__((force_align_arg_pointer)) unsigned cc_boss_preview_id(unsigned character) {
     return cccaster::boss::Base(character);
 }

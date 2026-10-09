@@ -7,7 +7,6 @@
 #include "core_dll/engine/SelectionOptions.hpp"
 #include "core_dll/ui/HudResources.hpp"
 #include "core_dll/ui/HudTheme.hpp"
-#include "core_dll/mbaa_mem/BossCharacterSelect.hpp"
 #include "core_dll/common/Platform.hpp"
 #include "core_dll/common/DebugLog.hpp"
 #include <string>
@@ -249,7 +248,6 @@ void DrawHud(bool selection) {
     }
     // キャラ選択ではHiddenでも残す。要求中の値ではなく、双方で確定したDを見る。
     if (selection) {
-        cccaster::boss::selection::DrawLabels();
         DrawDelay(d,highlighted);
         static const bool trace = std::getenv("CCCASTER_TEST_SELECTION_OPTIONS") != nullptr;
         static int previousDelay = -1, previousHighlight = -1;

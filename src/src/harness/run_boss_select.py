@@ -24,6 +24,7 @@ def main():
     parser.add_argument('--loading-inspect',action='store_true',help='ロード画面で入力を止め、目視確認用の時間を確保する')
     parser.add_argument('--characters',type=int,nargs='+',choices=BOSSES,default=BOSSES)
     parser.add_argument('--stage-inspect',action='store_true',help='ステージ決定前にcontinueを待つ')
+    parser.add_argument('--color-inspect',action='store_true',help='通常/P1ボス/P2ボスのカラー一覧とキャンセル後の描画順を目視確認する')
     args=parser.parse_args()
     import vgamepad as vg
     from vgamepad.win import vigem_client as vc
@@ -67,17 +68,18 @@ def main():
         if key in buttons:pad.press_button(buttons[key])
         else:pad.directional_pad(directions[key])
         pad.update();time.sleep(.09);pad.reset();pad.update();time.sleep(.15)
-    def navigate(target):
+    def navigate(target,side=0):
         grid=read(0x77181c)
         ids=[read(grid+i*24+8) for i in range(63)]
-        start=read(0x74d8f8)
+        cursor=0x74d8f8+side*0x24
+        start=read(cursor)
         queue=deque([(start,[])])
         seen={start}
         while queue:
             cell,path=queue.popleft()
             if cell==target:
                 for direction in path:press(direction)
-                if read(0x74d8f8)!=target:raise RuntimeError(f'カーソル不一致: {start}->{target}, {path}, actual={read(0x74d8f8)}')
+                if read(cursor)!=target:raise RuntimeError(f'カーソル不一致: {start}->{target}, {path}, actual={read(cursor)}')
                 return
             for key,delta in [('down',9),('up',-9),('right',1),('left',-1)]:
                 nxt=cell
@@ -86,6 +88,12 @@ def main():
                     if ids[nxt]!=0xffffffff:break
                 if nxt not in seen:seen.add(nxt);queue.append((nxt,path+[key]))
         raise RuntimeError('到達できないセル')
+    def inspect_color(label,side):
+        time.sleep(.6)
+        state=[read(0x74d8ec+side*0x24+i*4) for i in range(9)]
+        if state[0]!=2:raise RuntimeError(f'カラー選択に未到達: {label}, {state}')
+        result.setdefault('color_inspections',[]).append(dict(label=label,side=side,selector=state))
+        print(f'COLOR_INSPECT {label}; continueで再開',flush=True);input()
     def return_select():
         press('start');wait(lambda:read(0x74d7fc)!=0,'Trainingメニューなし');time.sleep(.4)
         menu=read(read(read(0x74d7fc)+0x10));begin,end=read(menu+0x4c),read(menu+0x50)
@@ -122,6 +130,17 @@ def main():
         allowed=not args.disabled and not args.offline
         if [c[2] for c in row]!=(BOSSES if allowed else [0xffffffff]*8):raise RuntimeError('ボス列の有効条件不一致')
         if allowed:
+            if args.color_inspect:
+                # 通常入力だけで通常キャラのカラー一覧と、そのキャンセルからの復帰を確認。
+                normal=next(i for i in range(63) if read(grid+i*24+8)==1)
+                navigate(normal);press('a')
+                wait(lambda:read(0x74d8ec)==1,'通常キャラのムーン選択に未到達');time.sleep(.6);press('a')
+                wait(lambda:read(0x74d8ec)==2,'通常キャラのカラー選択に未到達')
+                inspect_color('P1_NORMAL',0)
+                for _ in range(6):press('right')
+                inspect_color('P1_LAST_PAGE',0)
+                press('b');press('b')
+                wait(lambda:read(0x74d8ec)==0,'通常カラーからキャラ選択へ戻らない')
             for i,character in enumerate(args.characters):
                 navigate(CELLS[BOSSES.index(character)]);time.sleep(.5)
                 if read(0x74d8fc)!=character:raise RuntimeError('キャラ番号不一致')
@@ -131,6 +150,17 @@ def main():
                 press('a');wait(lambda:read(0x74d8ec)==2,'ボスのカラー選択に未到達')
                 moon=0 if character==32 else 8 if character==53 else 9
                 if read(0x74d900)!=moon:raise RuntimeError('専用ムーン不一致')
+                if args.color_inspect and i==0:
+                    inspect_color('P1_BOSS',0)
+                    press('b')
+                    wait(lambda:read(0x74d8ec)==0,'ボスカラーからキャラ選択へ戻らない')
+                    time.sleep(.5);print('COLOR_CANCELLED; continueで再開',flush=True);input()
+                    press('a');wait(lambda:read(0x74d8ec)==2,'P1ボスのカラー再選択に未到達')
+                    time.sleep(.6);press('a');wait(lambda:read(0x74d8ec)>=3,'P1カラーを確定できない')
+                    wait(lambda:read(0x74d910)==0,'P2キャラ選択に未到達');time.sleep(.6)
+                    navigate(CELLS[BOSSES.index(59)],1);press('a')
+                    wait(lambda:read(0x74d910)==2,'P2ボスのカラー選択に未到達')
+                    inspect_color('P2_BOSS',1)
                 deadline=time.monotonic()+35
                 loading={}
                 inspected=False
