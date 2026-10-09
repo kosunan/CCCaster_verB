@@ -1,4 +1,5 @@
 #include "RmlHost.hpp"
+#include "AppContext.hpp"
 #include "RmlView.hpp"
 #include "EmblemPresets.hpp"
 #include "RmlUi_Platform_Win32.h"
@@ -214,7 +215,7 @@ RmlHost::~RmlHost()=default;
 void RmlHost::Start(bool software){impl_->Start(software);}
 void RmlHost::Resize(){try{impl_->Resize();}catch(const std::exception& e){impl_->Fail(e.what());}}
 void RmlHost::Visibility(bool visible){if(impl_->visible!=visible){impl_->visible=visible;impl_->dirty=true;impl_->Log(visible?"Drawing resumed":"Drawing paused; native matching remains active");}}
-void RmlHost::ShowError(){if(!impl_->error.empty())MessageBoxW(impl_->window,(L"画面を初期化できませんでした。F8でCPU描画をお試しください。\n"+RmlWin32::ConvertToUTF16(impl_->error)).c_str(),L"CCCaster / RmlUi",MB_OK|MB_ICONERROR);}
+void RmlHost::ShowError(){if(!impl_->error.empty())MessageBoxW(impl_->window,RmlWin32::ConvertToUTF16(std::string(Text("Could not initialize the display. Press F8 to try CPU rendering.\n","画面を初期化できませんでした。F8でCPU描画をお試しください。\n"))+impl_->error).c_str(),L"CCCaster / RmlUi",MB_OK|MB_ICONERROR);}
 void RmlHost::Send(const Json& value){impl_->Send(value);}
 void RmlHost::Frame(){impl_->Frame();}
 bool RmlHost::Message(UINT message,WPARAM w,LPARAM l){

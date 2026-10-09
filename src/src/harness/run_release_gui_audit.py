@@ -1,5 +1,7 @@
 """独立した新規配置で初期値・日英画面・設定保存を検証。公開サービスへ投稿しない。"""
 import argparse
+import ctypes
+from ctypes import wintypes
 import datetime
 import json
 import os
@@ -45,6 +47,47 @@ def main():
     def save(name, value):
         (out / name).write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    def check_connection(snapshot, language, choice):
+        labels = (('自動（LAN／IPv6／IPv4）', 'IPv4優先', 'IPv6優先') if language == 'ja'
+                  else ('Automatic (LAN / IPv6 / IPv4)', 'Prefer IPv4', 'Prefer IPv6'))
+        # 状態通知の直後は次の描画更新前の場合があるため、表示への反映も待つ。
+        if snapshot['elements']['connection-preference']['selectedText'] != labels[choice]:
+            snapshot = gui.wait(lambda s: s['elements']['connection-preference']['selectedText'] == labels[choice])
+        element = snapshot['elements']['connection-preference']
+        assert element['options'] == [dict(value=str(i), label=text) for i, text in enumerate(labels)], element
+        assert element['value'] == str(choice) and element['selectedText'] == labels[choice], element
+        assert snapshot['state']['settings']['ConnectionPreference'] == choice
+        assert 'If the screen is blank' not in snapshot['elements']['page-settings']['text']
+        assert '画面が映らないときは' not in snapshot['elements']['page-settings']['text']
+        check_display_menu(language)
+        result['checks'].append(f'{language}: 接続優先{choice}の候補・選択表示・設定値・表示メニュー')
+        return snapshot
+
+    def check_display_menu(language):
+        user = ctypes.windll.user32
+        user.GetMenu.argtypes = [wintypes.HWND]; user.GetMenu.restype = wintypes.HMENU
+        user.GetSubMenu.argtypes = [wintypes.HMENU, ctypes.c_int]; user.GetSubMenu.restype = wintypes.HMENU
+        user.GetMenuStringW.argtypes = [wintypes.HMENU, wintypes.UINT, wintypes.LPWSTR, ctypes.c_int, wintypes.UINT]
+        user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        windows = []
+        callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def collect(window, _):
+            pid = wintypes.DWORD()
+            user.GetWindowThreadProcessId(window, ctypes.byref(pid))
+            if pid.value == process.pid and user.GetMenu(window): windows.append(window)
+            return True
+        user.EnumWindows(callback_type(collect), 0)
+        assert len(windows) == 1, windows
+        menu = user.GetMenu(windows[0]); render = user.GetSubMenu(menu, 0)
+        actual = []
+        for target, index in ((menu, 0), (render, 0), (render, 1)):
+            buffer = ctypes.create_unicode_buffer(128)
+            assert user.GetMenuStringW(target, index, buffer, len(buffer), 0x400)
+            actual.append(buffer.value)
+        expected_menu = (['表示', '自動描画で再読み込み', 'CPU描画で再読み込み（F8）'] if language == 'ja'
+                         else ['Display', 'Reload with automatic rendering', 'Reload with CPU rendering (F8)'])
+        assert actual == expected_menu, actual
+
     try:
         process = start()
         initial = gui.wait(lambda s: not s['elements']['loading']['visible'])
@@ -72,12 +115,26 @@ def main():
                 assert not snapshot['overflow'], (language, page, snapshot['overflow'])
                 assert not snapshot['state']['error'], snapshot['state']['error']
                 save(f'{language}_{page}.json', snapshot)
+                if page == 'settings':
+                    for choice in range(3):
+                        gui.value('connection-preference', choice)
+                        snapshot = gui.wait(lambda s: s['state']['settings']['ConnectionPreference'] == choice)
+                        snapshot = check_connection(snapshot, language, choice)
+                        # 値を維持したまま切り替え、候補だけでなく閉じた選択欄も確認する。
+                        for switched in ('en' if language == 'ja' else 'ja', language):
+                            gui.click('language')
+                            snapshot = gui.wait(lambda s: s['state']['language'] == switched)
+                            snapshot = check_connection(snapshot, switched, choice)
+                        save(f'{language}_connection_{choice}.json', snapshot)
+                    gui.value('connection-preference', 0)
             gui.click('nav-matching')
             direct = gui.click('direct-tab')
             assert not direct['overflow']
             save(f'{language}_direct.json', direct)
             result['checks'].append(f'{language}: 5ページと直接接続の表示・横はみ出しなし')
         gui.settings()
+        gui.value('connection-preference', 2)
+        gui.wait(lambda s: s['state']['settings']['ConnectionPreference'] == 2)
         gui.type('player-name', 'RELEASE_TEST')
         gui.click('settings-back')
         gui.wait(lambda s: s['state']['profile']['name'] == 'RELEASE_TEST')
@@ -86,12 +143,19 @@ def main():
         persisted = gui.wait(lambda s: not s['elements']['loading']['visible'])
         assert persisted['state']['profile']['name'] == 'RELEASE_TEST'
         assert persisted['state']['language'] == 'en'
-        assert persisted['state']['settings'] == expected
+        assert persisted['state']['settings'] == dict(expected, ConnectionPreference=2)
         assert not persisted['state']['matching']['registered']
         save('persisted.json', persisted)
         result['checks'].append('名前・言語を保存し再起動で復元、他の初期値と未掲載状態を保持')
+        gui.settings()
+        check_connection(gui.call(), 'en', 2)
+        for software in (True, False):
+            gui.call('renderer', software=software)
+            snapshot = gui.wait(lambda s: s['state']['display']['software'] == software)
+            snapshot = check_connection(snapshot, 'en', 2)
+            save(f'en_renderer_{software}.json', snapshot)
         gui.click('language')
-        gui.wait(lambda s: s['state']['language'] == 'ja')
+        check_connection(gui.wait(lambda s: s['state']['language'] == 'ja'), 'ja', 2)
         result['passed'] = True
         print(f'Audit ready: {out}', flush=True)
         save('audit-ready.json', result)

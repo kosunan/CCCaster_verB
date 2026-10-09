@@ -10,16 +10,28 @@
 
 namespace {
 using namespace cccaster::gui;
+void UpdateDisplayMenu(HWND window) {
+    auto menu=GetMenu(window),render=GetSubMenu(menu,0);
+    auto label=[](HMENU target,UINT item,BOOL position,const wchar_t* text) {
+        MENUITEMINFOW info{};info.cbSize=sizeof(info);info.fMask=MIIM_STRING;info.dwTypeData=const_cast<wchar_t*>(text);
+        SetMenuItemInfoW(target,item,position,&info);
+    };
+    label(menu,0,TRUE,japanese?L"表示":L"Display");
+    label(render,1001,FALSE,japanese?L"自動描画で再読み込み":L"Reload with automatic rendering");
+    label(render,1002,FALSE,japanese?L"CPU描画で再読み込み（F8）":L"Reload with CPU rendering (F8)");
+    DrawMenuBar(window);
+}
 struct Application {
     LauncherModel model;
     RmlHost display;
     std::deque<Json> pending;
     bool includeLog=false, handling=false;
     bool testMode=false;
+    bool menuJapanese=japanese;
     UINT interval=0;
     explicit Application(HWND window,const std::filesystem::path& testDirectory) : display(window,[this,window](Json message){
         if(pending.size()<128){pending.push_back(std::move(message));PostMessageW(window,UiCommandMessage,0,0);}
-    },testDirectory),testMode(!testDirectory.empty()) {}
+    },testDirectory),testMode(!testDirectory.empty()) {UpdateDisplayMenu(window);}
     void Tick() {
         if(handling)return;
         handling=true;
@@ -31,6 +43,7 @@ struct Application {
                     if(command.contains("log") && command["log"].is_boolean()) includeLog=command["log"].get<bool>();
                 } else model.Command(command);
             }
+            if(menuJapanese!=japanese){menuJapanese=japanese;UpdateDisplayMenu(guiWindow);}
             const bool game=model.GameRunning();
             const bool visible=!IsIconic(guiWindow) && (!game || GetForegroundWindow()==guiWindow);
             display.Visibility(visible);

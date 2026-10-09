@@ -50,8 +50,14 @@ RmlView::RmlView(Rml::Context& context,std::function<void(Json)> send):context_(
         bindings+="<div class='binding-row'><span class='binding-label' data-en='"+std::string(enLabels[i])+"'>"+jaLabels[i]+"</span><button id='controller-bind-"+row+"' class='binding-value' data-command='controller-capture' data-value='"+row+"'>--</button><button id='controller-clear-"+row+"' class='binding-clear quiet' data-command='controller-clear' data-value='"+row+"' data-en='Clear'>解除</button></div>";
     }
     Find("controller-bindings")->SetInnerRML(bindings);
-    Walk(document_,[&](auto* e){
+    const auto rememberTranslation=[&](Rml::Element* e){
         if(e->HasAttribute("data-en")) translations_.emplace_back(e,e->GetInnerRML(),e->template GetAttribute<std::string>("data-en",""));
+    };
+    Walk(document_,[&](auto* e){
+        rememberTranslation(e);
+        // selectの候補は非DOMのselectbox内へ移動するため、通常の子走査では拾えない。
+        if(auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(e))
+            for(int i=0;i<select->GetNumOptions();++i) Walk(select->GetOption(i),rememberTranslation);
     });
     for(const char* event:{"click","change","blur","keydown"}) document_->AddEventListener(event,this,true);
     document_->Show(); MatchingTab("public");
@@ -87,6 +93,10 @@ void RmlView::Disable(const char* id,bool disabled) {
 void RmlView::Translate(const std::string& language) {
     language_=language;
     for(auto& [element,ja,en]:translations_) element->SetInnerRML(language_=="ja"?ja:Escape(en));
+    // 選択値を変えず、候補から複製される閉じた選択欄の表示も更新する。
+    Walk(document_,[](auto* e){
+        if(auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(e)) select->SetSelection(select->GetSelection());
+    });
     Text("language",language_=="ja"?"English":"日本語"); peopleSignature_.clear();requestSignature_.clear();
 }
 void RmlView::Navigate(const std::string& page) {
@@ -392,6 +402,9 @@ Json RmlView::Inspect() const {
         elements[e->GetId()]={{"visible",e->IsVisible(true)},{"disabled",Disabled(e)},{"checked",e->HasAttribute("checked")},{"value",Value(e->GetId().c_str())},{"text",e->GetInnerRML()},{"rect",{pos.x,pos.y,size.x,size.y}},
             {"clientWidth",e->GetClientWidth()},{"scrollWidth",e->GetScrollWidth()}};
         if(auto* select=dynamic_cast<Rml::ElementFormControlSelect*>(e)) {
+            for(int i=0;i<select->GetNumChildren(true);++i)
+                if(auto* child=select->GetChild(i);child->GetTagName()=="selectvalue")
+                    elements[e->GetId()]["selectedText"]=child->GetInnerRML();
             auto& options=elements[e->GetId()]["options"];options=Json::array();
             for(int i=0;i<select->GetNumOptions();++i) {
                 auto* option=select->GetOption(i);
