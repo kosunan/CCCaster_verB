@@ -139,6 +139,8 @@ struct SceneRuntime {
     int64_t selectionStarted = 0;
     bool selectionReleased = false;
     int64_t selectionTick = 0;
+    cccaster::core::netplay::Metronome loadingPace;
+    uint32_t loadingPaceFrame = 0;
     int64_t loadingStarted = 0;
     uint32_t loadingInputTick = 0, loadingButtons = 0;
     uint32_t loadingSkipFrames = 0;
@@ -515,6 +517,8 @@ void SceneRunner::Init(MatchContext &ctx) {
     runtime.secondInputGate = {};
     runtime.running = true;
     runtime.sequence = FrameSequence{};
+    runtime.loadingPace.Stop();
+    runtime.loadingPaceFrame = 0;
     runtime.loadingStarted = 0;
     runtime.loadingInputTick = runtime.loadingButtons = runtime.loadingSkipFrames = 0;
     runtime.loadingSkipRequested = false;
@@ -940,6 +944,27 @@ void SceneRunner::Step() {
     } // 初回のメニュー・パレット・ボス選択フックを一括有効化してからゲームへ戻す。
     auto &inputBuffer = MatchInputBuffer::GetInstance();
     const auto earlyPhase = cccaster::game_interface::PhaseMonitor::GetCurrentPhase();
+    if (ctx.appMode == 0 && earlyPhase == GamePhase::Loading &&
+        scene::SceneFastBoot::IsComplete()) {
+        // 対戦者の通常・再抽選ONCEロードを、処理込みの60Hzで進める。
+        // 通信の合意減速・時計補正から独立させ、描画省略や決定入力とは分離する。
+        // 観戦は従来の高速ロード、オフラインは下の既存待機を使う。
+        if (!runtime.loadingPace.IsRunning()) {
+            runtime.loadingPace.Start();
+            runtime.loadingPaceFrame = 0;
+        }
+        // 同一バイナリの実ゲーム比較専用。通常起動の60Hz方針は変更しない。
+        static const bool loadingUnpaced = cccaster::testing::IsScriptedInputEnabled() &&
+            std::getenv("CCCASTER_TEST_LOADING_UNPACED") != nullptr;
+        const auto due = runtime.loadingPace.WaitForNextTick(loadingUnpaced);
+        ++runtime.loadingPaceFrame;
+        static const bool traceLoadingPace = std::getenv("CCCASTER_PACE_TRACE") != nullptr;
+        if (traceLoadingPace)
+            DebugLog("[LoadingPace] app=%d role=%d frame=%u due=%lld clock=%lld qpc=%lld wait=%u",
+                ctx.appMode, int(ctx.isHost), runtime.loadingPaceFrame, due,
+                cccaster::core::timer::WasapiClock::GetTimeTicks(), cccaster::platform::RealMonotonicUs(),
+                unsigned(!loadingUnpaced));
+    } else runtime.loadingPace.Stop();
     if (earlyPhase == GamePhase::InGame) mem.PrepareStartupResources();
     // 戦闘中も完成画像をモニター周期で再提示する。追加提示の可否は
     // 待機側のスピン開始までの残り時間と、MonitorPresentの提示コストで判断する。

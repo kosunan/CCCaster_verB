@@ -1,13 +1,137 @@
 import tempfile
 import unittest
+import subprocess
+import sys
 from pathlib import Path
 from run_stage_rematch import analyze, analyze_intro_text, analyze_assembly_text, analyze_loading, analyze_spectator_drawing, analyze_intro_wait, analyze_round_starts, evaluate_behavior
 from run_stage_rematch import analyze_direct_rematch
 from run_stage_rematch import analyze_native_loops
 from run_stage_rematch import analyze_extra_colors
+from run_stage_rematch import analyze_loading_pace
 
 
 class StageRematchAnalysis(unittest.TestCase):
+    @staticmethod
+    def loading_pace_log(side=1, period=1000000, real_period=None, slow_asset=False, wait=None):
+        rows = []
+        for load in range(2):
+            if load:
+                rows.append('[Spectator] RETRY target=2' if side == 3 else
+                            '[StageRematch] DIRECT stage=12 mode=5')
+            base = 60000000 + load * 600000000
+            for frame in range(1, 9):
+                # 資産ロードで100ms停止した後、次締切が現在時刻+1Fへ再基準化。
+                extra = 6000000 if slow_asset and frame >= 4 else 0
+                due = base + frame * period + extra
+                qpc = (base + frame * (period if real_period is None else real_period) + extra) // 60
+                clock = qpc * 60 if wait == 0 else due
+                rows.append(f'[LoadingPace] app={2 if side == 3 else 0} role={int(side == 1)} '
+                            f'frame={frame} due={due} clock={clock} qpc={qpc}' +
+                            (f' wait={wait}' if wait is not None else ''))
+                rows.append(f'[TransitionDraw] mode=8 intro=0 skip={load} replay=0 qpc={qpc + 1}')
+            rows.append(f'[TransitionDraw] mode=1 intro=2 skip=0 replay=0 qpc={qpc + 2}')
+        return '\n'.join(rows) + '\n'
+
+    def test_loading_pace_requires_both_loads_on_both_players(self):
+        for side in (1, 2):
+            good = self.loading_pace_log(side)
+            result = analyze_loading_pace(good, side, True)
+            self.assertTrue(result['passed'], result)
+            self.assertEqual([r['frames'] for r in result['loads']], [8, 8])
+            self.assertAlmostEqual(result['loads'][0]['average_fps'], 60, places=2)
+            for bad in ('', good[:good.index('[StageRematch]')], good.replace('frame=4 ', 'frame=5 '),
+                        '\n'.join(line for line in good.splitlines() if 'frame=3 ' not in line),
+                        good.replace('clock=64000000', 'clock=63999999'),
+                        good.replace('due=64000000', 'due=invalid'),
+                        good.replace('mode=1 ', 'mode=5 '),
+                        good.replace('frame=4 ', 'frame=1 ')):
+                self.assertFalse(analyze_loading_pace(bad, side, True)['passed'], bad)
+            self.assertFalse(analyze_loading_pace(good, 2 if side != 2 else 1, True)['passed'])
+            missing_rematch = good.replace('[StageRematch] DIRECT ', '[Other] ').replace(
+                '[Spectator] RETRY target=2', '[Spectator] RETRY target=0')
+            self.assertFalse(analyze_loading_pace(missing_rematch, side, True)['passed'])
+
+    def test_loading_pace_rejects_wrong_period_and_false_real_time(self):
+        for period in (500000, 999999, 2000000):
+            self.assertFalse(analyze_loading_pace(self.loading_pace_log(period=period), 1, True)['passed'])
+        # 締切と音声時計を60Hzに見せても、QPCで無制限更新を検出する。
+        fast = self.loading_pace_log(real_period=1000)
+        self.assertFalse(analyze_loading_pace(fast, 1, True)['passed'])
+        for bad in (self.loading_pace_log().replace('qpc=1066666', 'qpc=1050000'),
+                    self.loading_pace_log(period=7000000, real_period=1000000)):
+            self.assertFalse(analyze_loading_pace(bad, 1, True)['passed'])
+
+    def test_loading_pace_accepts_asset_stalls_and_short_catchup(self):
+        slow = analyze_loading_pace(self.loading_pace_log(slow_asset=True), 1, True)
+        self.assertTrue(slow['passed'], slow)
+        self.assertEqual([r['deadline_rebases'] for r in slow['loads']], [1, 1])
+        self.assertLess(slow['loads'][0]['average_fps'], 60)
+        # 最初の復帰が20ms遅れたときは、直後の短い追いつきで過速と誤判定しない。
+        good = self.loading_pace_log().replace('clock=61000000 qpc=1016666',
+                                             'clock=62200000 qpc=1036666').replace(
+                                             'clock=62000000 qpc=1033333',
+                                             'clock=62200100 qpc=1036668')
+        self.assertTrue(analyze_loading_pace(good, 1, True)['passed'])
+
+    def test_loading_unpaced_requires_explicit_comparison_and_preserves_boundaries(self):
+        for side in (1, 2):
+            good = self.loading_pace_log(side, real_period=6000, wait=0)
+            result = analyze_loading_pace(good, side, True, unpaced=True)
+            self.assertTrue(result['passed'], result)
+            self.assertGreater(result['loads'][0]['average_fps'], 60)
+            self.assertFalse(analyze_loading_pace(good, side, True)['passed'])
+            for bad in (good.replace(' wait=0', ''), good.replace('wait=0', 'wait=1'),
+                        good.replace('wait=0', 'wait=invalid'), good.replace('frame=4 ', 'frame=5 '),
+                        good.replace('mode=1 ', 'mode=5 '),
+                        good.replace('due=64000000', 'due=64500000'),
+                        good.replace('clock=60024000', 'clock=60000000'),
+                        good.replace('qpc=1000400', 'qpc=1000100')):
+                self.assertFalse(analyze_loading_pace(bad, side, True, unpaced=True)['passed'], bad)
+        self.assertTrue(analyze_loading_pace(self.loading_pace_log(wait=1), 1, True)['passed'])
+
+    def test_loading_comparison_options_reject_invalid_scenarios_before_launch(self):
+        script = Path(__file__).with_name('run_stage_rematch.py')
+        for args, message in ((['random', '--loading-unpaced'], '--full-intro'),
+                              (['fixed', '--repeatable-stage'], 'random'),
+                              (['character', '--repeatable-stage'], 'random')):
+            result = subprocess.run([sys.executable, '-X', 'utf8', str(script), *args],
+                                    capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn(message, result.stderr)
+
+    def test_full_intro_includes_loading_pace_in_checkpoint_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for side in (1, 2):
+                (folder / f'game_{side}.log').write_text(self.loading_pace_log(side), encoding='utf-8')
+            spectator_path = folder / 'game_3.log'
+            spectator_log = '\n'.join(line for line in self.loading_pace_log(3).splitlines()
+                                      if '[LoadingPace]' not in line)
+            spectator_path.write_text(spectator_log, encoding='utf-8')
+            config = dict(scenario='random', spectator=True, full_intro=True)
+            result = evaluate_behavior(folder, config)
+            self.assertEqual([r['side'] for r in result['loading_pace']], [1, 2])
+            self.assertTrue(all(r['passed'] for r in result['loading_pace']))
+            self.assertTrue(result['spectator_loading_pace']['passed'])
+            (folder / 'game_2.log').write_text('', encoding='utf-8')
+            result = evaluate_behavior(folder, config)
+            self.assertFalse(result['loading_pace'][1]['passed'])
+            self.assertFalse(result['behavior_passed'])
+            (folder / 'game_2.log').write_text(self.loading_pace_log(2), encoding='utf-8')
+            spectator_path.write_text(self.loading_pace_log(3), encoding='utf-8')
+            result = evaluate_behavior(folder, config)
+            self.assertFalse(result['spectator_loading_pace']['passed'])
+            self.assertEqual(result['spectator_loading_pace']['unexpected_records'], 16)
+            self.assertFalse(result['behavior_passed'])
+            spectator_path.write_text(spectator_log, encoding='utf-8')
+            config['loading_unpaced'] = True
+            for side in (1, 2):
+                (folder / f'game_{side}.log').write_text(
+                    self.loading_pace_log(side, real_period=6000, wait=0), encoding='utf-8')
+            comparison = evaluate_behavior(folder, config)
+            self.assertTrue(all(r['passed'] and r['unpaced'] for r in comparison['loading_pace']))
+            self.assertTrue(comparison['spectator_loading_pace']['passed'])
+
     def test_extra_color_permission_keeps_own_color_and_stops_rejected_transfer(self):
         for blocked in ('', '1', '2', '12'):
             for side in (1, 2):

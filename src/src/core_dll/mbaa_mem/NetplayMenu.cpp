@@ -24,8 +24,13 @@ uint32_t DrawStage(uint32_t previousStage = 0) {
         std::span<const uint32_t>(reinterpret_cast<const uint32_t *>(0x74FC08), 60), previousStage);
     uint32_t random = 0, stage = 0;
     if (pool.count) {
+        // ロード時間の比較専用。試験間で同じ背景を読み、ゲーム本体のRNGは変えない。
+        static const bool repeatable = cccaster::testing::IsScriptedInputEnabled() &&
+            std::getenv("CCCASTER_TEST_RANDOM_REPEATABLE") != nullptr;
+        static uint32_t testRandom = 0x12345678;
         do {
-            if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(&random), sizeof(random),
+            if (repeatable) random = testRandom = testRandom * 1664525u + 1013904223u;
+            else if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(&random), sizeof(random),
                                 BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) return 0;
         } while (!pool.Pick(random, stage));
     }

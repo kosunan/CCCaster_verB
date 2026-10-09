@@ -140,6 +140,91 @@ def analyze_intro_text(text):
         r['intro_frames'] >= 100 and r['entered_battle'] for r in results)))
 
 
+def analyze_loading_pace(text, side, random_rematch=False, unpaced=False):
+    """ロード更新の締切と、待機後の音声時計・実時計を独立に検査する。"""
+    pattern = re.compile(r'\[LoadingPace\] app=(\d+) role=(\d+) frame=(\d+) '
+                         r'due=(-?\d+) clock=(-?\d+) qpc=(-?\d+)')
+    groups, failures = [], []
+    current = None
+    random_pending = False
+    for line in text.splitlines():
+        if '[StageRematch] DIRECT ' in line or '[Spectator] RETRY target=2' in line:
+            random_pending = True
+        if '[TransitionDraw] mode=1 ' in line:
+            if current is not None:
+                current['entered_intro'] = True
+            current = None
+        if '[LoadingPace]' not in line:
+            continue
+        match = pattern.search(line)
+        if not match:
+            failures.append('ロード待機ログの形式が不正')
+            continue
+        app, role, frame, due, clock, qpc = map(int, match.groups())
+        wait = re.search(r'\bwait=(\S+)', line)
+        if (wait and wait.group(1) != ('0' if unpaced else '1')) or (unpaced and not wait):
+            failures.append(f'ロード待機の比較条件が不一致: frame={frame}')
+        if current is None or frame == 1:
+            if current is not None:
+                failures.append('イントロへ進む前にロード連番が再初期化された')
+            current = dict(random_rematch=random_pending, entered_intro=False, rows=[])
+            groups.append(current)
+            random_pending = False
+        current['rows'].append((frame, due, clock, qpc))
+        if app != (2 if side == 3 else 0) or role not in ((0, 1) if side == 3 else (int(side == 1),)):
+            failures.append(f'ロード待機の対戦・観戦種別が不一致: side={side} app={app} role={role}')
+        if frame != len(current['rows']):
+            failures.append(f'ロード待機ログの連番欠落・重複: frame={frame}')
+        if due <= 0 or clock <= 0 or (not unpaced and clock < due) or qpc <= 0:
+            failures.append(f'ロード待機が締切前に解除された、または時計が不正: frame={frame}')
+
+    results = []
+    # 時刻の単位は1/60マイクロ秒。通常周期は丸めのない1,000,000 ticks。
+    period = 1000000
+    # Metronomeは現在時刻が前締切より3F超遅れた場合だけ再基準化する。
+    rebase_minimum = (1000000 // 60) * 180 + period
+    for group in groups:
+        rows = group['rows']
+        due_intervals = [b[1] - a[1] for a, b in zip(rows, rows[1:])]
+        actual_intervals = [b[3] - a[3] for a, b in zip(rows, rows[1:])]
+        rebases = 0
+        if len(rows) < 2:
+            failures.append('ロード60Hzの周期を測定する標本が不足')
+        if not group['entered_intro']:
+            failures.append('計測したロードからイントロへの到達が未確認')
+        for previous, row in zip(rows, rows[1:]):
+            due_delta, actual_delta = row[1] - previous[1], row[3] - previous[3]
+            if due_delta != period:
+                # 資産の読込みで長く止まった場合の原点の更新は許容する。
+                # 30Hz等の別周期や、実時間を伴わない締切の飛越しは成功にしない。
+                needed_us = max(0, (row[1] - previous[2]) / 60)
+                if due_delta <= rebase_minimum or actual_delta + 2000 < needed_us * 0.95:
+                    failures.append(f'ロード締切が60Hz周期ではない: frame={row[0]} delta={due_delta}')
+                else:
+                    rebases += 1
+            if actual_delta <= 0 or row[2] < previous[2]:
+                failures.append(f'ロード計測時計が逆行・停止: frame={row[0]}')
+        elapsed_us = rows[-1][3] - rows[0][3]
+        # 初回の待機復帰が遅れて直後に追いつく更新を許容する。長い資産ロードは
+        # 自然なFPS低下として記録し、下限FPSを設けない。QPCには2ms+5%の許容幅。
+        required_us = max(0, (rows[-1][1] - rows[0][2]) / 60)
+        if not unpaced and elapsed_us + 2000 < required_us * 0.95:
+            failures.append('ロードのQPC実時間が60Hz締切に対して速すぎる')
+        results.append(dict(random_rematch=group['random_rematch'], frames=len(rows),
+                            entered_intro=group['entered_intro'], deadline_rebases=rebases,
+                            deadline_interval_ticks_min=min(due_intervals, default=None),
+                            deadline_interval_ticks_max=max(due_intervals, default=None),
+                            median_interval_us=statistics.median(actual_intervals) if actual_intervals else None,
+                            maximum_interval_us=max(actual_intervals, default=None),
+                            elapsed_us=elapsed_us,
+                            average_fps=(len(rows) - 1) * 1000000 / elapsed_us if elapsed_us > 0 else None))
+    if len(results) < 2 or (results and results[0]['random_rematch']):
+        failures.append('初回と再戦後の両ロードの待機ログが必要')
+    if random_rematch and not any(r['random_rematch'] for r in results):
+        failures.append('RANDOM再戦後のロード待機ログがない')
+    return dict(side=side, unpaced=unpaced, loads=results, failures=failures, passed=not failures)
+
+
 def analyze_loading(folder, requested):
     sides = []
     for side in (1, 2, 3):
@@ -373,6 +458,16 @@ def evaluate_behavior(out, config):
         result['loading'] = analyze_loading(out, config['loading_input'])
         checks.append(result['loading']['passed'])
     if full_intro:
+        result['loading_pace'] = [analyze_loading_pace(
+            (out / f'game_{side}.log').read_text(encoding='utf-8'), side, scenario == 'random',
+            unpaced=config.get('loading_unpaced', False))
+            for side in (1, 2)]
+        checks.extend(side['passed'] for side in result['loading_pace'])
+        if spectator:
+            spectator_text = (out / 'game_3.log').read_text(encoding='utf-8')
+            unexpected = spectator_text.count('[LoadingPace]')
+            result['spectator_loading_pace'] = dict(unexpected_records=unexpected, passed=unexpected == 0)
+            checks.append(result['spectator_loading_pace']['passed'])
         if scenario == 'random':
             result['direct_rematch'] = [analyze_direct_rematch(
                 (out / f'game_{side}.log').read_text(encoding='utf-8'))
@@ -419,7 +514,9 @@ def main():
     parser.add_argument('--spin-prototype', action='store_true', help='入力公開・採取の共有スピン試作を有効化する')
     parser.add_argument('--legacy-present', action='store_true', help='モニター同期を無効にし、元の単独Present待機を検証する')
     parser.add_argument('--input-runahead', choices=['1', '2', '12'], help='指定した対戦端だけで1F先行表示を検証')
-    parser.add_argument('--full-intro', action='store_true', help='登場演出を自然終了させ、描画・周期を記録する')
+    parser.add_argument('--full-intro', action='store_true', help='対戦者のロード60Hz待機・観戦の待機省略を検証し、登場演出を自然終了させて描画・周期を記録する')
+    parser.add_argument('--loading-unpaced', action='store_true', help='比較用: 対戦者のロード60Hz待機だけを省略する（full-intro必須）')
+    parser.add_argument('--repeatable-stage', action='store_true', help='比較用: RANDOMの抽選系列を固定する（randomのみ）')
     parser.add_argument('--monitor-timing', action='store_true', help='実Presentと60Hz更新を別々に採取する')
     parser.add_argument('--monitor-hz', type=int, choices=range(20, 1001), metavar='20..1000',
                         help='検証専用の表示要求Hz。実モニター設定は変更しない')
@@ -439,6 +536,10 @@ def main():
         parser.error('--networkは0<=min<=max<=1000、損失率0〜100で指定する')
     if args.loading_input and not (args.spectator and args.full_intro):
         parser.error('--loading-inputには--spectator --full-introが必要')
+    if args.loading_unpaced and not args.full_intro:
+        parser.error('--loading-unpacedには--full-introが必要')
+    if args.repeatable_stage and args.scenario != 'random':
+        parser.error('--repeatable-stageはrandomでのみ使用可能')
     out = ROOT / 'test/logs' / time.strftime(f'stage_rematch_{args.scenario}_%Y%m%d_%H%M%S')
     out.mkdir()
     runtime = args.test_root.resolve()
@@ -478,6 +579,10 @@ def main():
     if args.full_intro:
         env.update(CCCASTER_TEST_FULL_INTRO='1', CCCASTER_PACE_TRACE='1',
                    CCCASTER_CLOCK_FOLLOW_TRACE='1', CCCASTER_TRANSITION_DRAW_TRACE='1')
+    if args.loading_unpaced:
+        env['CCCASTER_TEST_LOADING_UNPACED'] = '1'
+    if args.repeatable_stage:
+        env['CCCASTER_TEST_RANDOM_REPEATABLE'] = '1'
     if args.baseline:
         env['CCCASTER_TEST_REMATCH_BASELINE'] = '1'
     if args.loading_input:
@@ -492,6 +597,7 @@ def main():
     config = dict(scenario=args.scenario, spectator=args.spectator, full_intro=args.full_intro, input_runahead=args.input_runahead,
                   native_input_writes=False,
                   baseline=args.baseline, loading_input=args.loading_input,
+                  loading_unpaced=args.loading_unpaced, repeatable_stage=args.repeatable_stage,
                   round_frames=args.round_frames, round_max_epoch=0 if args.fixed_duration else 3)
     (out / 'checkpoint_config.json').write_text(json.dumps(config), encoding='utf-8')
     if not args.fixed_duration:
